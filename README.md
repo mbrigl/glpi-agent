@@ -9,8 +9,9 @@ separate it from the Perl 1.x line.
 > The two base crates are being filled in; the task/daemon crates are still placeholder skeletons.
 >
 > - **`glpi-core`** — `error`, `types` (device / network / SNMP / inventory), `config` (layered
->   options + precedence merge), `protocol::glpi` (native JSON `contact`/`inventory`) + category
->   filtering, and `logging` (stderr / file / callback backends). _Implemented & tested._
+>   options + precedence merge, plus `agent.cfg` / `conf.d` / `GLPI_AGENT_*` source parsers),
+>   `protocol::glpi` (native JSON `contact`/`inventory`), `protocol::fusion` (FusionInventory XML),
+>   category filtering, and `logging` (stderr / file / callback backends). _Implemented & tested._
 > - **`glpi-transport`** — `GlpiClient`, a reqwest (rustls) HTTP client for the `contact` handshake
 >   and inventory submission, with Basic auth and error mapping. _Implemented & tested (wiremock)._
 > - Everything else (`glpi-discovery`, `glpi-inventory-local`, `glpi-vsphere`, `glpi-cli`, …) is a
