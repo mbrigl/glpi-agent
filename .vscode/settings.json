@@ -1,0 +1,10 @@
+{
+    "git.autofetch": true,
+    "git.confirmSync": false,
+    "editor.formatOnSave": true,
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000,
+    "[rust]": {
+        "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    }
+}

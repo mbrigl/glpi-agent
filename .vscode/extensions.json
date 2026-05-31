@@ -1,0 +1,7 @@
+{
+  "recommendations": [
+    "vadimcn.vscode-lldb",
+    "rust-lang.rust-analyzer",
+    "llvm-vs-code-extensions.lldb-dap"
+  ]
+}

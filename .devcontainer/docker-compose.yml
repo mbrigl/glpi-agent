@@ -1,0 +1,76 @@
+services:
+  glpi:
+    image: "glpi/glpi:latest"
+    restart: "unless-stopped"
+    volumes:
+      # Using a named volume avoids permission issues on host (automatically managed by Docker)
+      - glpi_data:/var/glpi
+    # For GLPI 10.x, uncomment the following line to create a volume for plugins fetched from the marketplace.
+    # - "./storage/glpi_marketplace:/var/www/glpi/marketplace/:rw"
+    # Pass environment variables from .env file to the container
+    env_file: .env
+    depends_on:
+      - mysql
+    networks:
+      - glpi_network
+    ports:
+      - "8080:80"
+
+  mysql:
+    image: "mysql"
+    restart: "unless-stopped"
+    volumes:
+      - glpi_mysql:/var/lib/mysql
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: ${GLPI_DB_NAME}
+      MYSQL_USER: ${GLPI_DB_USER}
+      MYSQL_PASSWORD: ${GLPI_DB_PASSWORD}
+    networks:
+      - glpi_network
+    ports:
+      - "3306:3306"
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      GLPI_SERVER: "http://glpi/front/inventory.php"
+      GLPI_TAG: "docker-agent"
+    depends_on:
+      - glpi
+    networks:
+      - glpi_network
+    volumes:
+      # Using a named volume avoids permission issues on host (automatically managed by Docker)
+      - glpi_data:/var/glpi
+
+  devcontainer:
+    image: "mcr.microsoft.com/devcontainers/rust:latest"
+    volumes:
+      # Mount host workspace into the container
+      - ..:/workspace:cached
+    # Any environment variables shared across the dev environment
+    # environment:
+    #   DOCKER_HOST: unix:///var/run/docker.sock
+    networks:
+      - glpi_network
+    command: sleep infinity # Keep the container running
+    # # Needed for some Docker CLI operations (e.g. docker exec, ptrace-based debuggers)
+    # cap_add:
+    #   - SYS_PTRACE
+    # # Rootless Podman: map host user UID into container so workspace files are accessible
+    # userns_mode: keep-id
+    # security_opt:
+    #   - seccomp:unconfined
+    #   - label=disable # Required for SELinux / Podman rootless
+
+networks:
+  glpi_network:
+    driver: bridge
+
+volumes:
+  glpi_data:
+  glpi_mysql:

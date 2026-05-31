@@ -1,0 +1,36 @@
+{
+  "name": "GLPI",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "devcontainer",
+  "runServices": [
+    "glpi",
+    "mysql"
+  ],
+
+  "workspaceFolder": "/workspace",
+  "remoteUser": "vscode",
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached"
+  ],
+
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1.9.1": {
+      "moby": false,
+      "podman": false
+    }
+  },
+
+  "customizations": {
+    // VS Code extensions installed inside the container
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "ms-azuretools.vscode-docker" // Docker extension for managing images & containers
+      ],
+      "settings": {
+        // Point the Docker extension at the host socket
+        "docker.host": "unix:///var/run/docker.sock"
+      }
+    }
+  }
+}
