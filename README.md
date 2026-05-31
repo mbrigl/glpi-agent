@@ -14,7 +14,8 @@ separate it from the Perl 1.x line.
 >   category filtering, and `logging` (stderr / file / callback backends). _Implemented & tested._
 > - **`glpi-transport`** — `GlpiClient` / `GlpiClientBuilder`, a reqwest (rustls) HTTP client for the
 >   `contact` handshake and inventory submission, with Basic auth, TLS options (custom CA, client
->   certificate, `no-ssl-check`, timeout) and error mapping. _Implemented & tested (wiremock)._
+>   certificate, `no-ssl-check`, timeout) and error mapping; plus `Injector`, which replays existing
+>   inventory files (JSON/XML) to a server. _Implemented & tested (wiremock)._
 > - Everything else (`glpi-discovery`, `glpi-inventory-local`, `glpi-vsphere`, `glpi-cli`, …) is a
 >   skeleton awaiting its phase.
 >

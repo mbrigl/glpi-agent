@@ -99,6 +99,33 @@ impl GlpiClient {
         Ok(())
     }
 
+    /// Submits an already-serialized inventory body with an explicit
+    /// `Content-Type`.
+    ///
+    /// This is the primitive the injector uses to forward inventory files
+    /// verbatim, without re-serializing them through a typed value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails or the server responds with a
+    /// non-success status.
+    pub async fn submit_raw(&self, body: Vec<u8>, content_type: &str) -> Result<()> {
+        let mut builder = self
+            .http
+            .post(self.endpoint.clone())
+            .header(reqwest::header::CONTENT_TYPE, content_type)
+            .body(body);
+        if let Some((user, password)) = &self.credentials {
+            builder = builder.basic_auth(user, Some(password));
+        }
+        let response = builder
+            .send()
+            .await
+            .map_err(|e| AgentError::Transport(e.to_string()))?;
+        check_status(response)?;
+        Ok(())
+    }
+
     /// Sends a JSON `POST` of `body` to the endpoint.
     async fn post<T: Serialize>(&self, body: &T) -> Result<reqwest::Response> {
         let mut builder = self.http.post(self.endpoint.clone()).json(body);

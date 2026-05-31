@@ -29,9 +29,9 @@ Implemented so far:
   - `config` — layered `Options` / `PartialOptions` with precedence merge (`Options::resolve`); source parsers in `config::sources` (agent.cfg `key = value` format, `conf.d/*.cfg`, `GLPI_AGENT_*` env vars) and a `Loader` that assembles them in order. The Windows registry source is still TODO.
   - `protocol::glpi` — GLPI native JSON `contact`/`inventory` envelope; `protocol::fusion` — FusionInventory XML (`<REQUEST>`/`<QUERY>`/`<CONTENT>`, via quick-xml); `protocol::partial` — `no-category`/`required-category` selection,
   - `logging` — a `Logger` facade with stderr / file / callback backends.
-- **`glpi-transport`** — `GlpiClient` + `GlpiClientBuilder`: reqwest (rustls) HTTP client for the `contact` handshake and inventory submission, with Basic auth, TLS options (`ca-cert-file`, client certificate for mutual TLS, `no-ssl-check`, request timeout) and status→error mapping; covered by `wiremock` integration tests.
+- **`glpi-transport`** — `GlpiClient` + `GlpiClientBuilder`: reqwest (rustls) HTTP client for the `contact` handshake and inventory submission, with Basic auth, TLS options (`ca-cert-file`, client certificate for mutual TLS, `no-ssl-check`, request timeout), a raw-body `submit_raw`, and status→error mapping. Plus `Injector` (the `glpi-injector` counterpart): replays existing inventory files (JSON/XML, format inferred from extension) to a server. Covered by `wiremock` integration tests.
 
-Still TODO in Phase 1: OAuth2 and SSL fingerprint pinning, the Windows registry config source, the `glpi-injector`, logging `syslog` backend + `tracing` bridge, and the golden-file parity harness against the Perl agent. The remaining task/daemon crates come in later phases.
+Still TODO in Phase 1: OAuth2 and SSL fingerprint pinning, the Windows registry config source, logging `syslog` backend + `tracing` bridge, and the golden-file parity harness against the Perl agent. The remaining task/daemon crates come in later phases.
 
 The authoritative design is in [glpi-agent-crates-summary.md](../glpi-agent-crates-summary.md) (crate map) and the phased plan in [glpi-agent-rust-migration-plan.md](../glpi-agent-rust-migration-plan.md) — read them before adding code (see "Planned Rust architecture" below). The devcontainer is configured for **Rust** (Rust base image, `rust-analyzer` / LLDB extensions, `formatOnSave`).
 
