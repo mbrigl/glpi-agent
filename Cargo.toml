@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "2.0.0"
+edition = "2021"
+license = "GPL-2.0-only"
+authors = ["GLPI Agent Rust contributors"]
+repository = "https://github.com/glpi-project/glpi-agent-rust"
+rust-version = "1.96"
+
+[workspace.lints.clippy]
+all = "warn"
+suspicious = "deny"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+missing_docs = "warn"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+tokio-stream = "0.1"
+
+# HTTP & web
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+axum = "0.7"
+quick-xml = "0.36"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_xml_rs = "0.6"
+
+# Config
+config = "0.14"
+notify = "6"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Crypto / hashing
+sha2 = "0.10"
+base64 = "0.22"
+
+# Utilities
+mac_address = "1"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Dev / testing
+rstest = "0.18"
+insta = { version = "1", features = ["json"] }

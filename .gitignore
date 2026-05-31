@@ -1,2 +1,11 @@
+# Rust build artifacts
+/target
 
+# Devcontainer
 .devcontainer/devcontainer-lock.json
+
+# Editor / OS noise
+*.swp
+.DS_Store
+
+Cargo.lock
