@@ -5,19 +5,26 @@ upstream agent is written in Perl; this project re-implements it as a Cargo work
 crates while staying compatible with the GLPI inventory protocol. It starts at **v2.0.0** to
 separate it from the Perl 1.x line.
 
-> **Status: Phase 1 (Foundation), in progress.** The Cargo workspace and all 14 member crates exist.
-> The two base crates are being filled in; the task/daemon crates are still placeholder skeletons.
+> **Status: Phase 1 (Foundation) complete** for the cross-platform surface. The Cargo workspace and
+> all 14 member crates exist; the two base crates are implemented and tested, and the task/daemon
+> crates are still placeholder skeletons awaiting their phases.
 >
 > - **`glpi-core`** — `error`, `types` (device / network / SNMP / inventory), `config` (layered
 >   options + precedence merge, plus `agent.cfg` / `conf.d` / `GLPI_AGENT_*` source parsers),
 >   `protocol::glpi` (native JSON `contact`/`inventory`), `protocol::fusion` (FusionInventory XML),
->   category filtering, and `logging` (stderr / file / callback backends). _Implemented & tested._
+>   category filtering, and `logging` (stderr / file / callback backends, level from `debug`).
+>   _Implemented & tested._
 > - **`glpi-transport`** — `GlpiClient` / `GlpiClientBuilder`, a reqwest (rustls) HTTP client for the
->   `contact` handshake and inventory submission, with Basic auth, TLS options (custom CA, client
->   certificate, `no-ssl-check`, timeout) and error mapping; plus `Injector`, which replays existing
->   inventory files (JSON/XML) to a server. _Implemented & tested (wiremock)._
+>   `contact` handshake and inventory submission, with Basic and OAuth2 bearer auth, TLS options
+>   (custom CA, client certificate, `no-ssl-check`, timeout) and error mapping; plus `Injector`, which
+>   replays existing inventory files (JSON/XML) to a server. _Implemented & tested (wiremock)._
+> - A **golden-file harness** (`glpi-core/tests/golden.rs`) compares serialized protocol messages
+>   against committed fixtures — the seed for parity testing against the Perl agent in later phases.
 > - Everything else (`glpi-discovery`, `glpi-inventory-local`, `glpi-vsphere`, `glpi-cli`, …) is a
 >   skeleton awaiting its phase.
+>
+> Deferred to platform-specific / later phases: Windows registry config + Windows/macOS certificate
+> stores, SSL fingerprint pinning, the `syslog` backend, and a `tracing` bridge.
 >
 > See [glpi-agent-crates-summary.md](glpi-agent-crates-summary.md) for the crate map and
 > [glpi-agent-rust-migration-plan.md](glpi-agent-rust-migration-plan.md) for the phased plan.

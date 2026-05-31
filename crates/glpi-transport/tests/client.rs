@@ -112,3 +112,26 @@ async fn basic_auth_header_is_sent() {
     // MockServer verifies the `expect(1)` matcher (including the auth header)
     // on drop.
 }
+
+#[tokio::test]
+async fn oauth_bearer_header_is_sent() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(ENDPOINT_PATH))
+        .and(header("authorization", "Bearer tok-abc123"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "status": "ok" })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = GlpiClient::builder(&endpoint(&server))
+        .unwrap()
+        .oauth_token("tok-abc123")
+        .build()
+        .unwrap();
+
+    client
+        .contact(&ContactRequest::new("agent-1"))
+        .await
+        .unwrap();
+}

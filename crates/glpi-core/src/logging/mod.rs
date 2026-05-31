@@ -42,6 +42,20 @@ pub enum LogLevel {
 }
 
 impl LogLevel {
+    /// Maps an agent debug verbosity count to a maximum [`LogLevel`].
+    ///
+    /// Mirrors the upstream agent's `--debug` flag: `0` keeps the default
+    /// [`LogLevel::Info`], `1` enables [`LogLevel::Debug`], and `2` or more
+    /// enables [`LogLevel::Debug2`].
+    #[must_use]
+    pub const fn from_verbosity(debug: u8) -> Self {
+        match debug {
+            0 => Self::Info,
+            1 => Self::Debug,
+            _ => Self::Debug2,
+        }
+    }
+
     /// The lower-case label used in rendered log lines (`error`, `warning`, …).
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -110,6 +124,20 @@ impl Logger {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Builds the agent's standard logger: a [`StderrBackend`], plus a
+    /// [`FileBackend`] when `logfile` is set, at the level implied by the
+    /// `debug` verbosity ([`LogLevel::from_verbosity`]).
+    #[must_use]
+    pub fn for_agent(debug: u8, logfile: Option<&std::path::Path>) -> Self {
+        let mut logger = Self::new()
+            .with_max_level(LogLevel::from_verbosity(debug))
+            .with_backend(StderrBackend::new());
+        if let Some(path) = logfile {
+            logger = logger.with_backend(FileBackend::new(path));
+        }
+        logger
     }
 
     /// Sets the maximum level that will be emitted.
@@ -189,6 +217,21 @@ mod tests {
         assert!(LogLevel::Error < LogLevel::Warning);
         assert!(LogLevel::Info < LogLevel::Debug);
         assert!(LogLevel::Debug < LogLevel::Debug2);
+    }
+
+    #[test]
+    fn from_verbosity_maps_debug_count() {
+        assert_eq!(LogLevel::from_verbosity(0), LogLevel::Info);
+        assert_eq!(LogLevel::from_verbosity(1), LogLevel::Debug);
+        assert_eq!(LogLevel::from_verbosity(2), LogLevel::Debug2);
+        assert_eq!(LogLevel::from_verbosity(9), LogLevel::Debug2);
+    }
+
+    #[test]
+    fn for_agent_sets_level_from_debug() {
+        assert_eq!(Logger::for_agent(0, None).max_level(), LogLevel::Info);
+        assert_eq!(Logger::for_agent(1, None).max_level(), LogLevel::Debug);
+        assert_eq!(Logger::for_agent(5, None).max_level(), LogLevel::Debug2);
     }
 
     #[test]

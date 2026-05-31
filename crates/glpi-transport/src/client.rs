@@ -31,6 +31,7 @@ pub struct GlpiClient {
     http: Client,
     endpoint: Url,
     credentials: Option<(String, String)>,
+    bearer_token: Option<String>,
 }
 
 impl GlpiClient {
@@ -110,15 +111,13 @@ impl GlpiClient {
     /// Returns an error if the request fails or the server responds with a
     /// non-success status.
     pub async fn submit_raw(&self, body: Vec<u8>, content_type: &str) -> Result<()> {
-        let mut builder = self
+        let builder = self
             .http
             .post(self.endpoint.clone())
             .header(reqwest::header::CONTENT_TYPE, content_type)
             .body(body);
-        if let Some((user, password)) = &self.credentials {
-            builder = builder.basic_auth(user, Some(password));
-        }
-        let response = builder
+        let response = self
+            .apply_auth(builder)
             .send()
             .await
             .map_err(|e| AgentError::Transport(e.to_string()))?;
@@ -128,14 +127,25 @@ impl GlpiClient {
 
     /// Sends a JSON `POST` of `body` to the endpoint.
     async fn post<T: Serialize>(&self, body: &T) -> Result<reqwest::Response> {
-        let mut builder = self.http.post(self.endpoint.clone()).json(body);
-        if let Some((user, password)) = &self.credentials {
-            builder = builder.basic_auth(user, Some(password));
-        }
-        builder
+        let builder = self.http.post(self.endpoint.clone()).json(body);
+        self.apply_auth(builder)
             .send()
             .await
             .map_err(|e| AgentError::Transport(e.to_string()))
+    }
+
+    /// Adds the configured authentication header to a request.
+    ///
+    /// A bearer token (OAuth2) takes precedence over Basic credentials when
+    /// both are set; with neither, the request is sent unauthenticated.
+    fn apply_auth(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        if let Some(token) = &self.bearer_token {
+            builder.bearer_auth(token)
+        } else if let Some((user, password)) = &self.credentials {
+            builder.basic_auth(user, Some(password))
+        } else {
+            builder
+        }
     }
 }
 
@@ -144,6 +154,7 @@ impl GlpiClient {
 pub struct GlpiClientBuilder {
     endpoint: Url,
     credentials: Option<(String, String)>,
+    bearer_token: Option<String>,
     ca_cert_file: Option<PathBuf>,
     client_cert_file: Option<PathBuf>,
     no_ssl_check: bool,
@@ -156,6 +167,7 @@ impl GlpiClientBuilder {
         Self {
             endpoint,
             credentials: None,
+            bearer_token: None,
             ca_cert_file: None,
             client_cert_file: None,
             no_ssl_check: false,
@@ -167,6 +179,17 @@ impl GlpiClientBuilder {
     #[must_use]
     pub fn basic_auth(mut self, username: impl Into<String>, password: impl Into<String>) -> Self {
         self.credentials = Some((username.into(), password.into()));
+        self
+    }
+
+    /// Sets an OAuth2 bearer token, sent as `Authorization: Bearer …`.
+    ///
+    /// Used by GLPI 11+ which can authenticate inventory submissions with an
+    /// OAuth2 access token. When set, it takes precedence over Basic
+    /// credentials.
+    #[must_use]
+    pub fn oauth_token(mut self, token: impl Into<String>) -> Self {
+        self.bearer_token = Some(token.into());
         self
     }
 
@@ -234,6 +257,7 @@ impl GlpiClientBuilder {
             http,
             endpoint: self.endpoint,
             credentials: self.credentials,
+            bearer_token: self.bearer_token,
         })
     }
 }

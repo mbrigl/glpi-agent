@@ -1,0 +1,10 @@
+{
+  "action": "inventory",
+  "deviceid": "agent-golden-1",
+  "itemtype": "Computer",
+  "content": {
+    "hardware": {
+      "name": "host-01"
+    }
+  }
+}

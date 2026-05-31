@@ -1,0 +1,6 @@
+{
+  "action": "contact",
+  "deviceid": "agent-golden-1",
+  "tag": "lab",
+  "enabled-tasks": ["inventory", "netdiscovery"]
+}

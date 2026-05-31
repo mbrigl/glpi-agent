@@ -19,19 +19,18 @@ Do not write in any other language in any code or documentation. If you encounte
 
 ## Current state
 
-This repo (`glpi-agent`) is a **Rust rewrite of the Perl glpi-agent**, in early **Phase 1** (Foundation). A Cargo **workspace** under `crates/` already holds all 14 member crates; the two base crates are being filled in, the rest are still placeholder skeletons (a `crate_name()` smoke-test symbol + one test).
-
-Implemented so far:
+This repo (`glpi-agent`) is a **Rust rewrite of the Perl glpi-agent**. **Phase 1 (Foundation) is complete** for the cross-platform surface: the two base crates `glpi-core` and `glpi-transport` are implemented and tested; the remaining task/daemon crates are still placeholder skeletons (a `crate_name()` smoke-test symbol + one test) awaiting their phases.
 
 - **`glpi-core`** — the foundation crate:
   - `error` — `AgentError` (thiserror) + `Result` alias,
   - `types` — protocol-agnostic value types (`Device`/`AssetType`, `MacAddress`/`NetworkInterface`, `SnmpCredentials` & co., `InventoryCategory`/`InventoryResult`),
-  - `config` — layered `Options` / `PartialOptions` with precedence merge (`Options::resolve`); source parsers in `config::sources` (agent.cfg `key = value` format, `conf.d/*.cfg`, `GLPI_AGENT_*` env vars) and a `Loader` that assembles them in order. The Windows registry source is still TODO.
+  - `config` — layered `Options` / `PartialOptions` with precedence merge (`Options::resolve`); source parsers in `config::sources` (agent.cfg `key = value` format, `conf.d/*.cfg`, `GLPI_AGENT_*` env vars) and a `Loader` that assembles them in order,
   - `protocol::glpi` — GLPI native JSON `contact`/`inventory` envelope; `protocol::fusion` — FusionInventory XML (`<REQUEST>`/`<QUERY>`/`<CONTENT>`, via quick-xml); `protocol::partial` — `no-category`/`required-category` selection,
-  - `logging` — a `Logger` facade with stderr / file / callback backends.
-- **`glpi-transport`** — `GlpiClient` + `GlpiClientBuilder`: reqwest (rustls) HTTP client for the `contact` handshake and inventory submission, with Basic auth, TLS options (`ca-cert-file`, client certificate for mutual TLS, `no-ssl-check`, request timeout), a raw-body `submit_raw`, and status→error mapping. Plus `Injector` (the `glpi-injector` counterpart): replays existing inventory files (JSON/XML, format inferred from extension) to a server. Covered by `wiremock` integration tests.
+  - `logging` — a `Logger` facade with stderr / file / callback backends, level driven by the `debug` verbosity (`Logger::for_agent`).
+- **`glpi-transport`** — `GlpiClient` + `GlpiClientBuilder`: reqwest (rustls) HTTP client for the `contact` handshake and inventory submission, with Basic and OAuth2 bearer auth, TLS options (`ca-cert-file`, client certificate for mutual TLS, `no-ssl-check`, request timeout), a raw-body `submit_raw`, and status→error mapping. Plus `Injector` (the `glpi-injector` counterpart): replays existing inventory files (JSON/XML, format inferred from extension) to a server. Covered by `wiremock` integration tests.
+- **Golden-file harness** — seeded in `glpi-core/tests/golden.rs` with a `load_fixture` helper comparing serialized protocol messages against committed JSON fixtures under `tests/fixtures/`. Phase 2+ reuses this pattern against captures from the upstream Perl agent.
 
-Still TODO in Phase 1: OAuth2 and SSL fingerprint pinning, the Windows registry config source, logging `syslog` backend + `tracing` bridge, and the golden-file parity harness against the Perl agent. The remaining task/daemon crates come in later phases.
+**Deferred to later / platform-specific phases** (not part of the cross-platform Phase 1 surface): the Windows registry config source and the Windows certificate store / macOS Keychain auth (`keystore_win` / `keychain_mac`) — these need a Windows/macOS host to implement and test; SSL fingerprint pinning (`ssl-fingerprint`), which requires a custom rustls certificate verifier; the `syslog` logging backend (`cfg(unix)`); and a `tracing` bridge. These are tracked against their phases in the migration plan rather than blocking Phase 1.
 
 The authoritative design is in [glpi-agent-crates-summary.md](../glpi-agent-crates-summary.md) (crate map) and the phased plan in [glpi-agent-rust-migration-plan.md](../glpi-agent-rust-migration-plan.md) — read them before adding code (see "Planned Rust architecture" below). The devcontainer is configured for **Rust** (Rust base image, `rust-analyzer` / LLDB extensions, `formatOnSave`).
 
