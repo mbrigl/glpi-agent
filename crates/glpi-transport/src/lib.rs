@@ -1,22 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//! `glpi-transport` — HTTP client and glpi-injector logic.
+//! `glpi-transport` — the HTTP transport that carries GLPI native protocol
+//! messages between the agent and a GLPI server.
 //!
-//! Part of the GLPI Agent Rust workspace (v2.0.0).
-//! Placeholder crate; implementation lands in a later phase.
+//! The single entry point is [`GlpiClient`]: build it from a server endpoint
+//! URL, optionally attach Basic credentials, then perform the `contact`
+//! handshake and submit inventories. The protocol message types themselves
+//! live in [`glpi_core::protocol`].
 
-/// Returns this crate's package name (placeholder smoke-test symbol).
-#[must_use]
-pub fn crate_name() -> &'static str {
-    env!("CARGO_PKG_NAME")
-}
+mod client;
 
-#[cfg(test)]
-mod tests {
-    use super::crate_name;
-
-    #[test]
-    fn crate_name_matches_package() {
-        assert_eq!(crate_name(), env!("CARGO_PKG_NAME"));
-    }
-}
+pub use client::{GlpiClient, DEFAULT_USER_AGENT};

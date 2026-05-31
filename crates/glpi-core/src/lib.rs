@@ -10,12 +10,14 @@
 //! - [`types`] — protocol-agnostic value types (device, network, SNMP,
 //!   inventory),
 //! - [`config`] — the layered options model and its merge machinery,
-//! - [`protocol`] — GLPI native JSON messages and category-filter logic.
+//! - [`protocol`] — GLPI native JSON messages and category-filter logic,
+//! - [`logging`] — the logger facade with stderr / file / callback backends.
 //!
-//! The `auth` and `logging` modules follow later in Phase 1.
+//! The `auth` module follows later in Phase 1.
 
 pub mod config;
 pub mod error;
+pub mod logging;
 pub mod protocol;
 pub mod types;
 

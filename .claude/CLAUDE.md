@@ -19,9 +19,21 @@ Do not write in any other language in any code or documentation. If you encounte
 
 ## Current state
 
-This repo (`glpi-agent`) is an early-stage scaffold. There is **no application source code yet** — only a devcontainer + Docker Compose environment that runs GLPI and the upstream [glpi-agent](https://github.com/glpi-project/glpi-agent) inventory agent. The devcontainer is configured for **Rust** development (Rust base image, `rust-analyzer` / LLDB recommended extensions, `formatOnSave`), so new code is expected to be Rust.
+This repo (`glpi-agent`) is a **Rust rewrite of the Perl glpi-agent**, in early **Phase 1** (Foundation). A Cargo **workspace** under `crates/` already holds all 14 member crates; the two base crates are being filled in, the rest are still placeholder skeletons (a `crate_name()` smoke-test symbol + one test).
 
-The intended work is a **Rust rewrite of the Perl glpi-agent**. The planned design is captured in [glpi-agent-crates-summary.md](../glpi-agent-crates-summary.md) — read it before adding code (see "Planned Rust architecture" below).
+Implemented so far:
+
+- **`glpi-core`** — the foundation crate:
+  - `error` — `AgentError` (thiserror) + `Result` alias,
+  - `types` — protocol-agnostic value types (`Device`/`AssetType`, `MacAddress`/`NetworkInterface`, `SnmpCredentials` & co., `InventoryCategory`/`InventoryResult`),
+  - `config` — layered `Options` / `PartialOptions` with precedence merge (`Options::resolve`); the per-source parsers (agent.cfg, conf.d, registry, env) are still TODO,
+  - `protocol::glpi` — GLPI native JSON `contact`/`inventory` envelope; `protocol::partial` — `no-category`/`required-category` selection,
+  - `logging` — a `Logger` facade with stderr / file / callback backends.
+- **`glpi-transport`** — `GlpiClient`: reqwest (rustls) HTTP client for the `contact` handshake and inventory submission, Basic auth, status→error mapping; covered by `wiremock` integration tests.
+
+Still TODO in Phase 1: FusionInventory XML, OAuth2 / SSL-client-cert / fingerprint auth, the config source parsers, the `glpi-injector`, logging `syslog` backend + `tracing` bridge, and the golden-file parity harness against the Perl agent. The remaining task/daemon crates come in later phases.
+
+The authoritative design is in [glpi-agent-crates-summary.md](../glpi-agent-crates-summary.md) (crate map) and the phased plan in [glpi-agent-rust-migration-plan.md](../glpi-agent-rust-migration-plan.md) — read them before adding code (see "Planned Rust architecture" below). The devcontainer is configured for **Rust** (Rust base image, `rust-analyzer` / LLDB extensions, `formatOnSave`).
 
 ## Environment architecture
 
@@ -61,6 +73,29 @@ docker compose down
 
 GLPI UI: http://localhost:8080.
 
+## Building the Rust workspace
+
+The toolchain is pinned in [rust-toolchain.toml](../rust-toolchain.toml) (currently **1.96.0**; the plan's 1.75 is too old — the dependency tree needs edition 2024). Run from the repo root:
+
+```bash
+cargo build                 # build all crates
+cargo test                  # run all tests (unit + integration + doctests)
+cargo fmt --check           # formatting (CI gate)
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+```
+
+Run a single crate's tests, or one test by name:
+
+```bash
+cargo test -p glpi-core                       # one crate
+cargo test -p glpi-core config::               # one module
+cargo test -p glpi-transport basic_auth_header_is_sent   # one test
+```
+
+Lints are enforced workspace-wide via `[workspace.lints]` in the root `Cargo.toml`: `clippy::all = "warn"`, `clippy::suspicious = "deny"`, plus `unsafe_code`/`missing_docs = "warn"` — so every public item needs a doc comment. CI ([.github/workflows/ci.yml](../.github/workflows/ci.yml)) runs fmt + clippy (`-D warnings`) + build + test. Test stack: `rstest`, `insta` (snapshots), `wiremock` (HTTP mocks); `proptest`/`assert_cmd` to come.
+
+The reachable GLPI server (`http://glpi/front/inventory.php` from inside the devcontainer network) can be used for live transport smoke tests; mock-based tests are the default so the suite stays offline-capable.
+
 ## Planned Rust architecture
 
 [glpi-agent-crates-summary.md](../glpi-agent-crates-summary.md) is the authoritative design doc. Highlights to know before writing code:
@@ -71,7 +106,7 @@ GLPI UI: http://localhost:8080.
 - Known high-risk areas: **SNMPv3 USM** auth/priv must be hand-implemented over `hmac`/`sha2`/`aes`/`des`/`cfb-mode` (the `rasn-snmp` crate only covers wire types); config layering (Registry/conf.d) and the ping-with-TCP-fallback are also custom.
 - Versioning: the Rust agent starts at **v2.0.0** to separate it from the Perl 1.x line.
 
-When the workspace is created, wire up the standard `cargo build` / `cargo test` / `cargo fmt` / `cargo clippy` workflow and document the single-test invocation (e.g. `cargo test -p <crate> <test_name>`) here. The design doc specifies `clippy` lints (`all = "warn"`, `suspicious = "deny"`) and a test stack of `rstest`, `insta` (snapshots), `wiremock`, `proptest`, `assert_cmd`.
+The workspace is now in place; see "Building the Rust workspace" above for the `cargo build` / `test` / `fmt` / `clippy` workflow and the single-test invocation.
 
 ## Notes
 
