@@ -101,6 +101,9 @@ pub struct Port {
     pub admin_status: Option<i64>,
     /// `ifOperStatus` (1 = up, 2 = down, …).
     pub oper_status: Option<i64>,
+    /// MAC addresses learned on this port via the bridge forwarding database
+    /// (`BRIDGE-MIB`), used to derive connections. Sorted and de-duplicated.
+    pub connected_macs: Vec<MacAddress>,
 }
 
 impl Port {

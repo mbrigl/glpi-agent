@@ -35,9 +35,10 @@ pub use methods::ping::{EchoRequest, PingMethod};
 pub use methods::snmp::SnmpMethod;
 pub use scanner::{ProgressCallback, ScanProgress, Scanner};
 pub use snmp::{
-    identify, AdvancedSupport, Component, DeviceInfo, EntityMib, IfMib, MibRegistry, MibSupport,
-    NetworkDevice, Port, Printer, PrinterMib, SecurityLevel, SnmpClient, SnmpQuery, SnmpSysInfo,
-    SnmpValue, Supply, SysObjectEntry, SysObjectIds, SystemMib, WalkSession, SNMP_PORT,
+    identify, AdvancedSupport, BridgeMib, Component, DeviceInfo, EntityMib, IfMib, MibRegistry,
+    MibSupport, NetworkDevice, Port, Printer, PrinterMib, SecurityLevel, SnmpClient, SnmpQuery,
+    SnmpSysInfo, SnmpValue, Supply, SysObjectEntry, SysObjectIds, SystemMib, WalkSession,
+    SNMP_PORT,
 };
 pub use tasks::net_discovery::{DiscoveredDevice, NetDiscoveryTask, SnmpDevice};
 pub use tasks::net_inventory::NetInventoryTask;
