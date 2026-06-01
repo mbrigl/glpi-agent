@@ -12,14 +12,17 @@
 //! - [`os`] — operating-system identity (`/etc/os-release` + kernel),
 //! - [`cpu`] — physical CPUs (`/proc/cpuinfo`),
 //! - [`memory`] — memory modules (`dmidecode -t 17`),
-//! - [`software`] — installed packages (dpkg / rpm).
+//! - [`software`] — installed packages (dpkg / rpm),
+//! - [`network`] — network interfaces (`ip -o link` / `ip -o addr`).
 
 pub mod cpu;
 pub mod memory;
+pub mod network;
 pub mod os;
 pub mod software;
 
 pub use cpu::{parse_cpuinfo, Cpu};
 pub use memory::{parse_dmidecode_memory, MemoryModule};
+pub use network::{parse_interfaces, NetworkInterface};
 pub use os::{parse_os_release, OperatingSystem};
 pub use software::{parse_packages, Software};

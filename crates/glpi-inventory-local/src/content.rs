@@ -9,7 +9,7 @@
 
 use serde::Serialize;
 
-use crate::categories::{Cpu, MemoryModule, OperatingSystem, Software};
+use crate::categories::{Cpu, MemoryModule, NetworkInterface, OperatingSystem, Software};
 
 /// The assembled local-inventory content.
 ///
@@ -29,6 +29,9 @@ pub struct Content {
     /// Installed software packages.
     #[serde(rename = "softwares", skip_serializing_if = "Vec::is_empty")]
     pub softwares: Vec<Software>,
+    /// Network interfaces.
+    #[serde(rename = "networks", skip_serializing_if = "Vec::is_empty")]
+    pub networks: Vec<NetworkInterface>,
 }
 
 #[cfg(test)]
