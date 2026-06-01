@@ -52,6 +52,10 @@ anyhow = "1"
 
 # Discovery
 socket2 = { version = "0.5", features = ["all"] }
+# SNMP v1/v2c/v3 client (async); the `tokio` feature pulls in v3 + pure-Rust
+# crypto (crypto-rust). Dual MIT/Apache-2.0 upstream — we elect the MIT arm for
+# GPL-2.0 compatibility. See migration plan §0.1.
+snmp2 = { version = "0.5", features = ["tokio"] }
 
 # Crypto / hashing
 sha2 = "0.10"

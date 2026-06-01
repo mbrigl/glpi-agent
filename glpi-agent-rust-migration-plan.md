@@ -12,11 +12,12 @@
 
 These notes capture corrected technical assumptions. Earlier drafts contained inaccuracies that are fixed here:
 
-1. **SNMP stack is NOT one crate.** `rasn-snmp` provides only the SNMP *data types* (BER/DER encode/decode for RFC 1157/1901/3412/3416). It does **not** include the SNMPv3 USM security model, auth/priv crypto, or any UDP transport. The SNMP client must be assembled from:
-   - `rasn` + `rasn-snmp` + `rasn-smi` for message encode/decode,
-   - a USM implementation for SNMPv3 auth/priv (evaluate `snmp_usm`; note it historically covers only SHA-1 + AES-128, so the stronger algorithms SHA-224/256/384/512 and AES-192/256/192C/256C **must be implemented in-crate** using `hmac`, `sha1`, `sha2`, `aes`, `des`, `cfb-mode`),
-   - `tokio::net::UdpSocket` for transport.
-   Treat "full SNMPv3 algorithm matrix" as a build-it-yourself component, not a dependency. This is the single highest-risk item in the plan.
+1. **SNMP stack: use `snmp2` (decision revised — Phase 2).** Earlier drafts assumed no crate covered the full SNMPv3 algorithm matrix, so the client was to be assembled from `rasn` + `rasn-snmp` + `rasn-smi` plus a hand-built USM (since the old `snmp_usm` covered only SHA-1 + AES-128). That assumption is **out of date**. The `snmp2` crate (v0.5, async via its `tokio` feature, pure-Rust crypto via `crypto-rust`) provides v1/v2c/v3 with:
+   - the **full auth matrix**: MD5, SHA-1, SHA-224/256/384/512,
+   - priv DES, AES-128, **AES-192, AES-256**,
+   - both AES-192/256 key-localization methods — `KeyExtension::Blumenthal` (standard) and `KeyExtension::Reeder` (the Cisco "AES-192-C / AES-256-C" variant) — so the previously-flagged Cisco gap **is covered**.
+
+   `snmp2` is dual-licensed `MIT OR Apache-2.0`; we **elect the MIT arm** for GPL-2.0 compatibility (Apache-2.0 is GPL-2.0-incompatible). This removes the single highest-risk item in the plan (hand-rolled USM crypto). Use `tokio::net::UdpSocket` is no longer needed directly — `AsyncSession` owns the transport. **Known `snmp2` 0.5 limitations to track:** it parses but does not let callers *set* a non-default SNMPv3 `contextName` (GLPI 1.17 feature) — revisit (upstream PR or fork) when a device requires it. We still add RFC 3414/7860 crypto-vector tests around `snmp2` as a regression guard (acceptance criterion §11).
 
 2. **ICMP ping crate choice.** `surge-ping` requires raw sockets and therefore Administrator privileges on Windows. Prefer `ping-rs` (works without admin on both Windows and Linux) or implement a dual strategy: unprivileged DGRAM ICMP socket where supported (Linux kernel ≥ 3.0 with `net.ipv4.ping_group_range`, Windows IcmpSendEcho2 API), with a TCP-connect fallback. Document `CAP_NET_RAW` for the raw-socket path.
 
@@ -808,13 +809,8 @@ P10 Stabilization + packaging
 | `axum` | 0.7 | HTTP | HTTP server (ToolBox) |
 | `quick-xml` | 0.36 | XML | FusionInventory + vSphere SOAP |
 | `serde`, `serde_json` | 1.x | Serde | Serialization |
-| `rasn` | latest | SNMP | ASN.1 BER/DER codec |
-| `rasn-snmp`, `rasn-smi` | latest | SNMP | SNMP data types (encode/decode only — §0.1) |
-| `hmac`, `sha1`, `sha2` | latest | Crypto | SNMPv3 auth (build USM in-crate — §0.1) |
-| `aes`, `des`, `cfb-mode` | latest | Crypto | SNMPv3 priv |
-| `ping-rs` (or dual impl.) | latest | Discovery | ICMP without admin (§0.2) |
-| `socket2` | 0.5 | Discovery | Raw/DGRAM ICMP socket control |
-| `ipnetwork` | 0.20 | Discovery | IP-range iteration |
+| `snmp2` | 0.5 | SNMP | v1/v2c/v3 client, async (`tokio`), full auth/priv matrix incl. Cisco key extension (§0.1). Elect MIT license arm. |
+| `socket2` | 0.5 | Discovery | DGRAM/raw ICMP socket control (ping, §0.2) |
 | `clap` | 4.x | CLI | Argument parsing |
 | `config` | 0.14 | Config | TOML + env base (registry/conf.d in-crate — §0.4) |
 | `notify` | 6.x | Config | File-change watcher |
@@ -875,7 +871,7 @@ platform-freebsd = []
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| SNMPv3 USM crypto matrix (SHA-512 / AES256C) must be hand-built | High | Implement USM in-crate over `hmac`/`sha2`/`aes`; validate against Perl agent walks; do this in Phase 2, not late |
+| SNMPv3 USM crypto matrix (SHA-512 / AES256C) | ~~High~~ Low | **Resolved (§0.1):** `snmp2` provides the full auth/priv matrix incl. Cisco key extension (`KeyExtension::Reeder`). Add RFC 3414/7860 vector tests as a regression guard. Residual: `snmp2` 0.5 cannot set a non-default `contextName`. |
 | WMI COM apartment threading | High | Dedicated COM worker thread + mpsc channel; never Send COM across Tokio tasks (§0.3) |
 | ICMP on Windows needs admin with raw sockets | Medium | Use `ping-rs` / DGRAM; TCP fallback; document CAP_NET_RAW |
 | vSphere SOAP (no Rust SDK) | High | Minimal API calls; negotiate API version on connect |
