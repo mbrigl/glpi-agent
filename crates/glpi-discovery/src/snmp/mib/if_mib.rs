@@ -11,11 +11,9 @@ use std::collections::BTreeMap;
 
 use async_trait::async_trait;
 use glpi_core::error::Result;
-use glpi_core::types::network::MacAddress;
 
-use super::{MibSupport, NetworkDevice, Port};
+use super::{apply_column, as_i64, as_mac, as_u64, MibSupport, NetworkDevice, Port};
 use crate::snmp::query::SnmpQuery;
-use crate::snmp::value::SnmpValue;
 
 // ifTable columns (1.3.6.1.2.1.2.2.1.N).
 const IF_DESCR: [u64; 10] = [1, 3, 6, 1, 2, 1, 2, 2, 1, 2];
@@ -43,44 +41,62 @@ impl MibSupport for IfMib {
     async fn run(&self, session: &mut dyn SnmpQuery, device: &mut NetworkDevice) -> Result<()> {
         let mut ports: BTreeMap<u64, Port> = BTreeMap::new();
 
-        apply_column(session, &IF_DESCR, &mut ports, |port, v| {
+        apply_column(session, &IF_DESCR, &mut ports, Port::new, |port, v| {
             port.description = v.as_str();
         })
         .await?;
-        apply_column(session, &IF_TYPE, &mut ports, |port, v| {
+        apply_column(session, &IF_TYPE, &mut ports, Port::new, |port, v| {
             port.if_type = as_i64(&v);
         })
         .await?;
-        apply_column(session, &IF_MTU, &mut ports, |port, v| {
+        apply_column(session, &IF_MTU, &mut ports, Port::new, |port, v| {
             port.mtu = as_i64(&v);
         })
         .await?;
-        apply_column(session, &IF_SPEED, &mut ports, |port, v| {
+        apply_column(session, &IF_SPEED, &mut ports, Port::new, |port, v| {
             port.speed = as_u64(&v);
         })
         .await?;
-        apply_column(session, &IF_PHYS_ADDRESS, &mut ports, |port, v| {
-            port.mac = as_mac(&v);
-        })
+        apply_column(
+            session,
+            &IF_PHYS_ADDRESS,
+            &mut ports,
+            Port::new,
+            |port, v| {
+                port.mac = as_mac(&v);
+            },
+        )
         .await?;
-        apply_column(session, &IF_ADMIN_STATUS, &mut ports, |port, v| {
-            port.admin_status = as_i64(&v);
-        })
+        apply_column(
+            session,
+            &IF_ADMIN_STATUS,
+            &mut ports,
+            Port::new,
+            |port, v| {
+                port.admin_status = as_i64(&v);
+            },
+        )
         .await?;
-        apply_column(session, &IF_OPER_STATUS, &mut ports, |port, v| {
-            port.oper_status = as_i64(&v);
-        })
+        apply_column(
+            session,
+            &IF_OPER_STATUS,
+            &mut ports,
+            Port::new,
+            |port, v| {
+                port.oper_status = as_i64(&v);
+            },
+        )
         .await?;
-        apply_column(session, &IF_NAME, &mut ports, |port, v| {
+        apply_column(session, &IF_NAME, &mut ports, Port::new, |port, v| {
             port.name = v.as_str();
         })
         .await?;
-        apply_column(session, &IF_ALIAS, &mut ports, |port, v| {
+        apply_column(session, &IF_ALIAS, &mut ports, Port::new, |port, v| {
             port.alias = v.as_str();
         })
         .await?;
         // ifHighSpeed (Mbit/s) overrides ifSpeed when present and non-zero.
-        apply_column(session, &IF_HIGH_SPEED, &mut ports, |port, v| {
+        apply_column(session, &IF_HIGH_SPEED, &mut ports, Port::new, |port, v| {
             if let Some(mbps) = as_u64(&v).filter(|m| *m > 0) {
                 port.speed = Some(mbps * 1_000_000);
             }
@@ -90,64 +106,6 @@ impl MibSupport for IfMib {
         device.ports = ports.into_values().collect();
         Ok(())
     }
-}
-
-/// Walks a single `ifTable`/`ifXTable` column and applies `set` to each row's
-/// port (created on first sight), keyed by the trailing `ifIndex` arc.
-async fn apply_column<F>(
-    session: &mut dyn SnmpQuery,
-    base: &[u64],
-    ports: &mut BTreeMap<u64, Port>,
-    set: F,
-) -> Result<()>
-where
-    F: Fn(&mut Port, SnmpValue),
-{
-    for (oid, value) in session.walk(base).await? {
-        if let Some(index) = table_index(&oid, base) {
-            set(
-                ports.entry(index).or_insert_with(|| Port::new(index)),
-                value,
-            );
-        }
-    }
-    Ok(())
-}
-
-/// Returns the single-arc table index of `oid` under `base`, if it is exactly
-/// one arc beyond it.
-fn table_index(oid: &[u64], base: &[u64]) -> Option<u64> {
-    if oid.len() == base.len() + 1 && oid.starts_with(base) {
-        Some(oid[base.len()])
-    } else {
-        None
-    }
-}
-
-fn as_i64(value: &SnmpValue) -> Option<i64> {
-    match value {
-        SnmpValue::Integer(n) => Some(*n),
-        _ => None,
-    }
-}
-
-fn as_u64(value: &SnmpValue) -> Option<u64> {
-    match value {
-        SnmpValue::Unsigned32(n) | SnmpValue::Counter32(n) | SnmpValue::Timeticks(n) => {
-            Some(u64::from(*n))
-        }
-        SnmpValue::Counter64(n) => Some(*n),
-        SnmpValue::Integer(n) if *n >= 0 => Some(*n as u64),
-        _ => None,
-    }
-}
-
-fn as_mac(value: &SnmpValue) -> Option<MacAddress> {
-    let SnmpValue::OctetString(bytes) = value else {
-        return None;
-    };
-    let octets: [u8; 6] = bytes.as_slice().try_into().ok()?;
-    (octets != [0u8; 6]).then(|| MacAddress::new(octets))
 }
 
 #[cfg(test)]

@@ -32,6 +32,50 @@ pub struct DeviceInfo {
     pub r#type: Option<String>,
     /// Model name.
     pub model: Option<String>,
+    /// Chassis serial number (typically from `ENTITY-MIB` or a vendor MIB).
+    pub serial: Option<String>,
+    /// Firmware / software revision.
+    pub firmware: Option<String>,
+}
+
+/// A physical component of a device (a row of `ENTITY-MIB`'s
+/// `entPhysicalTable`): chassis, module, power supply, fan, CPU, …
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Component {
+    /// `entPhysicalIndex`.
+    pub index: u64,
+    /// `entPhysicalDescr`.
+    pub description: Option<String>,
+    /// `entPhysicalName`.
+    pub name: Option<String>,
+    /// `entPhysicalClass` (3 = chassis, 9 = module, 12 = cpu, …).
+    pub class: Option<i64>,
+    /// `entPhysicalSerialNum`.
+    pub serial: Option<String>,
+    /// `entPhysicalModelName`.
+    pub model: Option<String>,
+    /// `entPhysicalMfgName`.
+    pub manufacturer: Option<String>,
+    /// `entPhysicalFirmwareRev`.
+    pub firmware: Option<String>,
+    /// `entPhysicalHardwareRev`.
+    pub hardware_rev: Option<String>,
+    /// `entPhysicalSoftwareRev`.
+    pub software_rev: Option<String>,
+}
+
+impl Component {
+    /// Creates an empty component with the given `entPhysicalIndex`.
+    #[must_use]
+    pub fn new(index: u64) -> Self {
+        Self {
+            index,
+            ..Self::default()
+        }
+    }
+
+    /// `entPhysicalClass` value for a chassis.
+    pub const CLASS_CHASSIS: i64 = 3;
 }
 
 /// A network interface (a row of `ifTable` / `ifXTable`).
@@ -79,4 +123,6 @@ pub struct NetworkDevice {
     pub info: DeviceInfo,
     /// Network interfaces, ordered by `ifIndex`.
     pub ports: Vec<Port>,
+    /// Physical components, ordered by `entPhysicalIndex`.
+    pub components: Vec<Component>,
 }

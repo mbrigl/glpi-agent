@@ -38,7 +38,10 @@ pub use credentials::{
     build_security, community, map_auth_protocol, map_priv_cipher, priv_key_extension,
     security_level, SecurityLevel,
 };
-pub use mib::{DeviceInfo, MibRegistry, MibSupport, NetworkDevice, Port};
+pub use mib::{
+    Component, DeviceInfo, EntityMib, IfMib, MibRegistry, MibSupport, NetworkDevice, Port,
+    SystemMib,
+};
 pub use query::{identify, SnmpQuery, SnmpSysInfo};
 pub use sysobject::{SysObjectEntry, SysObjectIds};
 pub use value::SnmpValue;

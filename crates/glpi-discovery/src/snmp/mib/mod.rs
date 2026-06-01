@@ -14,16 +14,21 @@
 
 use async_trait::async_trait;
 use glpi_core::error::Result;
+use glpi_core::types::network::MacAddress;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::snmp::query::SnmpQuery;
 use crate::snmp::sysobject::SysObjectIds;
+use crate::snmp::value::SnmpValue;
 
 pub mod device;
+pub mod entity_mib;
 pub mod if_mib;
 pub mod system_mib;
 
-pub use device::{DeviceInfo, NetworkDevice, Port};
+pub use device::{Component, DeviceInfo, NetworkDevice, Port};
+pub use entity_mib::EntityMib;
 pub use if_mib::IfMib;
 pub use system_mib::SystemMib;
 
@@ -63,6 +68,7 @@ impl MibRegistry {
         let mut registry = Self::new();
         registry.register(Arc::new(SystemMib));
         registry.register(Arc::new(IfMib));
+        registry.register(Arc::new(EntityMib));
         registry
     }
 
@@ -123,6 +129,65 @@ pub(crate) async fn get_string(session: &mut dyn SnmpQuery, oid: &[u64]) -> Resu
         .filter(|s| !s.is_empty()))
 }
 
+/// Walks a single-index table column and applies `set` to each row, creating
+/// rows on demand via `new_row` keyed by the trailing index arc. Shared by the
+/// table-oriented MIB modules (`if`, `entity`, …).
+pub(crate) async fn apply_column<T, F>(
+    session: &mut dyn SnmpQuery,
+    base: &[u64],
+    rows: &mut BTreeMap<u64, T>,
+    new_row: fn(u64) -> T,
+    set: F,
+) -> Result<()>
+where
+    F: Fn(&mut T, SnmpValue),
+{
+    for (oid, value) in session.walk(base).await? {
+        if let Some(index) = table_index(&oid, base) {
+            set(rows.entry(index).or_insert_with(|| new_row(index)), value);
+        }
+    }
+    Ok(())
+}
+
+/// Returns the single-arc table index of `oid` under `base` (one arc beyond it).
+pub(crate) fn table_index(oid: &[u64], base: &[u64]) -> Option<u64> {
+    if oid.len() == base.len() + 1 && oid.starts_with(base) {
+        Some(oid[base.len()])
+    } else {
+        None
+    }
+}
+
+/// Extracts a signed integer value.
+pub(crate) fn as_i64(value: &SnmpValue) -> Option<i64> {
+    match value {
+        SnmpValue::Integer(n) => Some(*n),
+        _ => None,
+    }
+}
+
+/// Extracts an unsigned value from any of the counter/gauge/integer types.
+pub(crate) fn as_u64(value: &SnmpValue) -> Option<u64> {
+    match value {
+        SnmpValue::Unsigned32(n) | SnmpValue::Counter32(n) | SnmpValue::Timeticks(n) => {
+            Some(u64::from(*n))
+        }
+        SnmpValue::Counter64(n) => Some(*n),
+        SnmpValue::Integer(n) if *n >= 0 => Some(*n as u64),
+        _ => None,
+    }
+}
+
+/// Extracts a six-octet MAC from an `OCTET STRING`, rejecting the all-zero one.
+pub(crate) fn as_mac(value: &SnmpValue) -> Option<MacAddress> {
+    let SnmpValue::OctetString(bytes) = value else {
+        return None;
+    };
+    let octets: [u8; 6] = bytes.as_slice().try_into().ok()?;
+    (octets != [0u8; 6]).then(|| MacAddress::new(octets))
+}
+
 #[cfg(test)]
 mod tests {
     use super::MibRegistry;
@@ -139,7 +204,7 @@ mod tests {
         let mut session = WalkSession::parse(CISCO_WALK).unwrap();
         let sysobjects = SysObjectIds::parse("9.1.3\tCisco\tNETWORKING\tCatalyst 2960\n");
         let registry = MibRegistry::with_standard();
-        assert_eq!(registry.len(), 2);
+        assert_eq!(registry.len(), 3);
 
         let device = registry.inventory(&mut session, &sysobjects).await.unwrap();
         assert_eq!(device.info.name.as_deref(), Some("sw-1"));
