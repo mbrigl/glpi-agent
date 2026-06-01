@@ -19,7 +19,14 @@ Do not write in any other language in any code or documentation. If you encounte
 
 ## Current state
 
-This repo (`glpi-agent`) is a **Rust rewrite of the Perl glpi-agent**. **Phases 1 (Foundation) and 2 (NetDiscovery core) are complete**, and **Phase 3 (NetInventory + MIB modules) is in progress** in `glpi-discovery`: the MIB framework, all 8 standard MIBs, the NetInventory task and the vendor-MIB selection mechanism are done, with the vendor-MIB set being filled in high-value batches (Cisco, Juniper, Fortinet so far). The base crates `glpi-core` and `glpi-transport` plus `glpi-discovery` are implemented and tested. The remaining task/daemon crates (`glpi-inventory-local`, `glpi-inventory-remote`, `glpi-vsphere`, `glpi-collect`, `glpi-deploy`, `glpi-wakeonlan`, `glpi-scheduler`, `glpi-http`, `glpi-plugins`, `glpi-cli`, `glpi-iec61850`) are still placeholder skeletons (a `crate_name()` smoke-test symbol + one test) awaiting their phases — note there is **no runnable CLI binary yet** (that is Phase 5).
+This repo (`glpi-agent`) is a **Rust rewrite of the Perl glpi-agent**. Status:
+
+- **Phase 1 (Foundation):** complete — `glpi-core`, `glpi-transport`.
+- **Phase 2 (NetDiscovery core):** complete — `glpi-discovery`.
+- **Phase 3 (NetInventory + MIBs):** core done — MIB framework, all 8 standard MIBs, NetInventory task and `sysObjectID`-gated vendor MIBs; the vendor-MIB set is being filled in high-value batches (Cisco, Juniper, Fortinet so far).
+- **Phase 5 (CLI + daemon + HTTP):** core done — the **`glpi-agent` binary is runnable** with `netdiscovery`, `netinventory`, `inject` and `daemon` subcommands; `glpi-scheduler` (backoff + run-schedule) and `glpi-http` (embedded control server: `/status`, `/now`, `httpd-trust`) back the daemon. **Deferred within Phase 5:** the ToolBox UI pages, the proxy/SSL plugins (`glpi-plugins`), and fork-based task isolation (the daemon runs tasks in-process on tokio instead).
+
+The remaining task crates (`glpi-inventory-local`, `glpi-inventory-remote`, `glpi-vsphere`, `glpi-collect`, `glpi-deploy`, `glpi-wakeonlan`, `glpi-plugins`, `glpi-iec61850`) are still placeholder skeletons (a `crate_name()` smoke-test symbol + one test) awaiting their phases. The default local-inventory job (`glpi-agent inventory`) is **Phase 6** and not yet built.
 
 - **`glpi-core`** — the foundation crate:
   - `error` — `AgentError` (thiserror) + `Result` alias,
