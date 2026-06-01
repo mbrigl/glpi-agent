@@ -17,7 +17,8 @@
 //! - [`categories::software`] — installed packages,
 //! - [`categories::network`] — network interfaces,
 //! - [`categories::hardware`] — BIOS / system / board identity,
-//! - [`categories::storage`] — disks and optical drives.
+//! - [`categories::storage`] — disks and optical drives,
+//! - [`categories::process`] — running processes.
 
 pub mod categories;
 pub mod content;
@@ -25,8 +26,8 @@ pub mod task;
 
 pub use categories::{
     parse_cpuinfo, parse_dmidecode_hardware, parse_dmidecode_memory, parse_interfaces, parse_lsblk,
-    parse_os_release, parse_packages, Bios, Cpu, Hardware, MemoryModule, NetworkInterface,
-    OperatingSystem, Software, Storage,
+    parse_os_release, parse_packages, parse_ps, Bios, Cpu, Hardware, MemoryModule,
+    NetworkInterface, OperatingSystem, Process, Software, Storage,
 };
 pub use content::Content;
 pub use task::LocalInventory;
