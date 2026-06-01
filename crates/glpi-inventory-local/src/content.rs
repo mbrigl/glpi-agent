@@ -10,7 +10,7 @@
 use serde::Serialize;
 
 use crate::categories::{
-    Battery, Bios, Controller, Cpu, EnvVar, Hardware, MemoryModule, NetworkInterface,
+    Battery, Bios, Controller, Cpu, EnvVar, Hardware, MemoryModule, Monitor, NetworkInterface,
     OperatingSystem, Printer, Process, Software, Sound, Storage, UsbDevice, User, Video,
 };
 
@@ -71,6 +71,9 @@ pub struct Content {
     /// Printers.
     #[serde(rename = "printers", skip_serializing_if = "Vec::is_empty")]
     pub printers: Vec<Printer>,
+    /// Monitors.
+    #[serde(rename = "monitors", skip_serializing_if = "Vec::is_empty")]
+    pub monitors: Vec<Monitor>,
 }
 
 #[cfg(test)]

@@ -23,13 +23,15 @@
 //! - [`battery`] — batteries (`/sys/class/power_supply`),
 //! - [`environment`] — process environment variables,
 //! - [`video`] / [`sound`] — display and audio controllers (`lspci`),
-//! - [`printer`] — CUPS printers (`lpstat -p`).
+//! - [`printer`] — CUPS printers (`lpstat -p`),
+//! - [`monitor`] — monitors via EDID (`/sys/class/drm`).
 
 pub mod battery;
 pub mod cpu;
 pub mod environment;
 pub mod hardware;
 pub mod memory;
+pub mod monitor;
 pub mod network;
 pub mod os;
 pub mod pci;
@@ -49,6 +51,7 @@ pub use cpu::{parse_cpuinfo, Cpu};
 pub use environment::{from_vars as env_from_vars, EnvVar};
 pub use hardware::{parse_dmidecode_hardware, Bios, Hardware};
 pub use memory::{parse_dmidecode_memory, MemoryModule};
+pub use monitor::{parse_edid, Monitor};
 pub use network::{parse_interfaces, NetworkInterface};
 pub use os::{parse_os_release, parse_timezone_name, OperatingSystem, Timezone};
 pub use pci::{parse_lspci, Controller};
