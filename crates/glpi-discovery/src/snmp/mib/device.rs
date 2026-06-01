@@ -12,9 +12,10 @@
 use std::net::IpAddr;
 
 use glpi_core::types::network::MacAddress;
+use serde::Serialize;
 
 /// Base identity and attributes of a discovered network device.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct DeviceInfo {
     /// `sysDescr` — free-form description (vendor/model/firmware text).
     pub description: Option<String>,
@@ -42,7 +43,7 @@ pub struct DeviceInfo {
 
 /// A physical component of a device (a row of `ENTITY-MIB`'s
 /// `entPhysicalTable`): chassis, module, power supply, fan, CPU, …
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Component {
     /// `entPhysicalIndex`.
     pub index: u64,
@@ -81,7 +82,7 @@ impl Component {
 }
 
 /// A network interface (a row of `ifTable` / `ifXTable`).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Port {
     /// `ifIndex` — the interface's table index.
     pub index: u64,
@@ -113,7 +114,7 @@ pub struct Port {
 }
 
 /// The discovery protocol a [`Neighbor`] was learned from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum NeighborProtocol {
     /// IEEE 802.1AB Link Layer Discovery Protocol.
     Lldp,
@@ -122,7 +123,7 @@ pub enum NeighborProtocol {
 }
 
 /// A neighboring device discovered on a port via LLDP or CDP.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Neighbor {
     /// Which protocol reported this neighbor.
     pub protocol: NeighborProtocol,
@@ -178,7 +179,7 @@ impl Port {
 }
 
 /// A printer consumable (a row of `Printer-MIB`'s `prtMarkerSuppliesTable`).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Supply {
     /// `prtMarkerSuppliesDescription`.
     pub description: Option<String>,
@@ -193,7 +194,7 @@ pub struct Supply {
 }
 
 /// Printer-specific inventory (RFC 3805 `Printer-MIB`).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Printer {
     /// Lifetime page count (`prtMarkerLifeCount`).
     pub total_pages: Option<i64>,
@@ -204,7 +205,7 @@ pub struct Printer {
 /// A full network-device inventory result.
 ///
 /// `Default` yields an empty device that MIB modules progressively fill in.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct NetworkDevice {
     /// Base device identity and attributes.
     pub info: DeviceInfo,
