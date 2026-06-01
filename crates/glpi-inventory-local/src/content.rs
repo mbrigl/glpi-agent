@@ -10,8 +10,8 @@
 use serde::Serialize;
 
 use crate::categories::{
-    Bios, Controller, Cpu, Hardware, MemoryModule, NetworkInterface, OperatingSystem, Process,
-    Software, Storage, UsbDevice, User,
+    Battery, Bios, Controller, Cpu, Hardware, MemoryModule, NetworkInterface, OperatingSystem,
+    Process, Software, Storage, UsbDevice, User,
 };
 
 /// The assembled local-inventory content.
@@ -56,6 +56,9 @@ pub struct Content {
     /// Logged-in users.
     #[serde(rename = "users", skip_serializing_if = "Vec::is_empty")]
     pub users: Vec<User>,
+    /// Batteries.
+    #[serde(rename = "batteries", skip_serializing_if = "Vec::is_empty")]
+    pub batteries: Vec<Battery>,
 }
 
 #[cfg(test)]

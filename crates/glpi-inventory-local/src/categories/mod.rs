@@ -19,8 +19,10 @@
 //! - [`process`] — running processes (`ps aux`),
 //! - [`pci`] — PCI controllers (`lspci -mm`),
 //! - [`usb`] — USB devices (`lsusb`),
-//! - [`user`] — logged-in users (`who`).
+//! - [`user`] — logged-in users (`who`),
+//! - [`battery`] — batteries (`/sys/class/power_supply`).
 
+pub mod battery;
 pub mod cpu;
 pub mod hardware;
 pub mod memory;
@@ -35,6 +37,7 @@ pub mod user;
 
 pub(crate) mod dmi;
 
+pub use battery::{parse_power_supply_uevent, Battery};
 pub use cpu::{parse_cpuinfo, Cpu};
 pub use hardware::{parse_dmidecode_hardware, Bios, Hardware};
 pub use memory::{parse_dmidecode_memory, MemoryModule};
