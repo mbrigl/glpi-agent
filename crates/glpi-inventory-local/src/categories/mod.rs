@@ -59,7 +59,7 @@ pub use printer::{parse_lpstat, Printer};
 pub use process::{parse_ps, Process};
 pub use software::{parse_packages, Software};
 pub use sound::{parse_lspci_sound, Sound};
-pub use storage::{parse_lsblk, Storage};
+pub use storage::{parse_lsblk, parse_smartctl_info, SmartInfo, Storage};
 pub use usb::{parse_lsusb, UsbDevice};
 pub use user::{parse_who, User};
 pub use video::{parse_lspci_video, Video};

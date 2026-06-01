@@ -30,6 +30,37 @@ pub struct Storage {
     /// Manufacturer / vendor.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub manufacturer: Option<String>,
+    /// Firmware revision (from `smartctl`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub firmware: Option<String>,
+}
+
+/// Identity fields read from `smartctl -i`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SmartInfo {
+    /// Model name (`Device Model` / `Model Number`).
+    pub model: Option<String>,
+    /// Serial number.
+    pub serial: Option<String>,
+    /// Firmware revision.
+    pub firmware: Option<String>,
+}
+
+/// Parses `smartctl -i` output for the drive's model / serial / firmware.
+#[must_use]
+pub fn parse_smartctl_info(text: &str) -> SmartInfo {
+    let get = |key: &str| {
+        text.lines()
+            .find_map(|line| line.split_once(':').filter(|(k, _)| k.trim() == key))
+            .map(|(_, v)| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+    };
+    SmartInfo {
+        // ATA drives report "Device Model"; NVMe reports "Model Number".
+        model: get("Device Model").or_else(|| get("Model Number")),
+        serial: get("Serial Number"),
+        firmware: get("Firmware Version"),
+    }
 }
 
 /// Parses `lsblk -P` (key="value" pairs) output into whole storage devices.
@@ -56,6 +87,7 @@ pub fn parse_lsblk(text: &str) -> Vec<Storage> {
                 model: non_empty(pairs_get(&pairs, "MODEL")),
                 serial: non_empty(pairs_get(&pairs, "SERIAL")),
                 manufacturer: non_empty(pairs_get(&pairs, "VENDOR")),
+                firmware: None,
             })
         })
         .collect()
@@ -65,15 +97,39 @@ pub fn parse_lsblk(text: &str) -> Vec<Storage> {
 #[cfg(target_os = "linux")]
 #[must_use]
 pub fn collect() -> Vec<Storage> {
-    match std::process::Command::new("lsblk")
+    let mut storages = match std::process::Command::new("lsblk")
         .args(["-dnPb", "-o", "NAME,TYPE,SIZE,MODEL,SERIAL,VENDOR"])
         .output()
     {
         Ok(output) if output.status.success() => {
             parse_lsblk(&String::from_utf8_lossy(&output.stdout))
         }
-        _ => Vec::new(),
+        _ => return Vec::new(),
+    };
+    // Enrich with smartctl (firmware, and serial/model when lsblk lacked them).
+    for storage in &mut storages {
+        if let Some(text) = run_smartctl(&storage.name) {
+            let info = parse_smartctl_info(&text);
+            storage.firmware = storage.firmware.take().or(info.firmware);
+            storage.serial = storage.serial.take().or(info.serial);
+            storage.model = storage.model.take().or(info.model);
+        }
     }
+    storages
+}
+
+/// Runs `smartctl -i /dev/<name>`, returning stdout on success.
+#[cfg(target_os = "linux")]
+fn run_smartctl(name: &str) -> Option<String> {
+    let output = std::process::Command::new("smartctl")
+        .arg("-i")
+        .arg(format!("/dev/{name}"))
+        .output()
+        .ok()?;
+    // smartctl uses bit-coded exit statuses; stdout is still valid when the
+    // low bits (command/usage errors) are clear, so just require some output.
+    let text = String::from_utf8_lossy(&output.stdout).into_owned();
+    (!text.trim().is_empty()).then_some(text)
 }
 
 /// Collects the live storage devices (non-Linux stub).
@@ -149,5 +205,29 @@ NAME="loop0" TYPE="loop" SIZE="65536" MODEL="" SERIAL="" VENDOR=""
     #[test]
     fn empty_input_yields_no_storage() {
         assert!(parse_lsblk("").is_empty());
+    }
+
+    #[test]
+    fn parses_smartctl_info_ata_and_nvme() {
+        use super::parse_smartctl_info;
+
+        let ata = "\
+smartctl 7.3 2022-02-28 r5338
+Device Model:     Samsung SSD 860 EVO 250GB
+Serial Number:    S3Z1NB0K123456
+Firmware Version: RVT01B6Q
+User Capacity:    250,059,350,016 bytes
+";
+        let info = parse_smartctl_info(ata);
+        assert_eq!(info.model.as_deref(), Some("Samsung SSD 860 EVO 250GB"));
+        assert_eq!(info.serial.as_deref(), Some("S3Z1NB0K123456"));
+        assert_eq!(info.firmware.as_deref(), Some("RVT01B6Q"));
+
+        // NVMe uses "Model Number" instead of "Device Model".
+        let nvme =
+            "Model Number:    WD Blue SN570\nSerial Number:    24xx\nFirmware Version: 1.0\n";
+        let info = parse_smartctl_info(nvme);
+        assert_eq!(info.model.as_deref(), Some("WD Blue SN570"));
+        assert_eq!(info.firmware.as_deref(), Some("1.0"));
     }
 }

@@ -36,9 +36,9 @@ pub use categories::{
     env_from_vars, parse_cpuinfo, parse_dmidecode_hardware, parse_dmidecode_memory, parse_edid,
     parse_interfaces, parse_lpstat, parse_lsblk, parse_lspci, parse_lspci_sound, parse_lspci_video,
     parse_lsusb, parse_os_release, parse_packages, parse_power_supply_uevent, parse_ps,
-    parse_timezone_name, parse_who, Battery, Bios, Controller, Cpu, EnvVar, Hardware, MemoryModule,
-    Monitor, NetworkInterface, OperatingSystem, Printer, Process, Software, Sound, Storage,
-    Timezone, UsbDevice, User, Video,
+    parse_smartctl_info, parse_timezone_name, parse_who, Battery, Bios, Controller, Cpu, EnvVar,
+    Hardware, MemoryModule, Monitor, NetworkInterface, OperatingSystem, Printer, Process,
+    SmartInfo, Software, Sound, Storage, Timezone, UsbDevice, User, Video,
 };
 pub use content::Content;
 pub use task::LocalInventory;
