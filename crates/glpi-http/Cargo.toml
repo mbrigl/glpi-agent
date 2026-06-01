@@ -11,3 +11,11 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+glpi-core = { path = "../glpi-core" }
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

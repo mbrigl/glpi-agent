@@ -1,22 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//! `glpi-http` — Embedded HTTP server and ToolBox.
+//! `glpi-http` — the embedded HTTP control server for the GLPI Agent Rust
+//! workspace (v2.0.0).
 //!
-//! Part of the GLPI Agent Rust workspace (v2.0.0).
-//! Placeholder crate; implementation lands in a later phase.
+//! Provides the agent's local control surface:
+//!
+//! - [`trust`] — [`TrustList`], the `httpd-trust` access control,
+//! - [`server`] — [`HttpServer`] serving `/status` and `/now` (axum), gated by
+//!   the trust list.
+//!
+//! The ToolBox UI pages and the proxy / SSL plugins (plan §2) are deferred to a
+//! later unit; this is the daemon's core control endpoint surface.
 
-/// Returns this crate's package name (placeholder smoke-test symbol).
-#[must_use]
-pub fn crate_name() -> &'static str {
-    env!("CARGO_PKG_NAME")
-}
+pub mod server;
+pub mod trust;
 
-#[cfg(test)]
-mod tests {
-    use super::crate_name;
-
-    #[test]
-    fn crate_name_matches_package() {
-        assert_eq!(crate_name(), env!("CARGO_PKG_NAME"));
-    }
-}
+pub use server::{HttpServer, NowRequest, DEFAULT_HTTP_PORT};
+pub use trust::TrustList;
