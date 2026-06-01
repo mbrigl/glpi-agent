@@ -17,7 +17,8 @@
 //! - [`hardware`] — BIOS / system / board identity (`dmidecode`),
 //! - [`storage`] — disks and optical drives (`lsblk`),
 //! - [`process`] — running processes (`ps aux`),
-//! - [`pci`] — PCI controllers (`lspci -mm`).
+//! - [`pci`] — PCI controllers (`lspci -mm`),
+//! - [`usb`] — USB devices (`lsusb`).
 
 pub mod cpu;
 pub mod hardware;
@@ -28,6 +29,7 @@ pub mod pci;
 pub mod process;
 pub mod software;
 pub mod storage;
+pub mod usb;
 
 pub(crate) mod dmi;
 
@@ -40,3 +42,4 @@ pub use pci::{parse_lspci, Controller};
 pub use process::{parse_ps, Process};
 pub use software::{parse_packages, Software};
 pub use storage::{parse_lsblk, Storage};
+pub use usb::{parse_lsusb, UsbDevice};

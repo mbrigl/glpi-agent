@@ -19,7 +19,8 @@
 //! - [`categories::hardware`] — BIOS / system / board identity,
 //! - [`categories::storage`] — disks and optical drives,
 //! - [`categories::process`] — running processes,
-//! - [`categories::pci`] — PCI controllers.
+//! - [`categories::pci`] — PCI controllers,
+//! - [`categories::usb`] — USB devices.
 
 pub mod categories;
 pub mod content;
@@ -27,9 +28,9 @@ pub mod task;
 
 pub use categories::{
     parse_cpuinfo, parse_dmidecode_hardware, parse_dmidecode_memory, parse_interfaces, parse_lsblk,
-    parse_lspci, parse_os_release, parse_packages, parse_ps, parse_timezone_name, Bios, Controller,
-    Cpu, Hardware, MemoryModule, NetworkInterface, OperatingSystem, Process, Software, Storage,
-    Timezone,
+    parse_lspci, parse_lsusb, parse_os_release, parse_packages, parse_ps, parse_timezone_name,
+    Bios, Controller, Cpu, Hardware, MemoryModule, NetworkInterface, OperatingSystem, Process,
+    Software, Storage, Timezone, UsbDevice,
 };
 pub use content::Content;
 pub use task::LocalInventory;

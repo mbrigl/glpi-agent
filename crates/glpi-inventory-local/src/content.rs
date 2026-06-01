@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use crate::categories::{
     Bios, Controller, Cpu, Hardware, MemoryModule, NetworkInterface, OperatingSystem, Process,
-    Software, Storage,
+    Software, Storage, UsbDevice,
 };
 
 /// The assembled local-inventory content.
@@ -50,6 +50,9 @@ pub struct Content {
     /// PCI controllers.
     #[serde(rename = "controllers", skip_serializing_if = "Vec::is_empty")]
     pub controllers: Vec<Controller>,
+    /// USB devices.
+    #[serde(rename = "usbdevices", skip_serializing_if = "Vec::is_empty")]
+    pub usb_devices: Vec<UsbDevice>,
 }
 
 #[cfg(test)]
