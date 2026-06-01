@@ -26,13 +26,17 @@ pub mod bridge_mib;
 pub mod device;
 pub mod entity_mib;
 pub mod if_mib;
+pub mod lldp_mib;
 pub mod printer_mib;
 pub mod system_mib;
 
 pub use bridge_mib::BridgeMib;
-pub use device::{Component, DeviceInfo, NetworkDevice, Port, Printer, Supply};
+pub use device::{
+    Component, DeviceInfo, Neighbor, NeighborProtocol, NetworkDevice, Port, Printer, Supply,
+};
 pub use entity_mib::EntityMib;
 pub use if_mib::IfMib;
+pub use lldp_mib::LldpMib;
 pub use printer_mib::PrinterMib;
 pub use system_mib::SystemMib;
 
@@ -75,6 +79,7 @@ impl MibRegistry {
         registry.register(Arc::new(EntityMib));
         registry.register(Arc::new(PrinterMib));
         registry.register(Arc::new(BridgeMib));
+        registry.register(Arc::new(LldpMib));
         registry
     }
 
@@ -171,8 +176,7 @@ where
     F: Fn(&mut T, SnmpValue),
 {
     for (oid, value) in session.walk(base).await? {
-        if oid.len() > base.len() && oid.starts_with(base) {
-            let suffix = oid[base.len()..].to_vec();
+        if let Some(suffix) = instance_suffix(&oid, base) {
             set(
                 rows.entry(suffix.clone())
                     .or_insert_with(|| new_row(&suffix)),
@@ -181,6 +185,24 @@ where
         }
     }
     Ok(())
+}
+
+/// Returns the instance suffix of `oid` under `base` (the arcs beyond `base`),
+/// or `None` if `oid` is not a strict descendant.
+pub(crate) fn instance_suffix(oid: &[u64], base: &[u64]) -> Option<Vec<u64>> {
+    (oid.len() > base.len() && oid.starts_with(base)).then(|| oid[base.len()..].to_vec())
+}
+
+/// Finds the port with `index`, creating and appending one if absent. The
+/// returned reference is to the (possibly new) port; callers that add ports
+/// should re-sort `device.ports` afterwards.
+pub(crate) fn port_mut(device: &mut NetworkDevice, index: u64) -> &mut Port {
+    if let Some(pos) = device.ports.iter().position(|p| p.index == index) {
+        &mut device.ports[pos]
+    } else {
+        device.ports.push(Port::new(index));
+        device.ports.last_mut().expect("just pushed")
+    }
 }
 
 /// Returns the single-arc table index of `oid` under `base` (one arc beyond it).
@@ -242,7 +264,7 @@ mod tests {
         let mut session = WalkSession::parse(CISCO_WALK).unwrap();
         let sysobjects = SysObjectIds::parse("9.1.3\tCisco\tNETWORKING\tCatalyst 2960\n");
         let registry = MibRegistry::with_standard();
-        assert_eq!(registry.len(), 5);
+        assert_eq!(registry.len(), 6);
 
         let device = registry.inventory(&mut session, &sysobjects).await.unwrap();
         assert_eq!(device.info.name.as_deref(), Some("sw-1"));

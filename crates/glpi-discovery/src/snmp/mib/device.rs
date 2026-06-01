@@ -104,6 +104,62 @@ pub struct Port {
     /// MAC addresses learned on this port via the bridge forwarding database
     /// (`BRIDGE-MIB`), used to derive connections. Sorted and de-duplicated.
     pub connected_macs: Vec<MacAddress>,
+    /// Neighbors discovered on this port via LLDP / CDP.
+    pub neighbors: Vec<Neighbor>,
+}
+
+/// The discovery protocol a [`Neighbor`] was learned from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NeighborProtocol {
+    /// IEEE 802.1AB Link Layer Discovery Protocol.
+    Lldp,
+    /// Cisco Discovery Protocol.
+    Cdp,
+}
+
+/// A neighboring device discovered on a port via LLDP or CDP.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Neighbor {
+    /// Which protocol reported this neighbor.
+    pub protocol: NeighborProtocol,
+    /// Remote chassis identifier (often a MAC address in text form).
+    pub chassis_id: Option<String>,
+    /// Remote chassis MAC, when the chassis id is a MAC address.
+    pub mac: Option<MacAddress>,
+    /// Remote system name.
+    pub sys_name: Option<String>,
+    /// Remote system description.
+    pub sys_descr: Option<String>,
+    /// Remote port identifier.
+    pub port_id: Option<String>,
+    /// Remote port description.
+    pub port_descr: Option<String>,
+}
+
+impl Neighbor {
+    /// Creates an empty neighbor for `protocol`.
+    #[must_use]
+    pub fn new(protocol: NeighborProtocol) -> Self {
+        Self {
+            protocol,
+            chassis_id: None,
+            mac: None,
+            sys_name: None,
+            sys_descr: None,
+            port_id: None,
+            port_descr: None,
+        }
+    }
+
+    /// `true` if no remote attribute was populated.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.chassis_id.is_none()
+            && self.sys_name.is_none()
+            && self.sys_descr.is_none()
+            && self.port_id.is_none()
+            && self.port_descr.is_none()
+    }
 }
 
 impl Port {
