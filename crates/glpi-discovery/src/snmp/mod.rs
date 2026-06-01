@@ -39,9 +39,9 @@ pub use credentials::{
     security_level, SecurityLevel,
 };
 pub use mib::{
-    sysobjectid_matches, BridgeMib, CdpMib, CiscoMib, Component, DeviceInfo, EntityMib, IfMib,
-    IpMib, LldpMib, MibRegistry, MibSupport, Neighbor, NeighborProtocol, NetworkDevice, Port,
-    Printer, PrinterMib, Supply, SystemMib,
+    sysobjectid_matches, BridgeMib, CdpMib, Component, DeviceInfo, EntityMib, IfMib, IpMib,
+    LldpMib, MibRegistry, MibSupport, Neighbor, NeighborProtocol, NetworkDevice, Port, Printer,
+    PrinterMib, Supply, SystemMib,
 };
 pub use query::{identify, SnmpQuery, SnmpSysInfo};
 pub use sysobject::{SysObjectEntry, SysObjectIds};

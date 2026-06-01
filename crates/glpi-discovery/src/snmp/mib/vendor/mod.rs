@@ -15,10 +15,16 @@ use std::sync::Arc;
 use super::MibRegistry;
 
 pub mod cisco;
+pub mod fortinet;
+pub mod juniper;
 
 pub use cisco::CiscoMib;
+pub use fortinet::FortinetMib;
+pub use juniper::JuniperMib;
 
 /// Registers all implemented vendor MIB modules into `registry`.
 pub fn register_all(registry: &mut MibRegistry) {
     registry.register(Arc::new(CiscoMib));
+    registry.register(Arc::new(JuniperMib));
+    registry.register(Arc::new(FortinetMib));
 }

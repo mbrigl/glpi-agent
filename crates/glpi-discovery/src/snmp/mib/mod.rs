@@ -44,7 +44,7 @@ pub use ip_mib::IpMib;
 pub use lldp_mib::LldpMib;
 pub use printer_mib::PrinterMib;
 pub use system_mib::SystemMib;
-pub use vendor::CiscoMib;
+pub use vendor::{CiscoMib, FortinetMib, JuniperMib};
 
 /// One MIB-support module: reads a slice of a device into [`NetworkDevice`].
 #[async_trait]
