@@ -32,6 +32,22 @@ pub struct Cpu {
     pub threads: Option<u32>,
 }
 
+/// Collects the live physical CPUs from `/proc/cpuinfo` (Linux).
+#[cfg(target_os = "linux")]
+#[must_use]
+pub fn collect() -> Vec<Cpu> {
+    std::fs::read_to_string("/proc/cpuinfo")
+        .map(|text| parse_cpuinfo(&text))
+        .unwrap_or_default()
+}
+
+/// Collects the live physical CPUs (non-Linux stub).
+#[cfg(not(target_os = "linux"))]
+#[must_use]
+pub fn collect() -> Vec<Cpu> {
+    Vec::new()
+}
+
 /// Parses `/proc/cpuinfo` into the physical CPUs, ordered by `physical id`.
 #[must_use]
 pub fn parse_cpuinfo(text: &str) -> Vec<Cpu> {

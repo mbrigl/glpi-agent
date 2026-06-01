@@ -33,6 +33,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Inventory the local machine and print it as JSON.
+    Inventory,
     /// Scan IPv4 ranges for live and SNMP-capable devices (NetDiscovery).
     Netdiscovery(NetDiscoveryArgs),
     /// Inventory a single device over SNMP (NetInventory).
@@ -165,11 +167,19 @@ async fn main() -> Result<()> {
         .init();
 
     match Cli::parse().command {
+        Command::Inventory => run_inventory().await,
         Command::Netdiscovery(args) => run_netdiscovery(args).await,
         Command::Netinventory(args) => run_netinventory(args).await,
         Command::Inject(args) => run_inject(args).await,
         Command::Daemon(args) => run_daemon(args).await,
     }
+}
+
+/// Inventories the local machine and prints the content as JSON.
+async fn run_inventory() -> Result<()> {
+    let content = glpi_inventory_local::LocalInventory::new().collect();
+    println!("{}", serde_json::to_string_pretty(&content)?);
+    Ok(())
 }
 
 /// Parses IPv4 range specs into [`Ipv4Range`]s.
@@ -355,6 +365,12 @@ mod tests {
     fn cli_definition_is_valid() {
         use clap::CommandFactory;
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn parses_inventory_subcommand() {
+        let cli = Cli::try_parse_from(["glpi-agent", "inventory"]).unwrap();
+        assert!(matches!(cli.command, Command::Inventory));
     }
 
     #[test]

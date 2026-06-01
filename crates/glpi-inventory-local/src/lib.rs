@@ -16,6 +16,8 @@
 
 pub mod categories;
 pub mod content;
+pub mod task;
 
 pub use categories::{parse_cpuinfo, parse_os_release, Cpu, OperatingSystem};
 pub use content::Content;
+pub use task::LocalInventory;

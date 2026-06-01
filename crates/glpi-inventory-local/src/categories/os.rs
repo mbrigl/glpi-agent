@@ -39,6 +39,38 @@ pub struct OperatingSystem {
     pub fqdn: Option<String>,
 }
 
+/// Collects the live operating-system identity (Linux).
+///
+/// Combines `/etc/os-release` with the running kernel (`/proc/sys/kernel`) and
+/// the build architecture.
+#[cfg(target_os = "linux")]
+#[must_use]
+pub fn collect() -> OperatingSystem {
+    let mut os = std::fs::read_to_string("/etc/os-release")
+        .map(|text| parse_os_release(&text))
+        .unwrap_or_default();
+    os.kernel_name = read_trimmed("/proc/sys/kernel/ostype");
+    os.kernel_version = read_trimmed("/proc/sys/kernel/osrelease");
+    os.arch = Some(std::env::consts::ARCH.to_owned());
+    os
+}
+
+/// Collects the live operating-system identity (non-Linux stub).
+#[cfg(not(target_os = "linux"))]
+#[must_use]
+pub fn collect() -> OperatingSystem {
+    OperatingSystem::default()
+}
+
+/// Reads a file and returns its trimmed contents, if any.
+#[cfg(target_os = "linux")]
+fn read_trimmed(path: &str) -> Option<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+}
+
 /// Parses `/etc/os-release` into the OS identity fields it provides.
 ///
 /// Kernel and architecture are not in `os-release`; the live collector fills
