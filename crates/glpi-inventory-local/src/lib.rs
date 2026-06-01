@@ -18,7 +18,8 @@
 //! - [`categories::network`] — network interfaces,
 //! - [`categories::hardware`] — BIOS / system / board identity,
 //! - [`categories::storage`] — disks and optical drives,
-//! - [`categories::process`] — running processes.
+//! - [`categories::process`] — running processes,
+//! - [`categories::pci`] — PCI controllers.
 
 pub mod categories;
 pub mod content;
@@ -26,8 +27,9 @@ pub mod task;
 
 pub use categories::{
     parse_cpuinfo, parse_dmidecode_hardware, parse_dmidecode_memory, parse_interfaces, parse_lsblk,
-    parse_os_release, parse_packages, parse_ps, parse_timezone_name, Bios, Cpu, Hardware,
-    MemoryModule, NetworkInterface, OperatingSystem, Process, Software, Storage, Timezone,
+    parse_lspci, parse_os_release, parse_packages, parse_ps, parse_timezone_name, Bios, Controller,
+    Cpu, Hardware, MemoryModule, NetworkInterface, OperatingSystem, Process, Software, Storage,
+    Timezone,
 };
 pub use content::Content;
 pub use task::LocalInventory;

@@ -10,8 +10,8 @@
 use serde::Serialize;
 
 use crate::categories::{
-    Bios, Cpu, Hardware, MemoryModule, NetworkInterface, OperatingSystem, Process, Software,
-    Storage,
+    Bios, Controller, Cpu, Hardware, MemoryModule, NetworkInterface, OperatingSystem, Process,
+    Software, Storage,
 };
 
 /// The assembled local-inventory content.
@@ -47,6 +47,9 @@ pub struct Content {
     /// Running processes.
     #[serde(rename = "processes", skip_serializing_if = "Vec::is_empty")]
     pub processes: Vec<Process>,
+    /// PCI controllers.
+    #[serde(rename = "controllers", skip_serializing_if = "Vec::is_empty")]
+    pub controllers: Vec<Controller>,
 }
 
 #[cfg(test)]

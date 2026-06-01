@@ -16,13 +16,15 @@
 //! - [`network`] — network interfaces (`ip -o link` / `ip -o addr`),
 //! - [`hardware`] — BIOS / system / board identity (`dmidecode`),
 //! - [`storage`] — disks and optical drives (`lsblk`),
-//! - [`process`] — running processes (`ps aux`).
+//! - [`process`] — running processes (`ps aux`),
+//! - [`pci`] — PCI controllers (`lspci -mm`).
 
 pub mod cpu;
 pub mod hardware;
 pub mod memory;
 pub mod network;
 pub mod os;
+pub mod pci;
 pub mod process;
 pub mod software;
 pub mod storage;
@@ -34,6 +36,7 @@ pub use hardware::{parse_dmidecode_hardware, Bios, Hardware};
 pub use memory::{parse_dmidecode_memory, MemoryModule};
 pub use network::{parse_interfaces, NetworkInterface};
 pub use os::{parse_os_release, parse_timezone_name, OperatingSystem, Timezone};
+pub use pci::{parse_lspci, Controller};
 pub use process::{parse_ps, Process};
 pub use software::{parse_packages, Software};
 pub use storage::{parse_lsblk, Storage};
