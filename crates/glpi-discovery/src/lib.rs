@@ -13,9 +13,9 @@
 //!   the scanner,
 //! - [`traits`] — the [`DiscoveryMethod`] abstraction and its result types,
 //! - [`scanner`] — the bounded-concurrency parallel [`Scanner`],
-//! - [`methods`] — concrete discovery methods (ARP, ping and NetBIOS),
+//! - [`methods`] — concrete discovery methods (ARP, ping, NetBIOS, SNMP),
 //! - [`snmp`] — SNMP support over `snmp2` (value types, credential mapping,
-//!   async client).
+//!   async client, query trait).
 //!
 //! [`DiscoveryMethod`]: traits::DiscoveryMethod
 //! [`Scanner`]: scanner::Scanner
@@ -30,6 +30,7 @@ pub use ip_range::{Ipv4Range, Ipv4RangeIter};
 pub use methods::arp::{ArpMethod, ArpTable};
 pub use methods::netbios::{NetBiosMethod, NetBiosName};
 pub use methods::ping::{EchoRequest, PingMethod};
+pub use methods::snmp::SnmpMethod;
 pub use scanner::{ProgressCallback, ScanProgress, Scanner};
-pub use snmp::{SecurityLevel, SnmpClient, SnmpValue, SNMP_PORT};
+pub use snmp::{identify, SecurityLevel, SnmpClient, SnmpQuery, SnmpSysInfo, SnmpValue, SNMP_PORT};
 pub use traits::{DiscoveredHost, DiscoveryMethod, Probe};

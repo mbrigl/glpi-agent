@@ -11,16 +11,17 @@
 //! - [`credentials`] — mapping [`SnmpCredentials`] onto `snmp2`'s community
 //!   string and v3 [`Security`],
 //! - [`client`] — [`SnmpClient`], the async get/getnext/walk wrapper with
-//!   timeout and retry handling.
-//!
-//! The SNMP [`DiscoveryMethod`] follows in the next unit.
+//!   timeout and retry handling,
+//! - [`query`] — the [`SnmpQuery`] trait and host [`identify`]ication.
 //!
 //! [`SnmpCredentials`]: glpi_core::types::snmp::SnmpCredentials
 //! [`Security`]: snmp2::v3::Security
-//! [`DiscoveryMethod`]: crate::traits::DiscoveryMethod
+//! [`SnmpQuery`]: query::SnmpQuery
+//! [`identify`]: query::identify
 
 pub mod client;
 pub mod credentials;
+pub mod query;
 pub mod value;
 
 pub use client::{SnmpClient, SNMP_PORT};
@@ -28,4 +29,5 @@ pub use credentials::{
     build_security, community, map_auth_protocol, map_priv_cipher, priv_key_extension,
     security_level, SecurityLevel,
 };
+pub use query::{identify, SnmpQuery, SnmpSysInfo};
 pub use value::SnmpValue;
