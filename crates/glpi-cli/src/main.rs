@@ -19,6 +19,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use clap::{Args, Parser, Subcommand};
 use glpi_core::config::{Loader, Options};
+use glpi_core::protocol::glpi::InventoryRequest;
 use glpi_core::types::snmp::SnmpCredentials;
 use glpi_discovery::{Ipv4Range, NetDiscoveryTask, NetInventoryTask};
 use glpi_http::{HttpServer, TrustList, DEFAULT_HTTP_PORT};
@@ -62,6 +63,46 @@ struct InventoryArgs {
     /// `no-category`). Names: cpu, memory, storage, network, software, …
     #[arg(long = "no-category", value_name = "CATEGORY")]
     no_category: Vec<String>,
+
+    /// GLPI server URL to submit to (repeatable). If omitted, the configured
+    /// `server` list is used; with neither, the inventory is printed as JSON.
+    #[arg(short = 's', long = "server", value_name = "URL")]
+    servers: Vec<String>,
+
+    /// GLPI `itemtype` for the submission (GLPI 11+ genericity).
+    #[arg(long, default_value = "Computer")]
+    itemtype: String,
+
+    /// Override the agent device id (defaults to the hostname).
+    #[arg(long, value_name = "ID")]
+    deviceid: Option<String>,
+
+    #[command(flatten)]
+    http: HttpClientArgs,
+}
+
+/// Shared GLPI client options (auth + TLS) for commands that talk to a server.
+#[derive(Args)]
+struct HttpClientArgs {
+    /// HTTP Basic auth username.
+    #[arg(short = 'u', long)]
+    user: Option<String>,
+
+    /// HTTP Basic auth password.
+    #[arg(short = 'p', long)]
+    password: Option<String>,
+
+    /// OAuth2 bearer token.
+    #[arg(long, value_name = "TOKEN")]
+    oauth_token: Option<String>,
+
+    /// CA certificate file (PEM) for server verification.
+    #[arg(long, value_name = "PATH")]
+    ca_cert_file: Option<PathBuf>,
+
+    /// Disable TLS certificate verification (insecure).
+    #[arg(long)]
+    no_ssl_check: bool,
 }
 
 #[derive(Args)]
@@ -116,25 +157,8 @@ struct InjectArgs {
     #[arg(short = 's', long, value_name = "URL")]
     server: String,
 
-    /// HTTP Basic auth username.
-    #[arg(short = 'u', long)]
-    user: Option<String>,
-
-    /// HTTP Basic auth password.
-    #[arg(short = 'p', long)]
-    password: Option<String>,
-
-    /// OAuth2 bearer token.
-    #[arg(long, value_name = "TOKEN")]
-    oauth_token: Option<String>,
-
-    /// CA certificate file (PEM) for server verification.
-    #[arg(long, value_name = "PATH")]
-    ca_cert_file: Option<PathBuf>,
-
-    /// Disable TLS certificate verification (insecure).
-    #[arg(long)]
-    no_ssl_check: bool,
+    #[command(flatten)]
+    http: HttpClientArgs,
 }
 
 #[derive(Args)]
@@ -220,8 +244,53 @@ async fn run_inventory(args: InventoryArgs, options: &Options) -> Result<()> {
     let content = glpi_inventory_local::LocalInventory::new()
         .with_disabled_categories(disabled)
         .collect();
-    println!("{}", serde_json::to_string_pretty(&content)?);
+
+    // Servers from --server, else the configured `server` list.
+    let servers = if args.servers.is_empty() {
+        options.server.clone()
+    } else {
+        args.servers.clone()
+    };
+
+    if servers.is_empty() {
+        // No server configured: print the inventory as JSON.
+        println!("{}", serde_json::to_string_pretty(&content)?);
+        return Ok(());
+    }
+
+    let deviceid = args
+        .deviceid
+        .clone()
+        .or_else(|| content.hardware.as_ref().and_then(|h| h.name.clone()))
+        .unwrap_or_else(|| "glpi-agent".to_owned());
+    let request = InventoryRequest::new(deviceid, &content).with_itemtype(&args.itemtype);
+    let no_ssl_check = args.http.no_ssl_check || options.no_ssl_check;
+
+    for server in &servers {
+        let client = build_client(server, &args.http, no_ssl_check)?;
+        client
+            .submit_inventory(&request)
+            .await
+            .with_context(|| format!("submitting inventory to {server}"))?;
+        tracing::info!(server, itemtype = %request.itemtype, "inventory submitted");
+    }
     Ok(())
+}
+
+/// Builds a [`GlpiClient`] for `server` from the shared auth/TLS options.
+fn build_client(server: &str, http: &HttpClientArgs, no_ssl_check: bool) -> Result<GlpiClient> {
+    let mut builder =
+        GlpiClient::builder(server).with_context(|| format!("invalid server URL {server:?}"))?;
+    if let (Some(user), Some(password)) = (&http.user, &http.password) {
+        builder = builder.basic_auth(user.clone(), password.clone());
+    }
+    if let Some(token) = &http.oauth_token {
+        builder = builder.oauth_token(token.clone());
+    }
+    if let Some(ca) = &http.ca_cert_file {
+        builder = builder.ca_cert_file(ca.clone());
+    }
+    Ok(builder.no_ssl_check(no_ssl_check).build()?)
 }
 
 /// Parses IPv4 range specs into [`Ipv4Range`]s.
@@ -335,19 +404,7 @@ fn pseudo_random_fraction() -> f64 {
 
 /// Sends the given inventory files to a GLPI server.
 async fn run_inject(args: InjectArgs) -> Result<()> {
-    let mut builder = GlpiClient::builder(&args.server)
-        .with_context(|| format!("invalid server URL {:?}", args.server))?;
-    if let (Some(user), Some(password)) = (&args.user, &args.password) {
-        builder = builder.basic_auth(user.clone(), password.clone());
-    }
-    if let Some(token) = &args.oauth_token {
-        builder = builder.oauth_token(token.clone());
-    }
-    if let Some(ca) = &args.ca_cert_file {
-        builder = builder.ca_cert_file(ca.clone());
-    }
-    let client = builder.no_ssl_check(args.no_ssl_check).build()?;
-
+    let client = build_client(&args.server, &args.http, args.http.no_ssl_check)?;
     let injector = Injector::new(client);
     for file in &args.files {
         injector
@@ -540,8 +597,31 @@ mod tests {
         };
         assert_eq!(args.files.len(), 2);
         assert_eq!(args.server, "https://glpi.example/front/inventory.php");
-        assert_eq!(args.user.as_deref(), Some("agent"));
-        assert!(args.no_ssl_check);
+        assert_eq!(args.http.user.as_deref(), Some("agent"));
+        assert!(args.http.no_ssl_check);
+    }
+
+    #[test]
+    fn parses_inventory_server_submission_options() {
+        let cli = Cli::try_parse_from([
+            "glpi-agent",
+            "inventory",
+            "--server",
+            "http://glpi/front/inventory.php",
+            "--itemtype",
+            "Computer",
+            "--deviceid",
+            "host-1",
+            "--no-ssl-check",
+        ])
+        .unwrap();
+        let Command::Inventory(args) = cli.command else {
+            panic!("expected inventory");
+        };
+        assert_eq!(args.servers, vec!["http://glpi/front/inventory.php"]);
+        assert_eq!(args.itemtype, "Computer");
+        assert_eq!(args.deviceid.as_deref(), Some("host-1"));
+        assert!(args.http.no_ssl_check);
     }
 
     #[test]
