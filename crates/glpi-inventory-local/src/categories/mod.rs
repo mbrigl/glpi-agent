@@ -22,7 +22,8 @@
 //! - [`user`] — logged-in users (`who`),
 //! - [`battery`] — batteries (`/sys/class/power_supply`),
 //! - [`environment`] — process environment variables,
-//! - [`video`] / [`sound`] — display and audio controllers (`lspci`).
+//! - [`video`] / [`sound`] — display and audio controllers (`lspci`),
+//! - [`printer`] — CUPS printers (`lpstat -p`).
 
 pub mod battery;
 pub mod cpu;
@@ -32,6 +33,7 @@ pub mod memory;
 pub mod network;
 pub mod os;
 pub mod pci;
+pub mod printer;
 pub mod process;
 pub mod software;
 pub mod sound;
@@ -50,6 +52,7 @@ pub use memory::{parse_dmidecode_memory, MemoryModule};
 pub use network::{parse_interfaces, NetworkInterface};
 pub use os::{parse_os_release, parse_timezone_name, OperatingSystem, Timezone};
 pub use pci::{parse_lspci, Controller};
+pub use printer::{parse_lpstat, Printer};
 pub use process::{parse_ps, Process};
 pub use software::{parse_packages, Software};
 pub use sound::{parse_lspci_sound, Sound};
