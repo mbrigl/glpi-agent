@@ -27,6 +27,7 @@ pub mod cdp_mib;
 pub mod device;
 pub mod entity_mib;
 pub mod if_mib;
+pub mod ip_mib;
 pub mod lldp_mib;
 pub mod printer_mib;
 pub mod system_mib;
@@ -38,6 +39,7 @@ pub use device::{
 };
 pub use entity_mib::EntityMib;
 pub use if_mib::IfMib;
+pub use ip_mib::IpMib;
 pub use lldp_mib::LldpMib;
 pub use printer_mib::PrinterMib;
 pub use system_mib::SystemMib;
@@ -83,6 +85,7 @@ impl MibRegistry {
         registry.register(Arc::new(BridgeMib));
         registry.register(Arc::new(LldpMib));
         registry.register(Arc::new(CdpMib));
+        registry.register(Arc::new(IpMib));
         registry
     }
 
@@ -267,7 +270,7 @@ mod tests {
         let mut session = WalkSession::parse(CISCO_WALK).unwrap();
         let sysobjects = SysObjectIds::parse("9.1.3\tCisco\tNETWORKING\tCatalyst 2960\n");
         let registry = MibRegistry::with_standard();
-        assert_eq!(registry.len(), 7);
+        assert_eq!(registry.len(), 8);
 
         let device = registry.inventory(&mut session, &sysobjects).await.unwrap();
         assert_eq!(device.info.name.as_deref(), Some("sw-1"));

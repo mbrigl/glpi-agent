@@ -9,6 +9,8 @@
 //!
 //! [`MibSupport`]: super::MibSupport
 
+use std::net::IpAddr;
+
 use glpi_core::types::network::MacAddress;
 
 /// Base identity and attributes of a discovered network device.
@@ -101,6 +103,8 @@ pub struct Port {
     pub admin_status: Option<i64>,
     /// `ifOperStatus` (1 = up, 2 = down, …).
     pub oper_status: Option<i64>,
+    /// IP addresses assigned to this interface (`IP-MIB`). Sorted, de-duplicated.
+    pub ips: Vec<IpAddr>,
     /// MAC addresses learned on this port via the bridge forwarding database
     /// (`BRIDGE-MIB`), used to derive connections. Sorted and de-duplicated.
     pub connected_macs: Vec<MacAddress>,
