@@ -13,9 +13,12 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use std::path::Path;
+
 use anyhow::{Context, Result};
 use chrono::Utc;
 use clap::{Args, Parser, Subcommand};
+use glpi_core::config::{Loader, Options};
 use glpi_core::types::snmp::SnmpCredentials;
 use glpi_discovery::{Ipv4Range, NetDiscoveryTask, NetInventoryTask};
 use glpi_http::{HttpServer, TrustList, DEFAULT_HTTP_PORT};
@@ -27,6 +30,14 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser)]
 #[command(name = "glpi-agent", version, about = "GLPI Agent (Rust rewrite)")]
 struct Cli {
+    /// Agent configuration file (`agent.cfg`).
+    #[arg(long, global = true, value_name = "PATH")]
+    conf_file: Option<PathBuf>,
+
+    /// Directory of `*.cfg` configuration drop-ins (`conf.d`).
+    #[arg(long, global = true, value_name = "PATH")]
+    conf_dir: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -34,7 +45,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Inventory the local machine and print it as JSON.
-    Inventory,
+    Inventory(InventoryArgs),
     /// Scan IPv4 ranges for live and SNMP-capable devices (NetDiscovery).
     Netdiscovery(NetDiscoveryArgs),
     /// Inventory a single device over SNMP (NetInventory).
@@ -43,6 +54,14 @@ enum Command {
     Inject(InjectArgs),
     /// Run continuously: periodic NetDiscovery plus an HTTP control server.
     Daemon(DaemonArgs),
+}
+
+#[derive(Args)]
+struct InventoryArgs {
+    /// Exclude an inventory category (repeatable; overrides/extends config's
+    /// `no-category`). Names: cpu, memory, storage, network, software, …
+    #[arg(long = "no-category", value_name = "CATEGORY")]
+    no_category: Vec<String>,
 }
 
 #[derive(Args)]
@@ -166,8 +185,10 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    match Cli::parse().command {
-        Command::Inventory => run_inventory().await,
+    let cli = Cli::parse();
+    let options = load_options(cli.conf_file.as_deref(), cli.conf_dir.as_deref())?;
+    match cli.command {
+        Command::Inventory(args) => run_inventory(args, &options).await,
         Command::Netdiscovery(args) => run_netdiscovery(args).await,
         Command::Netinventory(args) => run_netinventory(args).await,
         Command::Inject(args) => run_inject(args).await,
@@ -175,9 +196,30 @@ async fn main() -> Result<()> {
     }
 }
 
+/// Loads the layered configuration: defaults < `agent.cfg` < `conf.d` < env.
+/// CLI flags are layered on top by each command.
+fn load_options(conf_file: Option<&Path>, conf_dir: Option<&Path>) -> Result<Options> {
+    let mut loader = Loader::new().with_env();
+    if let Some(file) = conf_file {
+        loader = loader.with_cfg_file(file);
+    }
+    if let Some(dir) = conf_dir {
+        loader = loader.with_conf_dir(dir);
+    }
+    loader.resolve().context("loading configuration")
+}
+
 /// Inventories the local machine and prints the content as JSON.
-async fn run_inventory() -> Result<()> {
-    let content = glpi_inventory_local::LocalInventory::new().collect();
+///
+/// The excluded categories are the config's `no-category` plus any `--no-category`
+/// given on the command line.
+async fn run_inventory(args: InventoryArgs, options: &Options) -> Result<()> {
+    let mut disabled = options.no_category.clone();
+    disabled.extend(args.no_category);
+
+    let content = glpi_inventory_local::LocalInventory::new()
+        .with_disabled_categories(disabled)
+        .collect();
     println!("{}", serde_json::to_string_pretty(&content)?);
     Ok(())
 }
@@ -370,7 +412,39 @@ mod tests {
     #[test]
     fn parses_inventory_subcommand() {
         let cli = Cli::try_parse_from(["glpi-agent", "inventory"]).unwrap();
-        assert!(matches!(cli.command, Command::Inventory));
+        assert!(matches!(cli.command, Command::Inventory(_)));
+    }
+
+    #[test]
+    fn parses_inventory_no_category_and_global_conf() {
+        let cli = Cli::try_parse_from([
+            "glpi-agent",
+            "--conf-file",
+            "/etc/glpi-agent/agent.cfg",
+            "inventory",
+            "--no-category",
+            "process",
+            "--no-category",
+            "software",
+        ])
+        .unwrap();
+        assert_eq!(
+            cli.conf_file.as_deref(),
+            Some(std::path::Path::new("/etc/glpi-agent/agent.cfg"))
+        );
+        let Command::Inventory(args) = cli.command else {
+            panic!("expected inventory");
+        };
+        assert_eq!(args.no_category, vec!["process", "software"]);
+    }
+
+    #[test]
+    fn conf_file_is_global_and_works_after_other_subcommands() {
+        // `--conf-file` is global, so it parses on any subcommand.
+        let cli =
+            Cli::try_parse_from(["glpi-agent", "netdiscovery", "10.0.0.1", "--conf-dir", "/x"])
+                .unwrap();
+        assert_eq!(cli.conf_dir.as_deref(), Some(std::path::Path::new("/x")));
     }
 
     #[test]
