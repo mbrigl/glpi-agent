@@ -14,7 +14,8 @@
 //! - [`memory`] — memory modules (`dmidecode -t 17`),
 //! - [`software`] — installed packages (dpkg / rpm),
 //! - [`network`] — network interfaces (`ip -o link` / `ip -o addr`),
-//! - [`hardware`] — BIOS / system / board identity (`dmidecode`).
+//! - [`hardware`] — BIOS / system / board identity (`dmidecode`),
+//! - [`storage`] — disks and optical drives (`lsblk`).
 
 pub mod cpu;
 pub mod hardware;
@@ -22,6 +23,7 @@ pub mod memory;
 pub mod network;
 pub mod os;
 pub mod software;
+pub mod storage;
 
 pub(crate) mod dmi;
 
@@ -31,3 +33,4 @@ pub use memory::{parse_dmidecode_memory, MemoryModule};
 pub use network::{parse_interfaces, NetworkInterface};
 pub use os::{parse_os_release, OperatingSystem};
 pub use software::{parse_packages, Software};
+pub use storage::{parse_lsblk, Storage};

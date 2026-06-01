@@ -16,16 +16,17 @@
 //! - [`categories::memory`] — memory modules,
 //! - [`categories::software`] — installed packages,
 //! - [`categories::network`] — network interfaces,
-//! - [`categories::hardware`] — BIOS / system / board identity.
+//! - [`categories::hardware`] — BIOS / system / board identity,
+//! - [`categories::storage`] — disks and optical drives.
 
 pub mod categories;
 pub mod content;
 pub mod task;
 
 pub use categories::{
-    parse_cpuinfo, parse_dmidecode_hardware, parse_dmidecode_memory, parse_interfaces,
+    parse_cpuinfo, parse_dmidecode_hardware, parse_dmidecode_memory, parse_interfaces, parse_lsblk,
     parse_os_release, parse_packages, Bios, Cpu, Hardware, MemoryModule, NetworkInterface,
-    OperatingSystem, Software,
+    OperatingSystem, Software, Storage,
 };
 pub use content::Content;
 pub use task::LocalInventory;
