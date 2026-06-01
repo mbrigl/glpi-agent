@@ -1,22 +1,20 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//! `glpi-inventory-local` — Local-system inventory (all platforms).
+//! `glpi-inventory-local` — local-system inventory for the GLPI Agent Rust
+//! workspace (v2.0.0).
 //!
-//! Part of the GLPI Agent Rust workspace (v2.0.0).
-//! Placeholder crate; implementation lands in a later phase.
+//! Collects the local machine's inventory into a [`Content`] payload, one
+//! category at a time. Each category parses a captured data source (a command's
+//! output, a `/proc` or `/sys` file) into a typed section; the parsers are pure
+//! and unit-tested, while the live collectors are thin platform wrappers.
+//!
+//! Phase 6 lands the categories incrementally, Linux first. Currently
+//! available:
+//!
+//! - [`categories::os`] — operating-system identity.
 
-/// Returns this crate's package name (placeholder smoke-test symbol).
-#[must_use]
-pub fn crate_name() -> &'static str {
-    env!("CARGO_PKG_NAME")
-}
+pub mod categories;
+pub mod content;
 
-#[cfg(test)]
-mod tests {
-    use super::crate_name;
-
-    #[test]
-    fn crate_name_matches_package() {
-        assert_eq!(crate_name(), env!("CARGO_PKG_NAME"));
-    }
-}
+pub use categories::{parse_os_release, OperatingSystem};
+pub use content::Content;
