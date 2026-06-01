@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use crate::categories::{
     Battery, Bios, Controller, Cpu, EnvVar, Hardware, MemoryModule, NetworkInterface,
-    OperatingSystem, Process, Software, Storage, UsbDevice, User,
+    OperatingSystem, Process, Software, Sound, Storage, UsbDevice, User, Video,
 };
 
 /// The assembled local-inventory content.
@@ -62,6 +62,12 @@ pub struct Content {
     /// Process environment variables.
     #[serde(rename = "envs", skip_serializing_if = "Vec::is_empty")]
     pub envs: Vec<EnvVar>,
+    /// Video controllers.
+    #[serde(rename = "videos", skip_serializing_if = "Vec::is_empty")]
+    pub videos: Vec<Video>,
+    /// Sound cards.
+    #[serde(rename = "sounds", skip_serializing_if = "Vec::is_empty")]
+    pub sounds: Vec<Sound>,
 }
 
 #[cfg(test)]

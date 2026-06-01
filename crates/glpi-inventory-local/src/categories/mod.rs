@@ -21,7 +21,8 @@
 //! - [`usb`] — USB devices (`lsusb`),
 //! - [`user`] — logged-in users (`who`),
 //! - [`battery`] — batteries (`/sys/class/power_supply`),
-//! - [`environment`] — process environment variables.
+//! - [`environment`] — process environment variables,
+//! - [`video`] / [`sound`] — display and audio controllers (`lspci`).
 
 pub mod battery;
 pub mod cpu;
@@ -33,9 +34,11 @@ pub mod os;
 pub mod pci;
 pub mod process;
 pub mod software;
+pub mod sound;
 pub mod storage;
 pub mod usb;
 pub mod user;
+pub mod video;
 
 pub(crate) mod dmi;
 
@@ -49,6 +52,8 @@ pub use os::{parse_os_release, parse_timezone_name, OperatingSystem, Timezone};
 pub use pci::{parse_lspci, Controller};
 pub use process::{parse_ps, Process};
 pub use software::{parse_packages, Software};
+pub use sound::{parse_lspci_sound, Sound};
 pub use storage::{parse_lsblk, Storage};
 pub use usb::{parse_lsusb, UsbDevice};
 pub use user::{parse_who, User};
+pub use video::{parse_lspci_video, Video};

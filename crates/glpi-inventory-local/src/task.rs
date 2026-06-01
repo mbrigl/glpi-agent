@@ -8,8 +8,8 @@
 //! sections (currently OS and CPU; more categories plug in here).
 
 use crate::categories::{
-    battery, cpu, environment, hardware, memory, network, os, pci, process, software, storage, usb,
-    user,
+    battery, cpu, environment, hardware, memory, network, os, pci, process, software, sound,
+    storage, usb, user, video,
 };
 use crate::content::Content;
 
@@ -50,6 +50,8 @@ impl LocalInventory {
             users: user::collect(),
             batteries: battery::collect(),
             envs: environment::collect(),
+            videos: video::collect(),
+            sounds: sound::collect(),
         }
     }
 }
