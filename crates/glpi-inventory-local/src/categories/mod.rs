@@ -9,8 +9,11 @@
 //!
 //! Currently available:
 //!
-//! - [`os`] — operating-system identity (`/etc/os-release` + kernel).
+//! - [`os`] — operating-system identity (`/etc/os-release` + kernel),
+//! - [`cpu`] — physical CPUs (`/proc/cpuinfo`).
 
+pub mod cpu;
 pub mod os;
 
+pub use cpu::{parse_cpuinfo, Cpu};
 pub use os::{parse_os_release, OperatingSystem};

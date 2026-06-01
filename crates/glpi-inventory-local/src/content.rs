@@ -9,7 +9,7 @@
 
 use serde::Serialize;
 
-use crate::categories::OperatingSystem;
+use crate::categories::{Cpu, OperatingSystem};
 
 /// The assembled local-inventory content.
 ///
@@ -20,6 +20,9 @@ pub struct Content {
     /// Operating-system identity.
     #[serde(rename = "operatingsystem", skip_serializing_if = "Option::is_none")]
     pub operating_system: Option<OperatingSystem>,
+    /// Physical CPUs.
+    #[serde(rename = "cpus", skip_serializing_if = "Vec::is_empty")]
+    pub cpus: Vec<Cpu>,
 }
 
 #[cfg(test)]
@@ -36,6 +39,7 @@ mod tests {
     fn operating_system_uses_the_glpi_key() {
         let content = Content {
             operating_system: Some(parse_os_release("NAME=\"Ubuntu\"\nVERSION_ID=\"22.04\"\n")),
+            ..Content::default()
         };
         let json = serde_json::to_value(&content).unwrap();
         assert_eq!(json["operatingsystem"]["name"], "Ubuntu");

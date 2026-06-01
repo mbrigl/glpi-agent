@@ -11,10 +11,11 @@
 //! Phase 6 lands the categories incrementally, Linux first. Currently
 //! available:
 //!
-//! - [`categories::os`] — operating-system identity.
+//! - [`categories::os`] — operating-system identity,
+//! - [`categories::cpu`] — physical CPUs.
 
 pub mod categories;
 pub mod content;
 
-pub use categories::{parse_os_release, OperatingSystem};
+pub use categories::{parse_cpuinfo, parse_os_release, Cpu, OperatingSystem};
 pub use content::Content;
