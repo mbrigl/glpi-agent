@@ -10,10 +10,13 @@
 //! Currently available:
 //!
 //! - [`os`] — operating-system identity (`/etc/os-release` + kernel),
-//! - [`cpu`] — physical CPUs (`/proc/cpuinfo`).
+//! - [`cpu`] — physical CPUs (`/proc/cpuinfo`),
+//! - [`memory`] — memory modules (`dmidecode -t 17`).
 
 pub mod cpu;
+pub mod memory;
 pub mod os;
 
 pub use cpu::{parse_cpuinfo, Cpu};
+pub use memory::{parse_dmidecode_memory, MemoryModule};
 pub use os::{parse_os_release, OperatingSystem};

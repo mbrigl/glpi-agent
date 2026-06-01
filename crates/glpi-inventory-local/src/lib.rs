@@ -12,12 +12,15 @@
 //! available:
 //!
 //! - [`categories::os`] — operating-system identity,
-//! - [`categories::cpu`] — physical CPUs.
+//! - [`categories::cpu`] — physical CPUs,
+//! - [`categories::memory`] — memory modules.
 
 pub mod categories;
 pub mod content;
 pub mod task;
 
-pub use categories::{parse_cpuinfo, parse_os_release, Cpu, OperatingSystem};
+pub use categories::{
+    parse_cpuinfo, parse_dmidecode_memory, parse_os_release, Cpu, MemoryModule, OperatingSystem,
+};
 pub use content::Content;
 pub use task::LocalInventory;
