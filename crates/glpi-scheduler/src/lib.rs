@@ -1,22 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//! `glpi-scheduler` — Daemon scheduling, events and task forking.
+//! `glpi-scheduler` — daemon scheduling for the GLPI Agent Rust workspace
+//! (v2.0.0).
 //!
-//! Part of the GLPI Agent Rust workspace (v2.0.0).
-//! Placeholder crate; implementation lands in a later phase.
+//! Decides when each target runs. Landing incrementally; currently available:
+//!
+//! - [`backoff`] — [`Backoff`], the doubling delay applied after network
+//!   failures,
+//! - [`schedule`] — [`RunSchedule`], next-run tracking with `delaytime` jitter.
+//!
+//! Targets, the event system and the daemon loop follow in later units.
 
-/// Returns this crate's package name (placeholder smoke-test symbol).
-#[must_use]
-pub fn crate_name() -> &'static str {
-    env!("CARGO_PKG_NAME")
-}
+pub mod backoff;
+pub mod schedule;
 
-#[cfg(test)]
-mod tests {
-    use super::crate_name;
-
-    #[test]
-    fn crate_name_matches_package() {
-        assert_eq!(crate_name(), env!("CARGO_PKG_NAME"));
-    }
-}
+pub use backoff::Backoff;
+pub use schedule::{jitter, RunSchedule};
