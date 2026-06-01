@@ -18,7 +18,8 @@
 //! - [`storage`] — disks and optical drives (`lsblk`),
 //! - [`process`] — running processes (`ps aux`),
 //! - [`pci`] — PCI controllers (`lspci -mm`),
-//! - [`usb`] — USB devices (`lsusb`).
+//! - [`usb`] — USB devices (`lsusb`),
+//! - [`user`] — logged-in users (`who`).
 
 pub mod cpu;
 pub mod hardware;
@@ -30,6 +31,7 @@ pub mod process;
 pub mod software;
 pub mod storage;
 pub mod usb;
+pub mod user;
 
 pub(crate) mod dmi;
 
@@ -43,3 +45,4 @@ pub use process::{parse_ps, Process};
 pub use software::{parse_packages, Software};
 pub use storage::{parse_lsblk, Storage};
 pub use usb::{parse_lsusb, UsbDevice};
+pub use user::{parse_who, User};

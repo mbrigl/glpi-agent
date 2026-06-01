@@ -7,7 +7,9 @@
 //! their modules; this task is the thin orchestration that gathers the live
 //! sections (currently OS and CPU; more categories plug in here).
 
-use crate::categories::{cpu, hardware, memory, network, os, pci, process, software, storage, usb};
+use crate::categories::{
+    cpu, hardware, memory, network, os, pci, process, software, storage, usb, user,
+};
 use crate::content::Content;
 
 /// Runs the local inventory categories and produces the inventory content.
@@ -44,6 +46,7 @@ impl LocalInventory {
             processes: process::collect(),
             controllers: pci::collect(),
             usb_devices: usb::collect(),
+            users: user::collect(),
         }
     }
 }
