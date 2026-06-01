@@ -15,7 +15,8 @@
 //! - [`query`] — the [`SnmpQuery`] trait and host [`identify`]ication,
 //! - [`sysobject`] — the `sysobject.ids` device-classification database,
 //! - [`advanced_support`] — the `snmp-advanced-support.cfg` session-test config,
-//! - [`walk`] — replay a captured `snmpwalk` as an [`SnmpQuery`] source.
+//! - [`walk`] — replay a captured `snmpwalk` as an [`SnmpQuery`] source,
+//! - [`mib`] — the MIB-support framework and modules for NetInventory.
 //!
 //! [`SnmpCredentials`]: glpi_core::types::snmp::SnmpCredentials
 //! [`Security`]: snmp2::v3::Security
@@ -25,6 +26,7 @@
 pub mod advanced_support;
 pub mod client;
 pub mod credentials;
+pub mod mib;
 pub mod query;
 pub mod sysobject;
 pub mod value;
@@ -36,6 +38,7 @@ pub use credentials::{
     build_security, community, map_auth_protocol, map_priv_cipher, priv_key_extension,
     security_level, SecurityLevel,
 };
+pub use mib::{DeviceInfo, MibRegistry, MibSupport, NetworkDevice};
 pub use query::{identify, SnmpQuery, SnmpSysInfo};
 pub use sysobject::{SysObjectEntry, SysObjectIds};
 pub use value::SnmpValue;
