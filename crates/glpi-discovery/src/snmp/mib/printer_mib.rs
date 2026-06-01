@@ -18,6 +18,8 @@ use crate::snmp::query::SnmpQuery;
 
 /// `prtMarkerLifeCount` (indexed by `hrDeviceIndex.markerIndex`).
 const PRT_MARKER_LIFE_COUNT: [u64; 11] = [1, 3, 6, 1, 2, 1, 43, 10, 2, 1, 4];
+/// `prtGeneralSerialNumber` (indexed by `hrDeviceIndex`).
+const PRT_GENERAL_SERIAL_NUMBER: [u64; 11] = [1, 3, 6, 1, 2, 1, 43, 5, 1, 1, 17];
 // prtMarkerSuppliesTable columns (1.3.6.1.2.1.43.11.1.1.N).
 const PRT_SUPPLIES_TYPE: [u64; 10] = [1, 3, 6, 1, 2, 1, 43, 11, 1, 1];
 const SUPPLIES_TYPE_COL: u64 = 5;
@@ -52,6 +54,19 @@ impl MibSupport for PrinterMib {
                 total_pages,
                 supplies,
             });
+        }
+
+        // The standard printer serial applies to every brand; only set it if a
+        // prior module (ENTITY-MIB / vendor) did not already.
+        if device.info.serial.is_none() {
+            if let Some((_, value)) = session
+                .walk(&PRT_GENERAL_SERIAL_NUMBER)
+                .await?
+                .into_iter()
+                .next()
+            {
+                device.info.serial = value.as_str().filter(|s| !s.is_empty());
+            }
         }
         Ok(())
     }
@@ -124,6 +139,7 @@ mod tests {
     use crate::snmp::walk::WalkSession;
 
     const PRINTER_WALK: &str = r#".1.3.6.1.2.1.43.10.2.1.4.1.1 = Counter32: 45210
+.1.3.6.1.2.1.43.5.1.1.17.1 = STRING: "PRN-SN-001"
 .1.3.6.1.2.1.43.11.1.1.5.1.1 = INTEGER: 3
 .1.3.6.1.2.1.43.11.1.1.6.1.1 = STRING: "Black Toner Cartridge"
 .1.3.6.1.2.1.43.11.1.1.7.1.1 = INTEGER: 19
@@ -138,6 +154,8 @@ mod tests {
         let mut session = WalkSession::parse(PRINTER_WALK).unwrap();
         let mut device = NetworkDevice::default();
         PrinterMib.run(&mut session, &mut device).await.unwrap();
+
+        assert_eq!(device.info.serial.as_deref(), Some("PRN-SN-001"));
 
         let printer = device.printer.expect("printer record");
         assert_eq!(printer.total_pages, Some(45210));
