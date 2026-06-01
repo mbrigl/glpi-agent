@@ -14,9 +14,12 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use chrono::Utc;
 use clap::{Args, Parser, Subcommand};
 use glpi_core::types::snmp::SnmpCredentials;
 use glpi_discovery::{Ipv4Range, NetDiscoveryTask, NetInventoryTask};
+use glpi_http::{HttpServer, TrustList, DEFAULT_HTTP_PORT};
+use glpi_scheduler::{jitter, RunSchedule};
 use glpi_transport::{GlpiClient, Injector};
 use tracing_subscriber::EnvFilter;
 
@@ -36,6 +39,8 @@ enum Command {
     Netinventory(NetInventoryArgs),
     /// Send existing inventory files (JSON/XML) to a GLPI server.
     Inject(InjectArgs),
+    /// Run continuously: periodic NetDiscovery plus an HTTP control server.
+    Daemon(DaemonArgs),
 }
 
 #[derive(Args)]
@@ -111,6 +116,45 @@ struct InjectArgs {
     no_ssl_check: bool,
 }
 
+#[derive(Args)]
+struct DaemonArgs {
+    /// IPv4 targets to re-scan each cycle (single / CIDR / range).
+    #[arg(required = true, value_name = "RANGE")]
+    ranges: Vec<String>,
+
+    /// SNMP v2c community to try (repeatable).
+    #[arg(short = 'c', long = "community", value_name = "COMMUNITY")]
+    communities: Vec<String>,
+
+    /// Seconds between scans.
+    #[arg(long, default_value_t = 3600)]
+    interval: u64,
+
+    /// Maximum random delay (seconds) before the first scan.
+    #[arg(long, default_value_t = 0)]
+    delaytime: u64,
+
+    /// Per-probe timeout in milliseconds.
+    #[arg(long, default_value_t = 1000)]
+    timeout_ms: u64,
+
+    /// Disable the embedded HTTP control server.
+    #[arg(long)]
+    no_httpd: bool,
+
+    /// Address the HTTP control server listens on.
+    #[arg(long, default_value = "0.0.0.0")]
+    httpd_ip: IpAddr,
+
+    /// Port for the HTTP control server.
+    #[arg(long, default_value_t = DEFAULT_HTTP_PORT)]
+    httpd_port: u16,
+
+    /// Comma-separated trusted clients (IPs / CIDRs) for the HTTP server.
+    #[arg(long, default_value = "")]
+    httpd_trust: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -124,7 +168,117 @@ async fn main() -> Result<()> {
         Command::Netdiscovery(args) => run_netdiscovery(args).await,
         Command::Netinventory(args) => run_netinventory(args).await,
         Command::Inject(args) => run_inject(args).await,
+        Command::Daemon(args) => run_daemon(args).await,
     }
+}
+
+/// Parses IPv4 range specs into [`Ipv4Range`]s.
+fn parse_ranges(specs: &[String]) -> Result<Vec<Ipv4Range>> {
+    specs
+        .iter()
+        .map(|spec| Ipv4Range::parse(spec).with_context(|| format!("invalid range {spec:?}")))
+        .collect()
+}
+
+/// Builds v2c credentials from the given community strings.
+fn v2c_credentials(communities: &[String]) -> Vec<SnmpCredentials> {
+    communities
+        .iter()
+        .map(|community| SnmpCredentials::v2c(community.clone()))
+        .collect()
+}
+
+/// Runs continuously: a periodic NetDiscovery scan plus an HTTP control server
+/// that can trigger an immediate scan via `/now`. Stops on Ctrl-C.
+async fn run_daemon(args: DaemonArgs) -> Result<()> {
+    let task = NetDiscoveryTask::new(parse_ranges(&args.ranges)?)
+        .with_credentials(v2c_credentials(&args.communities))
+        .with_timeout(Duration::from_millis(args.timeout_ms));
+
+    // HTTP control server (optional), yielding /now trigger events.
+    let mut triggers = if args.no_httpd {
+        None
+    } else {
+        let trust = TrustList::parse(args.httpd_trust.split(','))?;
+        let status = format!("glpi-agent {}", env!("CARGO_PKG_VERSION"));
+        let (server, rx) = HttpServer::new(args.httpd_ip, args.httpd_port, trust, status);
+        tokio::spawn(async move {
+            if let Err(err) = server.serve().await {
+                tracing::error!(error = %err, "HTTP control server stopped");
+            }
+        });
+        Some(rx)
+    };
+
+    let period = Duration::from_secs(args.interval);
+    let initial_delay = jitter(
+        Duration::from_secs(args.delaytime),
+        pseudo_random_fraction(),
+    );
+    let mut schedule = RunSchedule::new(Utc::now(), period, initial_delay);
+    tracing::info!(
+        interval = args.interval,
+        first_run_in = (schedule.next_run() - Utc::now()).num_seconds().max(0),
+        "daemon started"
+    );
+
+    loop {
+        let wait = (schedule.next_run() - Utc::now())
+            .to_std()
+            .unwrap_or(Duration::ZERO);
+
+        tokio::select! {
+            () = tokio::time::sleep(wait) => {
+                scan_once(&task).await;
+                schedule.schedule_next(Utc::now());
+            }
+            event = recv_trigger(&mut triggers) => {
+                tracing::info!(?event, "received /now trigger");
+                scan_once(&task).await;
+                schedule.schedule_next(Utc::now());
+            }
+            result = tokio::signal::ctrl_c() => {
+                result.context("waiting for Ctrl-C")?;
+                tracing::info!("shutting down");
+                return Ok(());
+            }
+        }
+    }
+}
+
+/// Awaits the next `/now` trigger, or never resolves when the HTTP server is
+/// disabled (so the `select!` arm stays dormant).
+async fn recv_trigger(
+    triggers: &mut Option<tokio::sync::mpsc::Receiver<glpi_http::NowRequest>>,
+) -> glpi_http::NowRequest {
+    match triggers {
+        Some(rx) => match rx.recv().await {
+            Some(event) => event,
+            None => std::future::pending().await,
+        },
+        None => std::future::pending().await,
+    }
+}
+
+/// Runs one NetDiscovery scan and logs the result count.
+async fn scan_once(task: &NetDiscoveryTask) {
+    tracing::info!(targets = task.target_count(), "scanning");
+    let devices = task.run().await;
+    match serde_json::to_string(&devices) {
+        Ok(json) => println!("{json}"),
+        Err(err) => tracing::error!(error = %err, "failed to serialize scan result"),
+    }
+    tracing::info!(count = devices.len(), "scan complete");
+}
+
+/// A cheap, dependency-free pseudo-random fraction in `[0, 1)` for jitter,
+/// seeded from the current time's sub-second part.
+fn pseudo_random_fraction() -> f64 {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    f64::from(nanos) / f64::from(u32::MAX)
 }
 
 /// Sends the given inventory files to a GLPI server.
@@ -155,13 +309,7 @@ async fn run_inject(args: InjectArgs) -> Result<()> {
 
 /// Inventories a single device and prints the result as JSON to stdout.
 async fn run_netinventory(args: NetInventoryArgs) -> Result<()> {
-    let credentials = args
-        .communities
-        .iter()
-        .map(|community| SnmpCredentials::v2c(community.clone()))
-        .collect();
-
-    let task = NetInventoryTask::new(credentials)
+    let task = NetInventoryTask::new(v2c_credentials(&args.communities))
         .with_timeout(Duration::from_millis(args.timeout_ms))
         .with_snmp_retries(args.snmp_retries);
 
@@ -184,20 +332,8 @@ async fn run_netinventory(args: NetInventoryArgs) -> Result<()> {
 
 /// Runs the NetDiscovery scan and prints the result as JSON to stdout.
 async fn run_netdiscovery(args: NetDiscoveryArgs) -> Result<()> {
-    let ranges = args
-        .ranges
-        .iter()
-        .map(|spec| Ipv4Range::parse(spec).with_context(|| format!("invalid range {spec:?}")))
-        .collect::<Result<Vec<_>>>()?;
-
-    let credentials = args
-        .communities
-        .iter()
-        .map(|community| SnmpCredentials::v2c(community.clone()))
-        .collect();
-
-    let task = NetDiscoveryTask::new(ranges)
-        .with_credentials(credentials)
+    let task = NetDiscoveryTask::new(parse_ranges(&args.ranges)?)
+        .with_credentials(v2c_credentials(&args.communities))
         .with_timeout(Duration::from_millis(args.timeout_ms))
         .with_concurrency(args.concurrency)
         .with_arp(args.arp);
@@ -322,5 +458,43 @@ mod tests {
     fn inject_requires_server_and_files() {
         assert!(Cli::try_parse_from(["glpi-agent", "inject", "a.json"]).is_err());
         assert!(Cli::try_parse_from(["glpi-agent", "inject", "--server", "http://x"]).is_err());
+    }
+
+    #[test]
+    fn parses_daemon_with_httpd_options() {
+        let cli = Cli::try_parse_from([
+            "glpi-agent",
+            "daemon",
+            "10.0.0.0/24",
+            "-c",
+            "public",
+            "--interval",
+            "900",
+            "--httpd-port",
+            "8080",
+            "--httpd-trust",
+            "192.168.0.0/16",
+            "--no-httpd",
+        ])
+        .unwrap();
+        let Command::Daemon(args) = cli.command else {
+            panic!("expected daemon");
+        };
+        assert_eq!(args.ranges, vec!["10.0.0.0/24"]);
+        assert_eq!(args.interval, 900);
+        assert_eq!(args.httpd_port, 8080);
+        assert_eq!(args.httpd_trust, "192.168.0.0/16");
+        assert!(args.no_httpd);
+    }
+
+    #[test]
+    fn daemon_defaults() {
+        let cli = Cli::try_parse_from(["glpi-agent", "daemon", "10.0.0.1"]).unwrap();
+        let Command::Daemon(args) = cli.command else {
+            panic!("expected daemon");
+        };
+        assert_eq!(args.interval, 3600);
+        assert_eq!(args.httpd_port, glpi_http::DEFAULT_HTTP_PORT);
+        assert!(!args.no_httpd);
     }
 }

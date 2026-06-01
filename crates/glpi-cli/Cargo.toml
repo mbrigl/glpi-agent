@@ -18,6 +18,9 @@ path = "src/main.rs"
 glpi-core = { path = "../glpi-core" }
 glpi-discovery = { path = "../glpi-discovery" }
 glpi-transport = { path = "../glpi-transport" }
+glpi-scheduler = { path = "../glpi-scheduler" }
+glpi-http = { path = "../glpi-http" }
+chrono.workspace = true
 clap.workspace = true
 tokio.workspace = true
 serde_json.workspace = true
