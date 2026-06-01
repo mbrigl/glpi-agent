@@ -871,7 +871,7 @@ platform-freebsd = []
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| SNMPv3 USM crypto matrix (SHA-512 / AES256C) | ~~High~~ Low | **Resolved (§0.1):** `snmp2` provides the full auth/priv matrix incl. Cisco key extension (`KeyExtension::Reeder`). Add RFC 3414/7860 vector tests as a regression guard. Residual: `snmp2` 0.5 cannot set a non-default `contextName`. |
+| SNMPv3 USM crypto matrix (SHA-512 / AES256C) | ~~High~~ Low | **Resolved (§0.1):** `snmp2` provides the full auth/priv matrix incl. Cisco key extension (`KeyExtension::Reeder`). **Crypto-vector note:** `snmp2` 0.5 keeps password-to-key derivation and key localization private (only a generic `Hasher` is public), so RFC 3414/7860 vectors cannot be asserted against its internals through the public API. Crypto correctness is delegated to `snmp2`'s own test suite; the agent-side validation is a **live SNMPv3 round-trip** integration test (needs a v3 agent — deferred to Phase 10 / when a target is available). Residual: `snmp2` 0.5 cannot set a non-default `contextName`. |
 | WMI COM apartment threading | High | Dedicated COM worker thread + mpsc channel; never Send COM across Tokio tasks (§0.3) |
 | ICMP on Windows needs admin with raw sockets | Medium | Use `ping-rs` / DGRAM; TCP fallback; document CAP_NET_RAW |
 | vSphere SOAP (no Rust SDK) | High | Minimal API calls; negotiate API version on connect |
