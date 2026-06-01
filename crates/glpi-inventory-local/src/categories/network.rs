@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 
 use glpi_core::types::network::MacAddress;
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 
 /// A network interface.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -23,18 +23,48 @@ pub struct NetworkInterface {
     /// Hardware (MAC) address, if any.
     #[serde(rename = "mac", skip_serializing_if = "Option::is_none")]
     pub mac: Option<MacAddress>,
-    /// Assigned IP addresses (v4 and v6).
-    #[serde(rename = "ipaddress", skip_serializing_if = "Vec::is_empty")]
+    /// Assigned IP addresses (v4 and v6). GLPI's `ipaddress` is a single
+    /// string, so serialization emits the primary (first) address; the full
+    /// list is retained in the struct (multi-IP submission is a refinement).
+    #[serde(
+        rename = "ipaddress",
+        serialize_with = "serialize_primary_ip",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub ips: Vec<IpAddr>,
     /// MTU.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mtu: Option<u32>,
-    /// "Up" or "Down".
+    /// "up" or "down".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
-    /// Link speed in Mbit/s (from sysfs), if known.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Link speed in Mbit/s (from sysfs), if known. GLPI expects a string.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_opt_number_as_string"
+    )]
     pub speed: Option<u64>,
+}
+
+/// Serializes an optional number as GLPI's string form (skip handles `None`).
+fn serialize_opt_number_as_string<S: Serializer>(
+    value: &Option<u64>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match value {
+        Some(n) => serializer.collect_str(n),
+        None => serializer.serialize_none(),
+    }
+}
+
+/// Serializes the IP list as GLPI's single `ipaddress` string (the primary
+/// address). The field's `skip_serializing_if` guarantees a non-empty list.
+#[allow(clippy::ptr_arg)] // serde passes the field as &Vec<IpAddr>.
+fn serialize_primary_ip<S: Serializer>(
+    ips: &Vec<IpAddr>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.collect_str(&ips[0])
 }
 
 /// Parses `ip -o link show` and `ip -o addr show` into interfaces.
@@ -136,7 +166,7 @@ fn parse_addr_line(line: &str) -> Option<(String, IpAddr)> {
     addr.parse::<IpAddr>().ok().map(|ip| (name, ip))
 }
 
-/// Returns "Up"/"Down" from the interface flags (`<…,UP,…>`).
+/// Returns "up"/"down" from the interface flags (`<…,UP,…>`).
 fn link_status(tokens: &[&str]) -> Option<String> {
     let flags = tokens
         .iter()
@@ -145,7 +175,7 @@ fn link_status(tokens: &[&str]) -> Option<String> {
         .trim_matches(['<', '>'])
         .split(',')
         .any(|flag| flag == "UP");
-    Some(if up { "Up" } else { "Down" }.to_owned())
+    Some(if up { "up" } else { "down" }.to_owned())
 }
 
 /// Returns the token following the first occurrence of `key`.
@@ -178,7 +208,7 @@ mod tests {
         assert_eq!(lo.name, "lo");
         assert_eq!(lo.mac, None); // all-zero loopback MAC dropped
         assert_eq!(lo.mtu, Some(65536));
-        assert_eq!(lo.status.as_deref(), Some("Up"));
+        assert_eq!(lo.status.as_deref(), Some("up"));
         assert_eq!(
             lo.ips,
             vec!["127.0.0.1".parse::<std::net::IpAddr>().unwrap()]
@@ -192,7 +222,7 @@ mod tests {
             eth0.mac,
             Some(MacAddress::new([0x02, 0x42, 0xac, 0x11, 0x00, 0x02]))
         );
-        assert_eq!(eth0.status.as_deref(), Some("Up"));
+        assert_eq!(eth0.status.as_deref(), Some("up"));
         assert_eq!(eth0.ips.len(), 2); // v4 + v6 merged despite the @if49 suffix
     }
 
@@ -200,7 +230,7 @@ mod tests {
     fn down_interface_status() {
         let ifaces = parse_interfaces(LINK, "");
         let down = ifaces.iter().find(|i| i.name == "down0").unwrap();
-        assert_eq!(down.status.as_deref(), Some("Down"));
+        assert_eq!(down.status.as_deref(), Some("down"));
         assert!(down.ips.is_empty());
     }
 

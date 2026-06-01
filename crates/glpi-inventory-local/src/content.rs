@@ -14,12 +14,18 @@ use crate::categories::{
     OperatingSystem, Printer, Process, Software, Sound, Storage, UsbDevice, User, Video,
 };
 
+/// The agent identifier GLPI requires in `content.versionclient`.
+pub const VERSION_CLIENT: &str = concat!("GLPI-Agent_v", env!("CARGO_PKG_VERSION"));
+
 /// The assembled local-inventory content.
 ///
 /// Empty sections are omitted from serialization so a partial inventory only
 /// carries what was actually collected.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Content {
+    /// Agent identifier (required by the GLPI inventory schema).
+    #[serde(rename = "versionclient", skip_serializing_if = "Option::is_none")]
+    pub version_client: Option<String>,
     /// BIOS / system / motherboard identity.
     #[serde(rename = "bios", skip_serializing_if = "Option::is_none")]
     pub bios: Option<Bios>,

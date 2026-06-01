@@ -57,7 +57,10 @@ impl LocalInventory {
     /// are omitted from the result.
     #[must_use]
     pub fn collect(&self) -> Content {
-        let mut content = Content::default();
+        let mut content = Content {
+            version_client: Some(crate::content::VERSION_CLIENT.to_owned()),
+            ..Content::default()
+        };
 
         if self.is_enabled("os") {
             let os = os::collect();

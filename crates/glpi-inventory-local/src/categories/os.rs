@@ -75,8 +75,21 @@ pub fn collect() -> OperatingSystem {
     os.kernel_name = read_trimmed("/proc/sys/kernel/ostype");
     os.kernel_version = read_trimmed("/proc/sys/kernel/osrelease");
     os.arch = Some(std::env::consts::ARCH.to_owned());
-    os.timezone = collect_timezone().map(|name| Timezone { name, offset: None });
+    os.timezone = collect_timezone().map(|name| Timezone {
+        name,
+        offset: Some(utc_offset()),
+    });
     os
+}
+
+/// Returns the local UTC offset formatted as `+HHMM` / `-HHMM` (the form GLPI
+/// expects in `operatingsystem.timezone.offset`).
+#[cfg(target_os = "linux")]
+fn utc_offset() -> String {
+    let seconds = chrono::Local::now().offset().local_minus_utc();
+    let sign = if seconds < 0 { '-' } else { '+' };
+    let seconds = seconds.abs();
+    format!("{sign}{:02}{:02}", seconds / 3600, (seconds % 3600) / 60)
 }
 
 /// Determines the IANA timezone name from `/etc/timezone` or the

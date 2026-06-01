@@ -29,9 +29,6 @@ pub struct Process {
     /// Controlling terminal.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tty: Option<String>,
-    /// Start time (raw `START`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub started: Option<String>,
     /// Full command line.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cmd: Option<String>,
@@ -57,7 +54,10 @@ pub fn parse_ps(text: &str) -> Vec<Process> {
                 mem: non_empty(tokens[3]),
                 virtual_memory: tokens[4].parse().ok(),
                 tty: non_empty(tokens[6]),
-                started: non_empty(tokens[8]),
+                // `started` is omitted: GLPI requires an absolute
+                // `YYYY-MM-DD HH:MM:SS` timestamp, which the abbreviated `ps`
+                // START column can't provide (a future refinement reads
+                // /proc/<pid>/stat + btime).
                 cmd: non_empty(&tokens[10..].join(" ")),
             })
         })
