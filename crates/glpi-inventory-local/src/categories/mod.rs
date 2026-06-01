@@ -33,7 +33,7 @@ pub use cpu::{parse_cpuinfo, Cpu};
 pub use hardware::{parse_dmidecode_hardware, Bios, Hardware};
 pub use memory::{parse_dmidecode_memory, MemoryModule};
 pub use network::{parse_interfaces, NetworkInterface};
-pub use os::{parse_os_release, OperatingSystem};
+pub use os::{parse_os_release, parse_timezone_name, OperatingSystem, Timezone};
 pub use process::{parse_ps, Process};
 pub use software::{parse_packages, Software};
 pub use storage::{parse_lsblk, Storage};

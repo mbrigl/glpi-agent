@@ -37,6 +37,29 @@ pub struct OperatingSystem {
     /// Fully-qualified domain name, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fqdn: Option<String>,
+    /// System timezone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timezone: Option<Timezone>,
+}
+
+/// The system timezone (`operatingsystem.timezone`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Timezone {
+    /// IANA zone name (e.g. "Europe/Berlin").
+    pub name: String,
+    /// UTC offset (e.g. "+0100"), when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<String>,
+}
+
+/// Extracts the IANA zone name from an `/etc/localtime` symlink target such as
+/// `/usr/share/zoneinfo/Europe/Berlin` or `../usr/share/zoneinfo/UTC`.
+#[must_use]
+pub fn parse_timezone_name(localtime_target: &str) -> Option<String> {
+    localtime_target
+        .split_once("zoneinfo/")
+        .map(|(_, zone)| zone.trim().to_owned())
+        .filter(|zone| !zone.is_empty())
 }
 
 /// Collects the live operating-system identity (Linux).
@@ -52,7 +75,19 @@ pub fn collect() -> OperatingSystem {
     os.kernel_name = read_trimmed("/proc/sys/kernel/ostype");
     os.kernel_version = read_trimmed("/proc/sys/kernel/osrelease");
     os.arch = Some(std::env::consts::ARCH.to_owned());
+    os.timezone = collect_timezone().map(|name| Timezone { name, offset: None });
     os
+}
+
+/// Determines the IANA timezone name from `/etc/timezone` or the
+/// `/etc/localtime` symlink.
+#[cfg(target_os = "linux")]
+fn collect_timezone() -> Option<String> {
+    read_trimmed("/etc/timezone").or_else(|| {
+        std::fs::read_link("/etc/localtime")
+            .ok()
+            .and_then(|target| parse_timezone_name(&target.to_string_lossy()))
+    })
 }
 
 /// Collects the live operating-system identity (non-Linux stub).
@@ -169,5 +204,19 @@ ID=debian
         let os = parse_os_release("NAME='Arch Linux'\nVERSION_ID=rolling\n");
         assert_eq!(os.name.as_deref(), Some("Arch Linux"));
         assert_eq!(os.version.as_deref(), Some("rolling"));
+    }
+
+    #[test]
+    fn extracts_timezone_from_symlink_target() {
+        use super::parse_timezone_name;
+        assert_eq!(
+            parse_timezone_name("/usr/share/zoneinfo/Europe/Berlin").as_deref(),
+            Some("Europe/Berlin")
+        );
+        assert_eq!(
+            parse_timezone_name("../usr/share/zoneinfo/UTC").as_deref(),
+            Some("UTC")
+        );
+        assert_eq!(parse_timezone_name("/etc/localtime"), None);
     }
 }
