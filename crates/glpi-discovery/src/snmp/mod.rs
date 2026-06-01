@@ -12,7 +12,8 @@
 //!   string and v3 [`Security`],
 //! - [`client`] — [`SnmpClient`], the async get/getnext/walk wrapper with
 //!   timeout and retry handling,
-//! - [`query`] — the [`SnmpQuery`] trait and host [`identify`]ication.
+//! - [`query`] — the [`SnmpQuery`] trait and host [`identify`]ication,
+//! - [`sysobject`] — the `sysobject.ids` device-classification database.
 //!
 //! [`SnmpCredentials`]: glpi_core::types::snmp::SnmpCredentials
 //! [`Security`]: snmp2::v3::Security
@@ -22,6 +23,7 @@
 pub mod client;
 pub mod credentials;
 pub mod query;
+pub mod sysobject;
 pub mod value;
 
 pub use client::{SnmpClient, SNMP_PORT};
@@ -30,4 +32,5 @@ pub use credentials::{
     security_level, SecurityLevel,
 };
 pub use query::{identify, SnmpQuery, SnmpSysInfo};
+pub use sysobject::{SysObjectEntry, SysObjectIds};
 pub use value::SnmpValue;

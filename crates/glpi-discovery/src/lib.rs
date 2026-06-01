@@ -32,5 +32,8 @@ pub use methods::netbios::{NetBiosMethod, NetBiosName};
 pub use methods::ping::{EchoRequest, PingMethod};
 pub use methods::snmp::SnmpMethod;
 pub use scanner::{ProgressCallback, ScanProgress, Scanner};
-pub use snmp::{identify, SecurityLevel, SnmpClient, SnmpQuery, SnmpSysInfo, SnmpValue, SNMP_PORT};
+pub use snmp::{
+    identify, SecurityLevel, SnmpClient, SnmpQuery, SnmpSysInfo, SnmpValue, SysObjectEntry,
+    SysObjectIds, SNMP_PORT,
+};
 pub use traits::{DiscoveredHost, DiscoveryMethod, Probe};
