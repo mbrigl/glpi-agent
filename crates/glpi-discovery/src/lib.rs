@@ -40,4 +40,5 @@ pub use snmp::{
     SysObjectEntry, SysObjectIds, SystemMib, WalkSession, SNMP_PORT,
 };
 pub use tasks::net_discovery::{DiscoveredDevice, NetDiscoveryTask, SnmpDevice};
+pub use tasks::net_inventory::NetInventoryTask;
 pub use traits::{DiscoveredHost, DiscoveryMethod, Probe};
