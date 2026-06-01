@@ -15,7 +15,8 @@
 //! - [`scanner`] — the bounded-concurrency parallel [`Scanner`],
 //! - [`methods`] — concrete discovery methods (ARP, ping, NetBIOS, SNMP),
 //! - [`snmp`] — SNMP support over `snmp2` (value types, credential mapping,
-//!   async client, query trait).
+//!   async client, query trait),
+//! - [`tasks`] — the NetDiscovery task tying the scanner and SNMP together.
 //!
 //! [`DiscoveryMethod`]: traits::DiscoveryMethod
 //! [`Scanner`]: scanner::Scanner
@@ -24,6 +25,7 @@ pub mod ip_range;
 pub mod methods;
 pub mod scanner;
 pub mod snmp;
+pub mod tasks;
 pub mod traits;
 
 pub use ip_range::{Ipv4Range, Ipv4RangeIter};
@@ -36,4 +38,5 @@ pub use snmp::{
     identify, SecurityLevel, SnmpClient, SnmpQuery, SnmpSysInfo, SnmpValue, SysObjectEntry,
     SysObjectIds, SNMP_PORT,
 };
+pub use tasks::net_discovery::{DiscoveredDevice, NetDiscoveryTask, SnmpDevice};
 pub use traits::{DiscoveredHost, DiscoveryMethod, Probe};
