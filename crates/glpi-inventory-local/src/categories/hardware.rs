@@ -64,6 +64,9 @@ pub struct Hardware {
     /// SMBIOS system UUID.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uuid: Option<String>,
+    /// Virtualization system ("Physical", "VMware", "Docker", …).
+    #[serde(rename = "vmsystem", skip_serializing_if = "Option::is_none")]
+    pub vm_system: Option<String>,
 }
 
 impl Hardware {
@@ -125,6 +128,7 @@ pub fn collect() -> (Option<Bios>, Option<Hardware>) {
         .ok()
         .map(|s| s.trim().to_owned())
         .filter(|s| !s.is_empty());
+    hardware.vm_system = detect_vm_system();
 
     let bios = (!bios.is_empty()).then_some(bios);
     let hardware = (!hardware.is_empty()).then_some(hardware);
@@ -136,6 +140,44 @@ pub fn collect() -> (Option<Bios>, Option<Hardware>) {
 #[must_use]
 pub fn collect() -> (Option<Bios>, Option<Hardware>) {
     (None, None)
+}
+
+/// Detects the virtualization system via `systemd-detect-virt`.
+#[cfg(target_os = "linux")]
+fn detect_vm_system() -> Option<String> {
+    let output = std::process::Command::new("systemd-detect-virt")
+        .output()
+        .ok()?;
+    let raw = String::from_utf8_lossy(&output.stdout);
+    Some(map_vm_system(raw.trim()))
+}
+
+/// Maps a `systemd-detect-virt` token to a GLPI-style virtualization name.
+fn map_vm_system(token: &str) -> String {
+    match token {
+        "" | "none" => "Physical",
+        "kvm" | "qemu" => "QEMU",
+        "vmware" => "VMware",
+        "oracle" => "VirtualBox",
+        "microsoft" => "Hyper-V",
+        "xen" => "Xen",
+        "docker" => "Docker",
+        "podman" => "Podman",
+        "lxc" | "lxc-libvirt" => "LXC",
+        "openvz" => "OpenVZ",
+        "wsl" => "WSL",
+        other => return capitalize(other),
+    }
+    .to_owned()
+}
+
+/// Capitalizes the first letter of an unrecognized token.
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -195,5 +237,17 @@ Chassis Information
         let (bios, hardware) = parse_dmidecode_hardware("");
         assert!(bios.is_empty());
         assert!(hardware.is_empty());
+    }
+
+    #[test]
+    fn maps_vm_system_tokens() {
+        use super::map_vm_system;
+        assert_eq!(map_vm_system("none"), "Physical");
+        assert_eq!(map_vm_system(""), "Physical");
+        assert_eq!(map_vm_system("docker"), "Docker");
+        assert_eq!(map_vm_system("kvm"), "QEMU");
+        assert_eq!(map_vm_system("vmware"), "VMware");
+        // Unknown tokens are capitalized.
+        assert_eq!(map_vm_system("acme"), "Acme");
     }
 }
