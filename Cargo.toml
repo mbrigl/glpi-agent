@@ -50,6 +50,9 @@ tracing-appender = "0.2"
 thiserror = "1"
 anyhow = "1"
 
+# Discovery
+socket2 = { version = "0.5", features = ["all"] }
+
 # Crypto / hashing
 sha2 = "0.10"
 base64 = "0.22"
