@@ -50,6 +50,17 @@ pub trait MibSupport: Send + Sync {
     /// A short, stable identifier for logging.
     fn name(&self) -> &'static str;
 
+    /// Whether this module applies to the device.
+    ///
+    /// Standard MIBs use the default (`true`, always run). Vendor MIBs override
+    /// this to match on `sysObjectID` (see [`sysobjectid_matches`]). It is
+    /// evaluated after the system group has been read, so `info.sys_object_id`
+    /// is already populated for modules registered after [`SystemMib`].
+    fn applies_to(&self, info: &DeviceInfo) -> bool {
+        let _ = info;
+        true
+    }
+
     /// Reads this module's data from `session` into `device`.
     ///
     /// Modules set only the fields they can determine and must not overwrite
@@ -120,7 +131,9 @@ impl MibRegistry {
     ) -> Result<NetworkDevice> {
         let mut device = NetworkDevice::default();
         for module in &self.modules {
-            module.run(session, &mut device).await?;
+            if module.applies_to(&device.info) {
+                module.run(session, &mut device).await?;
+            }
         }
         if let Some(oid) = device.info.sys_object_id.clone() {
             if let Some(entry) = sysobjects.lookup(&oid) {
@@ -193,6 +206,17 @@ where
     Ok(())
 }
 
+/// Returns `true` if a device's `sys_object_id` falls under `enterprise_prefix`
+/// (an exact match or a dotted-arc-boundary prefix), used by vendor MIBs to
+/// declare applicability. `1.3.6.1.4.1.9` matches `…9` and `…9.1.3`, not `…99`.
+#[must_use]
+pub fn sysobjectid_matches(sys_object_id: Option<&str>, enterprise_prefix: &str) -> bool {
+    match sys_object_id {
+        Some(oid) => oid == enterprise_prefix || oid.starts_with(&format!("{enterprise_prefix}.")),
+        None => false,
+    }
+}
+
 /// Returns the instance suffix of `oid` under `base` (the arcs beyond `base`),
 /// or `None` if `oid` is not a strict descendant.
 pub(crate) fn instance_suffix(oid: &[u64], base: &[u64]) -> Option<Vec<u64>> {
@@ -256,14 +280,84 @@ pub(crate) fn as_mac(value: &SnmpValue) -> Option<MacAddress> {
 
 #[cfg(test)]
 mod tests {
-    use super::MibRegistry;
+    use super::{
+        sysobjectid_matches, DeviceInfo, MibRegistry, MibSupport, NetworkDevice, SystemMib,
+    };
+    use crate::snmp::query::SnmpQuery;
     use crate::snmp::sysobject::SysObjectIds;
     use crate::snmp::walk::WalkSession;
+    use async_trait::async_trait;
+    use glpi_core::error::Result;
+    use std::sync::Arc;
 
     const CISCO_WALK: &str = r#".1.3.6.1.2.1.1.1.0 = STRING: "Cisco IOS"
 .1.3.6.1.2.1.1.2.0 = OID: .1.3.6.1.4.1.9.1.3
 .1.3.6.1.2.1.1.5.0 = STRING: "sw-1"
 "#;
+
+    /// A vendor MIB that applies only to Cisco and tags the model, used to
+    /// exercise the sysObjectID gating.
+    struct CiscoTag;
+
+    #[async_trait]
+    impl MibSupport for CiscoTag {
+        fn name(&self) -> &'static str {
+            "cisco-tag"
+        }
+        fn applies_to(&self, info: &DeviceInfo) -> bool {
+            sysobjectid_matches(info.sys_object_id.as_deref(), "1.3.6.1.4.1.9")
+        }
+        async fn run(
+            &self,
+            _session: &mut dyn SnmpQuery,
+            device: &mut NetworkDevice,
+        ) -> Result<()> {
+            device.info.model = Some("tagged-by-vendor-mib".to_owned());
+            Ok(())
+        }
+    }
+
+    fn registry_with_cisco_tag() -> MibRegistry {
+        let mut registry = MibRegistry::new();
+        registry.register(Arc::new(SystemMib)); // must run first to set sys_object_id
+        registry.register(Arc::new(CiscoTag));
+        registry
+    }
+
+    #[test]
+    fn sysobjectid_matching_is_arc_boundary_aware() {
+        assert!(sysobjectid_matches(Some("1.3.6.1.4.1.9"), "1.3.6.1.4.1.9"));
+        assert!(sysobjectid_matches(
+            Some("1.3.6.1.4.1.9.1.3"),
+            "1.3.6.1.4.1.9"
+        ));
+        // 99 must not match the prefix 9.
+        assert!(!sysobjectid_matches(
+            Some("1.3.6.1.4.1.99"),
+            "1.3.6.1.4.1.9"
+        ));
+        assert!(!sysobjectid_matches(None, "1.3.6.1.4.1.9"));
+    }
+
+    #[tokio::test]
+    async fn vendor_mib_runs_only_for_matching_sysobjectid() {
+        let registry = registry_with_cisco_tag();
+        let sysobjects = SysObjectIds::default();
+
+        // Cisco device: the vendor MIB applies and tags the model.
+        let mut cisco = WalkSession::parse(CISCO_WALK).unwrap();
+        let device = registry.inventory(&mut cisco, &sysobjects).await.unwrap();
+        assert_eq!(device.info.model.as_deref(), Some("tagged-by-vendor-mib"));
+
+        // Juniper device: the Cisco MIB is skipped.
+        let mut juniper = WalkSession::parse(
+            ".1.3.6.1.2.1.1.1.0 = STRING: \"Juniper\"\n\
+             .1.3.6.1.2.1.1.2.0 = OID: .1.3.6.1.4.1.2636.1.1\n",
+        )
+        .unwrap();
+        let device = registry.inventory(&mut juniper, &sysobjects).await.unwrap();
+        assert_eq!(device.info.model, None);
+    }
 
     #[tokio::test]
     async fn inventory_runs_standard_mibs_and_classifies() {
