@@ -35,14 +35,14 @@ pub struct NetInventoryTask {
 }
 
 impl NetInventoryTask {
-    /// Creates a task that tries `credentials` in order, running all standard
-    /// MIB modules. Defaults: UDP 161, 1-second per-request timeout, no retries,
-    /// empty `sysobject.ids`.
+    /// Creates a task that tries `credentials` in order, running the standard
+    /// MIBs plus the (sysObjectID-gated) vendor MIBs. Defaults: UDP 161,
+    /// 1-second per-request timeout, no retries, empty `sysobject.ids`.
     #[must_use]
     pub fn new(credentials: Vec<SnmpCredentials>) -> Self {
         Self {
             credentials: Arc::from(credentials),
-            registry: MibRegistry::with_standard(),
+            registry: MibRegistry::with_defaults(),
             sysobjects: Arc::new(SysObjectIds::default()),
             port: SNMP_PORT,
             timeout: Duration::from_secs(1),

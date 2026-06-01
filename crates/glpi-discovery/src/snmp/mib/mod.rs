@@ -31,6 +31,7 @@ pub mod ip_mib;
 pub mod lldp_mib;
 pub mod printer_mib;
 pub mod system_mib;
+pub mod vendor;
 
 pub use bridge_mib::BridgeMib;
 pub use cdp_mib::CdpMib;
@@ -43,6 +44,7 @@ pub use ip_mib::IpMib;
 pub use lldp_mib::LldpMib;
 pub use printer_mib::PrinterMib;
 pub use system_mib::SystemMib;
+pub use vendor::CiscoMib;
 
 /// One MIB-support module: reads a slice of a device into [`NetworkDevice`].
 #[async_trait]
@@ -97,6 +99,16 @@ impl MibRegistry {
         registry.register(Arc::new(LldpMib));
         registry.register(Arc::new(CdpMib));
         registry.register(Arc::new(IpMib));
+        registry
+    }
+
+    /// Creates a registry with the standard MIBs plus all vendor MIBs. Vendor
+    /// modules are gated by `sysObjectID`, so this is the right default for a
+    /// real inventory.
+    #[must_use]
+    pub fn with_defaults() -> Self {
+        let mut registry = Self::with_standard();
+        vendor::register_all(&mut registry);
         registry
     }
 
