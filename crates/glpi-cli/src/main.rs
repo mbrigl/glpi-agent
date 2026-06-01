@@ -10,12 +10,14 @@
 //! clean for the JSON result.
 
 use std::net::IpAddr;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use glpi_core::types::snmp::SnmpCredentials;
 use glpi_discovery::{Ipv4Range, NetDiscoveryTask, NetInventoryTask};
+use glpi_transport::{GlpiClient, Injector};
 use tracing_subscriber::EnvFilter;
 
 /// The GLPI Agent command-line interface.
@@ -32,6 +34,8 @@ enum Command {
     Netdiscovery(NetDiscoveryArgs),
     /// Inventory a single device over SNMP (NetInventory).
     Netinventory(NetInventoryArgs),
+    /// Send existing inventory files (JSON/XML) to a GLPI server.
+    Inject(InjectArgs),
 }
 
 #[derive(Args)]
@@ -76,6 +80,37 @@ struct NetInventoryArgs {
     snmp_retries: u32,
 }
 
+#[derive(Args)]
+struct InjectArgs {
+    /// Inventory files to send (JSON or XML; format inferred from extension).
+    #[arg(required = true, value_name = "FILE")]
+    files: Vec<PathBuf>,
+
+    /// GLPI server URL.
+    #[arg(short = 's', long, value_name = "URL")]
+    server: String,
+
+    /// HTTP Basic auth username.
+    #[arg(short = 'u', long)]
+    user: Option<String>,
+
+    /// HTTP Basic auth password.
+    #[arg(short = 'p', long)]
+    password: Option<String>,
+
+    /// OAuth2 bearer token.
+    #[arg(long, value_name = "TOKEN")]
+    oauth_token: Option<String>,
+
+    /// CA certificate file (PEM) for server verification.
+    #[arg(long, value_name = "PATH")]
+    ca_cert_file: Option<PathBuf>,
+
+    /// Disable TLS certificate verification (insecure).
+    #[arg(long)]
+    no_ssl_check: bool,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -88,7 +123,34 @@ async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Netdiscovery(args) => run_netdiscovery(args).await,
         Command::Netinventory(args) => run_netinventory(args).await,
+        Command::Inject(args) => run_inject(args).await,
     }
+}
+
+/// Sends the given inventory files to a GLPI server.
+async fn run_inject(args: InjectArgs) -> Result<()> {
+    let mut builder = GlpiClient::builder(&args.server)
+        .with_context(|| format!("invalid server URL {:?}", args.server))?;
+    if let (Some(user), Some(password)) = (&args.user, &args.password) {
+        builder = builder.basic_auth(user.clone(), password.clone());
+    }
+    if let Some(token) = &args.oauth_token {
+        builder = builder.oauth_token(token.clone());
+    }
+    if let Some(ca) = &args.ca_cert_file {
+        builder = builder.ca_cert_file(ca.clone());
+    }
+    let client = builder.no_ssl_check(args.no_ssl_check).build()?;
+
+    let injector = Injector::new(client);
+    for file in &args.files {
+        injector
+            .inject_file(file)
+            .await
+            .with_context(|| format!("injecting {}", file.display()))?;
+        tracing::info!(file = %file.display(), "injected");
+    }
+    Ok(())
 }
 
 /// Inventories a single device and prints the result as JSON to stdout.
@@ -229,5 +291,36 @@ mod tests {
     #[test]
     fn netinventory_rejects_an_invalid_target() {
         assert!(Cli::try_parse_from(["glpi-agent", "netinventory", "not-an-ip"]).is_err());
+    }
+
+    #[test]
+    fn parses_inject_with_server_and_auth() {
+        let cli = Cli::try_parse_from([
+            "glpi-agent",
+            "inject",
+            "a.json",
+            "b.xml",
+            "--server",
+            "https://glpi.example/front/inventory.php",
+            "-u",
+            "agent",
+            "-p",
+            "secret",
+            "--no-ssl-check",
+        ])
+        .unwrap();
+        let Command::Inject(args) = cli.command else {
+            panic!("expected inject");
+        };
+        assert_eq!(args.files.len(), 2);
+        assert_eq!(args.server, "https://glpi.example/front/inventory.php");
+        assert_eq!(args.user.as_deref(), Some("agent"));
+        assert!(args.no_ssl_check);
+    }
+
+    #[test]
+    fn inject_requires_server_and_files() {
+        assert!(Cli::try_parse_from(["glpi-agent", "inject", "a.json"]).is_err());
+        assert!(Cli::try_parse_from(["glpi-agent", "inject", "--server", "http://x"]).is_err());
     }
 }
