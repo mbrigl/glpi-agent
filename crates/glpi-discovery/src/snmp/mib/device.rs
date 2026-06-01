@@ -114,6 +114,30 @@ impl Port {
     }
 }
 
+/// A printer consumable (a row of `Printer-MIB`'s `prtMarkerSuppliesTable`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Supply {
+    /// `prtMarkerSuppliesDescription`.
+    pub description: Option<String>,
+    /// `prtMarkerSuppliesType` (3 = toner, 4 = wasteToner, …).
+    pub r#type: Option<i64>,
+    /// `prtMarkerSuppliesLevel` (current level, in `unit`s; -2 = unknown).
+    pub level: Option<i64>,
+    /// `prtMarkerSuppliesMaxCapacity`.
+    pub max_capacity: Option<i64>,
+    /// `prtMarkerSuppliesSupplyUnit`.
+    pub unit: Option<i64>,
+}
+
+/// Printer-specific inventory (RFC 3805 `Printer-MIB`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Printer {
+    /// Lifetime page count (`prtMarkerLifeCount`).
+    pub total_pages: Option<i64>,
+    /// Consumables (toner/ink cartridges, …), ordered by table index.
+    pub supplies: Vec<Supply>,
+}
+
 /// A full network-device inventory result.
 ///
 /// `Default` yields an empty device that MIB modules progressively fill in.
@@ -125,4 +149,6 @@ pub struct NetworkDevice {
     pub ports: Vec<Port>,
     /// Physical components, ordered by `entPhysicalIndex`.
     pub components: Vec<Component>,
+    /// Printer details, when the device exposes the `Printer-MIB`.
+    pub printer: Option<Printer>,
 }

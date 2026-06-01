@@ -25,11 +25,13 @@ use crate::snmp::value::SnmpValue;
 pub mod device;
 pub mod entity_mib;
 pub mod if_mib;
+pub mod printer_mib;
 pub mod system_mib;
 
-pub use device::{Component, DeviceInfo, NetworkDevice, Port};
+pub use device::{Component, DeviceInfo, NetworkDevice, Port, Printer, Supply};
 pub use entity_mib::EntityMib;
 pub use if_mib::IfMib;
+pub use printer_mib::PrinterMib;
 pub use system_mib::SystemMib;
 
 /// One MIB-support module: reads a slice of a device into [`NetworkDevice`].
@@ -69,6 +71,7 @@ impl MibRegistry {
         registry.register(Arc::new(SystemMib));
         registry.register(Arc::new(IfMib));
         registry.register(Arc::new(EntityMib));
+        registry.register(Arc::new(PrinterMib));
         registry
     }
 
@@ -150,6 +153,33 @@ where
     Ok(())
 }
 
+/// Like [`apply_column`] but keys rows by the full instance *suffix* (the arcs
+/// beyond `base`), for tables whose index spans more than one arc (e.g.
+/// `prtMarkerSuppliesTable`, indexed by `hrDeviceIndex.suppliesIndex`).
+pub(crate) async fn apply_suffix_column<T, N, F>(
+    session: &mut dyn SnmpQuery,
+    base: &[u64],
+    rows: &mut BTreeMap<Vec<u64>, T>,
+    new_row: N,
+    set: F,
+) -> Result<()>
+where
+    N: Fn(&[u64]) -> T,
+    F: Fn(&mut T, SnmpValue),
+{
+    for (oid, value) in session.walk(base).await? {
+        if oid.len() > base.len() && oid.starts_with(base) {
+            let suffix = oid[base.len()..].to_vec();
+            set(
+                rows.entry(suffix.clone())
+                    .or_insert_with(|| new_row(&suffix)),
+                value,
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Returns the single-arc table index of `oid` under `base` (one arc beyond it).
 pub(crate) fn table_index(oid: &[u64], base: &[u64]) -> Option<u64> {
     if oid.len() == base.len() + 1 && oid.starts_with(base) {
@@ -165,6 +195,11 @@ pub(crate) fn as_i64(value: &SnmpValue) -> Option<i64> {
         SnmpValue::Integer(n) => Some(*n),
         _ => None,
     }
+}
+
+/// Extracts a signed number from an integer or any counter/gauge type.
+pub(crate) fn as_number(value: &SnmpValue) -> Option<i64> {
+    as_i64(value).or_else(|| as_u64(value).and_then(|n| i64::try_from(n).ok()))
 }
 
 /// Extracts an unsigned value from any of the counter/gauge/integer types.
@@ -204,7 +239,7 @@ mod tests {
         let mut session = WalkSession::parse(CISCO_WALK).unwrap();
         let sysobjects = SysObjectIds::parse("9.1.3\tCisco\tNETWORKING\tCatalyst 2960\n");
         let registry = MibRegistry::with_standard();
-        assert_eq!(registry.len(), 3);
+        assert_eq!(registry.len(), 4);
 
         let device = registry.inventory(&mut session, &sysobjects).await.unwrap();
         assert_eq!(device.info.name.as_deref(), Some("sw-1"));

@@ -39,8 +39,8 @@ pub use credentials::{
     security_level, SecurityLevel,
 };
 pub use mib::{
-    Component, DeviceInfo, EntityMib, IfMib, MibRegistry, MibSupport, NetworkDevice, Port,
-    SystemMib,
+    Component, DeviceInfo, EntityMib, IfMib, MibRegistry, MibSupport, NetworkDevice, Port, Printer,
+    PrinterMib, Supply, SystemMib,
 };
 pub use query::{identify, SnmpQuery, SnmpSysInfo};
 pub use sysobject::{SysObjectEntry, SysObjectIds};
