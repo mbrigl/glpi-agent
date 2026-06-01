@@ -13,19 +13,22 @@
 //! - [`client`] — [`SnmpClient`], the async get/getnext/walk wrapper with
 //!   timeout and retry handling,
 //! - [`query`] — the [`SnmpQuery`] trait and host [`identify`]ication,
-//! - [`sysobject`] — the `sysobject.ids` device-classification database.
+//! - [`sysobject`] — the `sysobject.ids` device-classification database,
+//! - [`advanced_support`] — the `snmp-advanced-support.cfg` session-test config.
 //!
 //! [`SnmpCredentials`]: glpi_core::types::snmp::SnmpCredentials
 //! [`Security`]: snmp2::v3::Security
 //! [`SnmpQuery`]: query::SnmpQuery
 //! [`identify`]: query::identify
 
+pub mod advanced_support;
 pub mod client;
 pub mod credentials;
 pub mod query;
 pub mod sysobject;
 pub mod value;
 
+pub use advanced_support::AdvancedSupport;
 pub use client::{SnmpClient, SNMP_PORT};
 pub use credentials::{
     build_security, community, map_auth_protocol, map_priv_cipher, priv_key_extension,
