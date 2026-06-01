@@ -35,7 +35,7 @@ pub use methods::ping::{EchoRequest, PingMethod};
 pub use methods::snmp::SnmpMethod;
 pub use scanner::{ProgressCallback, ScanProgress, Scanner};
 pub use snmp::{
-    identify, AdvancedSupport, BridgeMib, Component, DeviceInfo, EntityMib, IfMib, LldpMib,
+    identify, AdvancedSupport, BridgeMib, CdpMib, Component, DeviceInfo, EntityMib, IfMib, LldpMib,
     MibRegistry, MibSupport, Neighbor, NeighborProtocol, NetworkDevice, Port, Printer, PrinterMib,
     SecurityLevel, SnmpClient, SnmpQuery, SnmpSysInfo, SnmpValue, Supply, SysObjectEntry,
     SysObjectIds, SystemMib, WalkSession, SNMP_PORT,

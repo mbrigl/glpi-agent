@@ -23,6 +23,7 @@ use crate::snmp::sysobject::SysObjectIds;
 use crate::snmp::value::SnmpValue;
 
 pub mod bridge_mib;
+pub mod cdp_mib;
 pub mod device;
 pub mod entity_mib;
 pub mod if_mib;
@@ -31,6 +32,7 @@ pub mod printer_mib;
 pub mod system_mib;
 
 pub use bridge_mib::BridgeMib;
+pub use cdp_mib::CdpMib;
 pub use device::{
     Component, DeviceInfo, Neighbor, NeighborProtocol, NetworkDevice, Port, Printer, Supply,
 };
@@ -80,6 +82,7 @@ impl MibRegistry {
         registry.register(Arc::new(PrinterMib));
         registry.register(Arc::new(BridgeMib));
         registry.register(Arc::new(LldpMib));
+        registry.register(Arc::new(CdpMib));
         registry
     }
 
@@ -264,7 +267,7 @@ mod tests {
         let mut session = WalkSession::parse(CISCO_WALK).unwrap();
         let sysobjects = SysObjectIds::parse("9.1.3\tCisco\tNETWORKING\tCatalyst 2960\n");
         let registry = MibRegistry::with_standard();
-        assert_eq!(registry.len(), 6);
+        assert_eq!(registry.len(), 7);
 
         let device = registry.inventory(&mut session, &sysobjects).await.unwrap();
         assert_eq!(device.info.name.as_deref(), Some("sw-1"));
