@@ -1,22 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//! `glpi-discovery` — Network discovery and SNMP inventory.
+//! `glpi-discovery` — network discovery and SNMP inventory.
 //!
-//! Part of the GLPI Agent Rust workspace (v2.0.0).
-//! Placeholder crate; implementation lands in a later phase.
+//! Part of the GLPI Agent Rust workspace (v2.0.0). This crate hosts the
+//! NetDiscovery / NetInventory tasks (Phase 2+): the parallel scanner, the
+//! discovery methods (ping, ARP, NetBIOS, SNMP) and the SNMP stack with its
+//! MIB-support modules.
+//!
+//! Landing incrementally; currently available:
+//!
+//! - [`ip_range`] — IPv4 range expansion (single / CIDR / `start-end`) feeding
+//!   the scanner.
 
-/// Returns this crate's package name (placeholder smoke-test symbol).
-#[must_use]
-pub fn crate_name() -> &'static str {
-    env!("CARGO_PKG_NAME")
-}
+pub mod ip_range;
 
-#[cfg(test)]
-mod tests {
-    use super::crate_name;
-
-    #[test]
-    fn crate_name_matches_package() {
-        assert_eq!(crate_name(), env!("CARGO_PKG_NAME"));
-    }
-}
+pub use ip_range::{Ipv4Range, Ipv4RangeIter};
