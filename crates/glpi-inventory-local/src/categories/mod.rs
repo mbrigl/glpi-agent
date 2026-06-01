@@ -11,12 +11,15 @@
 //!
 //! - [`os`] — operating-system identity (`/etc/os-release` + kernel),
 //! - [`cpu`] — physical CPUs (`/proc/cpuinfo`),
-//! - [`memory`] — memory modules (`dmidecode -t 17`).
+//! - [`memory`] — memory modules (`dmidecode -t 17`),
+//! - [`software`] — installed packages (dpkg / rpm).
 
 pub mod cpu;
 pub mod memory;
 pub mod os;
+pub mod software;
 
 pub use cpu::{parse_cpuinfo, Cpu};
 pub use memory::{parse_dmidecode_memory, MemoryModule};
 pub use os::{parse_os_release, OperatingSystem};
+pub use software::{parse_packages, Software};
