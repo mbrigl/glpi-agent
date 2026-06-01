@@ -24,6 +24,7 @@ use std::time::Duration;
 use glpi_core::error::Result;
 use glpi_core::types::network::MacAddress;
 use glpi_core::types::snmp::SnmpCredentials;
+use serde::Serialize;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -40,7 +41,7 @@ pub const SYS_CONTACT: [u64; 9] = [1, 3, 6, 1, 2, 1, 1, 4, 0];
 pub const SYS_LOCATION: [u64; 9] = [1, 3, 6, 1, 2, 1, 1, 6, 0];
 
 /// SNMP-derived view of a discovered device.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct SnmpDevice {
     /// `sysDescr` text.
     pub description: String,
@@ -61,7 +62,7 @@ pub struct SnmpDevice {
 }
 
 /// A device found during a NetDiscovery scan.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DiscoveredDevice {
     /// The address that responded.
     pub address: IpAddr,
