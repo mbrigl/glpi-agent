@@ -12,6 +12,9 @@ workspace = true
 
 [dependencies]
 glpi-core = { path = "../glpi-core" }
+tokio.workspace = true
+async-trait.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true

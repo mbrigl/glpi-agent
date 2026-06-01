@@ -10,8 +10,17 @@
 //! Landing incrementally; currently available:
 //!
 //! - [`ip_range`] — IPv4 range expansion (single / CIDR / `start-end`) feeding
-//!   the scanner.
+//!   the scanner,
+//! - [`traits`] — the [`DiscoveryMethod`] abstraction and its result types,
+//! - [`scanner`] — the bounded-concurrency parallel [`Scanner`].
+//!
+//! [`DiscoveryMethod`]: traits::DiscoveryMethod
+//! [`Scanner`]: scanner::Scanner
 
 pub mod ip_range;
+pub mod scanner;
+pub mod traits;
 
 pub use ip_range::{Ipv4Range, Ipv4RangeIter};
+pub use scanner::{ProgressCallback, ScanProgress, Scanner};
+pub use traits::{DiscoveredHost, DiscoveryMethod, Probe};
