@@ -11,6 +11,8 @@
 
 use serde::Serialize;
 
+use super::dmi;
+
 /// A populated memory module (a DMI type 17 device).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct MemoryModule {
@@ -40,29 +42,23 @@ pub struct MemoryModule {
 /// Parses `dmidecode -t 17` output into the populated memory modules.
 #[must_use]
 pub fn parse_dmidecode_memory(text: &str) -> Vec<MemoryModule> {
-    let mut modules = Vec::new();
-    for block in text.split("\n\n") {
-        if !block.lines().any(|l| l.trim() == "Memory Device") {
-            continue;
-        }
-        let fields = block_fields(block);
-        // Skip empty slots.
-        match fields_get(&fields, "Size") {
-            Some(size) if !size.contains("No Module") => {
-                modules.push(MemoryModule {
-                    capacity: parse_size_mb(size),
-                    memory_type: clean(fields_get(&fields, "Type")),
-                    speed: fields_get(&fields, "Speed").and_then(parse_speed),
-                    caption: clean(fields_get(&fields, "Locator")),
-                    manufacturer: clean(fields_get(&fields, "Manufacturer")),
-                    serial_number: clean(fields_get(&fields, "Serial Number")),
-                    model: clean(fields_get(&fields, "Part Number")),
-                });
-            }
-            _ => {}
-        }
-    }
-    modules
+    dmi::parse_blocks(text)
+        .into_iter()
+        .filter(|block| block.name == "Memory Device")
+        .filter_map(|block| {
+            // Skip empty slots.
+            let size = block.get("Size").filter(|s| !s.contains("No Module"))?;
+            Some(MemoryModule {
+                capacity: parse_size_mb(size),
+                memory_type: dmi::clean(block.get("Type")),
+                speed: block.get("Speed").and_then(parse_speed),
+                caption: dmi::clean(block.get("Locator")),
+                manufacturer: dmi::clean(block.get("Manufacturer")),
+                serial_number: dmi::clean(block.get("Serial Number")),
+                model: dmi::clean(block.get("Part Number")),
+            })
+        })
+        .collect()
 }
 
 /// Collects the live memory modules via `dmidecode -t 17` (Linux).
@@ -85,37 +81,6 @@ pub fn collect() -> Vec<MemoryModule> {
 #[must_use]
 pub fn collect() -> Vec<MemoryModule> {
     Vec::new()
-}
-
-/// Collects the indented `Key: Value` lines of a dmidecode block.
-fn block_fields(block: &str) -> Vec<(String, String)> {
-    block
-        .lines()
-        .filter(|l| l.starts_with('\t') || l.starts_with(' '))
-        .filter_map(|l| l.split_once(':'))
-        .map(|(k, v)| (k.trim().to_owned(), v.trim().to_owned()))
-        .collect()
-}
-
-fn fields_get<'a>(fields: &'a [(String, String)], key: &str) -> Option<&'a str> {
-    fields
-        .iter()
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.as_str())
-}
-
-/// Treats DMI placeholders as absent.
-fn clean(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|v| {
-            !v.is_empty()
-                && !matches!(
-                    *v,
-                    "Unknown" | "Not Specified" | "<OUT OF SPEC>" | "None" | "Not Provided"
-                )
-        })
-        .map(ToOwned::to_owned)
 }
 
 /// Parses a dmidecode size (`"16384 MB"`, `"16 GB"`) into megabytes.
@@ -188,8 +153,7 @@ Memory Device
 
     #[test]
     fn placeholder_values_become_none() {
-        let block =
-            "x\nMemory Device\n\tSize: 4096 MB\n\tType: Unknown\n\tManufacturer: Not Specified\n";
+        let block = "Handle 0x0012, DMI type 17\nMemory Device\n\tSize: 4096 MB\n\tType: Unknown\n\tManufacturer: Not Specified\n";
         let modules = parse_dmidecode_memory(block);
         assert_eq!(modules[0].memory_type, None);
         assert_eq!(modules[0].manufacturer, None);

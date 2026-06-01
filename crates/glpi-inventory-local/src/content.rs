@@ -9,7 +9,9 @@
 
 use serde::Serialize;
 
-use crate::categories::{Cpu, MemoryModule, NetworkInterface, OperatingSystem, Software};
+use crate::categories::{
+    Bios, Cpu, Hardware, MemoryModule, NetworkInterface, OperatingSystem, Software,
+};
 
 /// The assembled local-inventory content.
 ///
@@ -17,6 +19,12 @@ use crate::categories::{Cpu, MemoryModule, NetworkInterface, OperatingSystem, So
 /// carries what was actually collected.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Content {
+    /// BIOS / system / motherboard identity.
+    #[serde(rename = "bios", skip_serializing_if = "Option::is_none")]
+    pub bios: Option<Bios>,
+    /// Device-level identity (hostname, UUID).
+    #[serde(rename = "hardware", skip_serializing_if = "Option::is_none")]
+    pub hardware: Option<Hardware>,
     /// Operating-system identity.
     #[serde(rename = "operatingsystem", skip_serializing_if = "Option::is_none")]
     pub operating_system: Option<OperatingSystem>,

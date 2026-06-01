@@ -13,15 +13,20 @@
 //! - [`cpu`] — physical CPUs (`/proc/cpuinfo`),
 //! - [`memory`] — memory modules (`dmidecode -t 17`),
 //! - [`software`] — installed packages (dpkg / rpm),
-//! - [`network`] — network interfaces (`ip -o link` / `ip -o addr`).
+//! - [`network`] — network interfaces (`ip -o link` / `ip -o addr`),
+//! - [`hardware`] — BIOS / system / board identity (`dmidecode`).
 
 pub mod cpu;
+pub mod hardware;
 pub mod memory;
 pub mod network;
 pub mod os;
 pub mod software;
 
+pub(crate) mod dmi;
+
 pub use cpu::{parse_cpuinfo, Cpu};
+pub use hardware::{parse_dmidecode_hardware, Bios, Hardware};
 pub use memory::{parse_dmidecode_memory, MemoryModule};
 pub use network::{parse_interfaces, NetworkInterface};
 pub use os::{parse_os_release, OperatingSystem};
