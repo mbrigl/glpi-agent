@@ -7,14 +7,17 @@
 //! available:
 //!
 //! - [`arp`] — MAC resolution from the system ARP cache,
-//! - [`ping`] — liveness via unprivileged ICMP echo with a TCP-connect fallback.
+//! - [`ping`] — liveness via unprivileged ICMP echo with a TCP-connect fallback,
+//! - [`netbios`] — hostname resolution via a NetBIOS node status query.
 //!
-//! NetBIOS and SNMP follow in later units.
+//! SNMP follows in later units.
 //!
 //! [`DiscoveryMethod`]: crate::traits::DiscoveryMethod
 
 pub mod arp;
+pub mod netbios;
 pub mod ping;
 
 pub use arp::{ArpMethod, ArpTable};
+pub use netbios::{NetBiosMethod, NetBiosName};
 pub use ping::{EchoRequest, PingMethod};
