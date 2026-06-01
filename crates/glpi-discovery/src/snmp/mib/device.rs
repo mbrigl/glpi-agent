@@ -9,6 +9,8 @@
 //!
 //! [`MibSupport`]: super::MibSupport
 
+use glpi_core::types::network::MacAddress;
+
 /// Base identity and attributes of a discovered network device.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DeviceInfo {
@@ -32,6 +34,42 @@ pub struct DeviceInfo {
     pub model: Option<String>,
 }
 
+/// A network interface (a row of `ifTable` / `ifXTable`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Port {
+    /// `ifIndex` — the interface's table index.
+    pub index: u64,
+    /// `ifName` (from `ifXTable`), the short interface name.
+    pub name: Option<String>,
+    /// `ifDescr`, the interface description.
+    pub description: Option<String>,
+    /// `ifAlias` (from `ifXTable`), an operator-assigned label.
+    pub alias: Option<String>,
+    /// `ifType` (IANAifType numeric value).
+    pub if_type: Option<i64>,
+    /// `ifMtu`.
+    pub mtu: Option<i64>,
+    /// Interface speed in bits per second (`ifSpeed`, or `ifHighSpeed`×1e6).
+    pub speed: Option<u64>,
+    /// `ifPhysAddress` — the interface MAC, when a valid one is present.
+    pub mac: Option<MacAddress>,
+    /// `ifAdminStatus` (1 = up, 2 = down, 3 = testing).
+    pub admin_status: Option<i64>,
+    /// `ifOperStatus` (1 = up, 2 = down, …).
+    pub oper_status: Option<i64>,
+}
+
+impl Port {
+    /// Creates an empty port with the given `ifIndex`.
+    #[must_use]
+    pub fn new(index: u64) -> Self {
+        Self {
+            index,
+            ..Self::default()
+        }
+    }
+}
+
 /// A full network-device inventory result.
 ///
 /// `Default` yields an empty device that MIB modules progressively fill in.
@@ -39,4 +77,6 @@ pub struct DeviceInfo {
 pub struct NetworkDevice {
     /// Base device identity and attributes.
     pub info: DeviceInfo,
+    /// Network interfaces, ordered by `ifIndex`.
+    pub ports: Vec<Port>,
 }

@@ -20,9 +20,11 @@ use crate::snmp::query::SnmpQuery;
 use crate::snmp::sysobject::SysObjectIds;
 
 pub mod device;
+pub mod if_mib;
 pub mod system_mib;
 
-pub use device::{DeviceInfo, NetworkDevice};
+pub use device::{DeviceInfo, NetworkDevice, Port};
+pub use if_mib::IfMib;
 pub use system_mib::SystemMib;
 
 /// One MIB-support module: reads a slice of a device into [`NetworkDevice`].
@@ -60,6 +62,7 @@ impl MibRegistry {
     pub fn with_standard() -> Self {
         let mut registry = Self::new();
         registry.register(Arc::new(SystemMib));
+        registry.register(Arc::new(IfMib));
         registry
     }
 
@@ -136,7 +139,7 @@ mod tests {
         let mut session = WalkSession::parse(CISCO_WALK).unwrap();
         let sysobjects = SysObjectIds::parse("9.1.3\tCisco\tNETWORKING\tCatalyst 2960\n");
         let registry = MibRegistry::with_standard();
-        assert_eq!(registry.len(), 1);
+        assert_eq!(registry.len(), 2);
 
         let device = registry.inventory(&mut session, &sysobjects).await.unwrap();
         assert_eq!(device.info.name.as_deref(), Some("sw-1"));
