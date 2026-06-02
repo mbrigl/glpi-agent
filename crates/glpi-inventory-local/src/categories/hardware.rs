@@ -58,6 +58,7 @@ impl Bios {
     ///
     /// Used to back-fill the `/sys/class/dmi/id/` values behind `dmidecode`:
     /// `dmidecode` wins where it produced a value, sysfs covers the rest.
+    #[cfg(target_os = "linux")]
     fn fill_from(&mut self, fallback: Bios) {
         self.bios_date = self.bios_date.take().or(fallback.bios_date);
         self.bios_manufacturer = self.bios_manufacturer.take().or(fallback.bios_manufacturer);
@@ -228,11 +229,115 @@ fn read_dmi_id(name: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// Collects the live BIOS and hardware identity (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects the live BIOS and hardware identity (macOS) from
+/// `system_profiler SPHardwareDataType`, with the hostname from `hostname`.
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> (Option<Bios>, Option<Hardware>) {
+    let (bios, mut hardware) =
+        crate::sys::output("system_profiler", &["-json", "SPHardwareDataType"])
+            .map(|json| parse_macos_hardware(&json))
+            .unwrap_or_default();
+    hardware.name = crate::sys::output("hostname", &[])
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty());
+    (
+        (!bios.is_empty()).then_some(bios),
+        (!hardware.is_empty()).then_some(hardware),
+    )
+}
+
+/// Collects the live BIOS and hardware identity (Windows) from `Win32_BIOS`,
+/// `Win32_ComputerSystem`, `Win32_ComputerSystemProduct` and `Win32_BaseBoard`.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> (Option<Bios>, Option<Hardware>) {
+    let script = "\
+$b=Get-CimInstance Win32_BIOS; $c=Get-CimInstance Win32_ComputerSystem; \
+$p=Get-CimInstance Win32_ComputerSystemProduct; $m=Get-CimInstance Win32_BaseBoard; \
+[pscustomobject]@{BiosManufacturer=$b.Manufacturer;BiosVersion=$b.SMBIOSBIOSVersion;\
+BiosDate=$b.ReleaseDate;SystemSerial=$b.SerialNumber;SystemManufacturer=$c.Manufacturer;\
+SystemModel=$c.Model;Name=$c.Name;UUID=$p.UUID;BoardManufacturer=$m.Manufacturer;\
+BoardModel=$m.Product;BoardSerial=$m.SerialNumber} | ConvertTo-Json -Compress";
+    let (bios, hardware) = crate::sys::powershell(script)
+        .map(|json| parse_win_hardware(&json))
+        .unwrap_or_default();
+    (
+        (!bios.is_empty()).then_some(bios),
+        (!hardware.is_empty()).then_some(hardware),
+    )
+}
+
+/// Collects the live BIOS and hardware identity (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> (Option<Bios>, Option<Hardware>) {
     (None, None)
+}
+
+/// Parses `system_profiler -json SPHardwareDataType` (macOS) into the BIOS and
+/// hardware identity. The manufacturer is always Apple; the hostname is filled
+/// in by the live collector.
+#[must_use]
+pub fn parse_macos_hardware(json: &str) -> (Bios, Hardware) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return (Bios::default(), Hardware::default());
+    };
+    let Some(item) = value
+        .get("SPHardwareDataType")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.first())
+    else {
+        return (Bios::default(), Hardware::default());
+    };
+    let field = |key: &str| clean(crate::jsonutil::str_field(item, key).as_deref());
+    let bios = Bios {
+        bios_version: field("boot_rom_version"),
+        system_manufacturer: Some("Apple Inc.".to_owned()),
+        system_model: field("machine_model"),
+        system_serial: field("serial_number"),
+        ..Bios::default()
+    };
+    let hardware = Hardware {
+        name: None,
+        uuid: field("platform_UUID"),
+        vm_system: None,
+    };
+    (bios, hardware)
+}
+
+/// Parses the combined Windows CIM JSON (see [`collect`]) into the BIOS and
+/// hardware identity.
+#[must_use]
+pub fn parse_win_hardware(json: &str) -> (Bios, Hardware) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return (Bios::default(), Hardware::default());
+    };
+    let field = |key: &str| clean(crate::jsonutil::str_field(&value, key).as_deref());
+    let bios = Bios {
+        bios_date: field("BiosDate").map(|d| iso_date_prefix(&d)),
+        bios_manufacturer: field("BiosManufacturer"),
+        bios_version: field("BiosVersion"),
+        system_manufacturer: field("SystemManufacturer"),
+        system_model: field("SystemModel"),
+        system_serial: field("SystemSerial"),
+        board_manufacturer: field("BoardManufacturer"),
+        board_model: field("BoardModel"),
+        board_serial: field("BoardSerial"),
+        asset_tag: None,
+    };
+    let hardware = Hardware {
+        name: field("Name"),
+        uuid: field("UUID"),
+        vm_system: None,
+    };
+    (bios, hardware)
+}
+
+/// Returns the date portion of an ISO/CIM datetime (everything before the `T`
+/// or the first space), e.g. `"2023-03-15T00:00:00"` → `"2023-03-15"`.
+fn iso_date_prefix(value: &str) -> String {
+    value.split(['T', ' ']).next().unwrap_or(value).to_owned()
 }
 
 /// Detects the virtualization system via `systemd-detect-virt`.
@@ -246,6 +351,7 @@ fn detect_vm_system() -> Option<String> {
 }
 
 /// Maps a `systemd-detect-virt` token to a GLPI-style virtualization name.
+#[cfg(target_os = "linux")]
 fn map_vm_system(token: &str) -> String {
     match token {
         "" | "none" => "Physical",
@@ -265,6 +371,7 @@ fn map_vm_system(token: &str) -> String {
 }
 
 /// Capitalizes the first letter of an unrecognized token.
+#[cfg(target_os = "linux")]
 fn capitalize(s: &str) -> String {
     let mut chars = s.chars();
     chars
@@ -303,6 +410,7 @@ mod tests {
         assert_eq!(hardware.uuid, None);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn dmidecode_values_win_over_sysfs_backfill() {
         let mut bios = super::Bios {
@@ -390,6 +498,43 @@ Chassis Information
         assert_eq!(normalize_bios_date(None), None);
     }
 
+    #[test]
+    fn parses_macos_hardware_json() {
+        use super::parse_macos_hardware;
+        let json = r#"{"SPHardwareDataType":[{"machine_model":"MacBookPro18,3",
+            "serial_number":"C02XYZ123","platform_UUID":"ABC-UUID-1","boot_rom_version":"8419.80.7",
+            "chip_type":"Apple M1 Pro"}]}"#;
+        let (bios, hardware) = parse_macos_hardware(json);
+        assert_eq!(bios.system_manufacturer.as_deref(), Some("Apple Inc."));
+        assert_eq!(bios.system_model.as_deref(), Some("MacBookPro18,3"));
+        assert_eq!(bios.system_serial.as_deref(), Some("C02XYZ123"));
+        assert_eq!(bios.bios_version.as_deref(), Some("8419.80.7"));
+        assert_eq!(hardware.uuid.as_deref(), Some("ABC-UUID-1"));
+        // Bad JSON -> empty.
+        let (b, h) = parse_macos_hardware("nope");
+        assert!(b.is_empty() && h.is_empty());
+    }
+
+    #[test]
+    fn parses_windows_hardware_json() {
+        use super::parse_win_hardware;
+        let json = r#"{"BiosManufacturer":"American Megatrends","BiosVersion":"1.2.0",
+            "BiosDate":"2023-03-15T00:00:00","SystemSerial":"ABC1234","SystemManufacturer":"Dell Inc.",
+            "SystemModel":"OptiPlex 7090","Name":"DESKTOP-1","UUID":"4c4c4544-0042","BoardManufacturer":"Dell Inc.",
+            "BoardModel":"0ABCD1","BoardSerial":"To Be Filled By O.E.M."}"#;
+        let (bios, hardware) = parse_win_hardware(json);
+        assert_eq!(bios.bios_version.as_deref(), Some("1.2.0"));
+        // CIM datetime reduced to the date.
+        assert_eq!(bios.bios_date.as_deref(), Some("2023-03-15"));
+        assert_eq!(bios.system_model.as_deref(), Some("OptiPlex 7090"));
+        assert_eq!(bios.board_model.as_deref(), Some("0ABCD1"));
+        // SMBIOS placeholder board serial dropped by `clean`.
+        assert_eq!(bios.board_serial, None);
+        assert_eq!(hardware.name.as_deref(), Some("DESKTOP-1"));
+        assert_eq!(hardware.uuid.as_deref(), Some("4c4c4544-0042"));
+    }
+
+    #[cfg(target_os = "linux")]
     #[test]
     fn maps_vm_system_tokens() {
         use super::map_vm_system;

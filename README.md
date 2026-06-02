@@ -21,7 +21,7 @@ separate it from the Perl 1.x line.
 > | 2–3 | NetDiscovery + NetInventory (8 standard + 69 vendor MIBs) | ✅ core; MIBs grow |
 > | 4 | IEC 61850 (scan + SNMP merge; libiec61850 FFI behind a feature) | ✅ complete |
 > | 5 | CLI + daemon + HTTP control server + plugins | ✅ complete |
-> | 6 | Local inventory | 🟡 Linux done; Windows / macOS / exotic Unix pending |
+> | 6 | Local inventory | 🟡 Linux complete; core categories (OS/CPU/memory/hardware/storage) on Windows + macOS; rest pending |
 > | 7 | Remote inventory (SSH modes 1–3, WinRM) | 🟡 substantial |
 > | 8 | vSphere / ESX (`glpi-agent esx`, dump/dumpfile) | ✅ complete |
 > | 9 | Collect, Deploy, WakeOnLan (`glpi-agent wakeup`) | ✅ complete |

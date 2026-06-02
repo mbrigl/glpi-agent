@@ -608,23 +608,32 @@ Phase 10 stabilization/packaging tail.
 
 ### High Priority (Phase 6: Local Inventory — Windows & macOS)
 
-Linux is complete; most category collectors are currently a "non-Linux stub".
+Linux is complete. The **core identity categories — OS, CPU, memory, hardware/BIOS
+and storage — now work on Windows and macOS too**: each runs a system tool
+(Windows PowerShell `Get-CimInstance … | ConvertTo-Json`; macOS `sw_vers`,
+`sysctl`, `system_profiler -json`) and feeds a pure parser. The parsers are
+unit-tested on Linux and the collectors are compile-checked for both targets
+(`cargo check --target {x86_64-pc-windows-gnu,x86_64-apple-darwin}`). Pattern:
+`crate::sys::output(...)` / `crate::sys::powershell(...)` → a pure
+`parse_win_*` / `parse_macos_*` / `build_macos_*` function → the category struct,
+with `crate::jsonutil` for the JSON fields.
 
-**Windows Inventory Categories** (15+ needed):
-- WMI-based system information
-- Registry-based configuration
-- Windows-specific hardware detection
+**Still stubbed on Windows/macOS** (return empty off Linux): software, network,
+process, pci/controller, usb, user, battery, video, sound, printer, monitor,
+antivirus. These are the remaining Phase 6 work.
 
-**macOS Inventory Categories** (10+ needed):
-- System Profiler integration
-- IOKit for hardware info
-- Keychain for certificates
+- **Windows**: software via the registry uninstall keys (or `Get-Package`);
+  network via `Win32_NetworkAdapter[Configuration]`; the richer paths
+  (WMI on a dedicated COM worker thread, registry wildcards, cert store) per the
+  plan. **Windows COM code must run on a dedicated worker thread (not `Send`).**
+- **macOS**: software via `system_profiler SPApplicationsDataType`; network via
+  `ifconfig`/`networksetup`; IOKit / Keychain for the deeper data.
+- **Exotic Unix** (base inventory): Solaris/OmniOS, HP-UX, AIX, FreeBSD.
 
-**Exotic Unix** (base inventory): Solaris/OmniOS, HP-UX, AIX, FreeBSD.
-
-**Note**: Use `#[cfg(target_os = "windows")]` and `#[cfg(target_os = "macos")]` respectively.
-
-**Important**: Windows code must run on a dedicated COM worker thread (not `Send`).
+**Note**: gate each collector with `#[cfg(target_os = "…")]` and keep the parser
+pure (so it is tested on Linux); add a final
+`#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]`
+stub.
 
 ### Medium Priority (Phase 7: finish Remote inventory)
 

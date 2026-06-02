@@ -103,11 +103,93 @@ fn collect_timezone() -> Option<String> {
     })
 }
 
-/// Collects the live operating-system identity (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects the live operating-system identity (macOS).
+///
+/// Combines `sw_vers` (product name/version) with `uname -r` (Darwin kernel
+/// release) and the build architecture.
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> OperatingSystem {
+    let mut os = crate::sys::output("sw_vers", &[])
+        .map(|text| parse_sw_vers(&text))
+        .unwrap_or_default();
+    os.kernel_name = Some("Darwin".to_owned());
+    os.kernel_version = crate::sys::output("uname", &["-r"]).map(|s| s.trim().to_owned());
+    os.arch = Some(std::env::consts::ARCH.to_owned());
+    os
+}
+
+/// Collects the live operating-system identity (Windows) from
+/// `Win32_OperatingSystem`.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> OperatingSystem {
+    crate::sys::powershell(
+        "Get-CimInstance Win32_OperatingSystem | \
+         Select-Object Caption,Version,OSArchitecture | ConvertTo-Json -Compress",
+    )
+    .and_then(|json| parse_win_os(&json))
+    .unwrap_or_default()
+}
+
+/// Collects the live operating-system identity (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> OperatingSystem {
     OperatingSystem::default()
+}
+
+/// Parses macOS `sw_vers` output (`Key: Value` lines) into the OS identity.
+///
+/// `full_name` is synthesized as `"<ProductName> <ProductVersion>"`. The kernel
+/// and architecture are filled in by the live collector.
+#[must_use]
+pub fn parse_sw_vers(text: &str) -> OperatingSystem {
+    let mut name = None;
+    let mut version = None;
+    for line in text.lines() {
+        if let Some((key, value)) = line.split_once(':') {
+            let value = value.trim().to_owned();
+            match key.trim() {
+                "ProductName" => name = Some(value),
+                "ProductVersion" => version = Some(value),
+                _ => {}
+            }
+        }
+    }
+    let full_name = match (&name, &version) {
+        (Some(n), Some(v)) => Some(format!("{n} {v}")),
+        _ => name.clone(),
+    };
+    OperatingSystem {
+        name,
+        version,
+        full_name,
+        ..OperatingSystem::default()
+    }
+}
+
+/// Parses a `Win32_OperatingSystem` `ConvertTo-Json` object into the OS
+/// identity. Returns `None` only if the JSON itself is unparseable.
+#[must_use]
+pub fn parse_win_os(json: &str) -> Option<OperatingSystem> {
+    let value: serde_json::Value = serde_json::from_str(json).ok()?;
+    let field = |key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty())
+    };
+    Some(OperatingSystem {
+        name: field("Caption"),
+        version: field("Version"),
+        full_name: field("Caption"),
+        kernel_name: Some("Windows NT".to_owned()),
+        kernel_version: field("Version"),
+        arch: field("OSArchitecture"),
+        ..OperatingSystem::default()
+    })
 }
 
 /// Reads a file and returns its trimmed contents, if any.
@@ -217,6 +299,29 @@ ID=debian
         let os = parse_os_release("NAME='Arch Linux'\nVERSION_ID=rolling\n");
         assert_eq!(os.name.as_deref(), Some("Arch Linux"));
         assert_eq!(os.version.as_deref(), Some("rolling"));
+    }
+
+    #[test]
+    fn parses_macos_sw_vers() {
+        use super::parse_sw_vers;
+        let os =
+            parse_sw_vers("ProductName:\tmacOS\nProductVersion:\t14.4.1\nBuildVersion:\t23E224\n");
+        assert_eq!(os.name.as_deref(), Some("macOS"));
+        assert_eq!(os.version.as_deref(), Some("14.4.1"));
+        assert_eq!(os.full_name.as_deref(), Some("macOS 14.4.1"));
+    }
+
+    #[test]
+    fn parses_windows_os_json() {
+        use super::parse_win_os;
+        let json = r#"{"Caption":"Microsoft Windows 11 Pro","Version":"10.0.22631","OSArchitecture":"64-bit"}"#;
+        let os = parse_win_os(json).unwrap();
+        assert_eq!(os.name.as_deref(), Some("Microsoft Windows 11 Pro"));
+        assert_eq!(os.version.as_deref(), Some("10.0.22631"));
+        assert_eq!(os.kernel_name.as_deref(), Some("Windows NT"));
+        assert_eq!(os.arch.as_deref(), Some("64-bit"));
+        // Malformed JSON -> None.
+        assert!(parse_win_os("not json").is_none());
     }
 
     #[test]

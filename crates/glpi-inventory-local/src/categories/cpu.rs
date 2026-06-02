@@ -41,11 +41,105 @@ pub fn collect() -> Vec<Cpu> {
         .unwrap_or_default()
 }
 
-/// Collects the live physical CPUs (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects the live physical CPUs (macOS) from `sysctl`.
+///
+/// Apple exposes per-machine totals, not per-socket blocks, so the totals are
+/// split across `hw.packages` sockets. `hw.cpufrequency` is absent on Apple
+/// Silicon, so the nominal speed may be unknown there.
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> Vec<Cpu> {
+    use crate::sys::output;
+    let brand = output("sysctl", &["-n", "machdep.cpu.brand_string"]).map(|s| s.trim().to_owned());
+    let physical = output("sysctl", &["-n", "hw.physicalcpu"]).and_then(|s| s.trim().parse().ok());
+    let logical = output("sysctl", &["-n", "hw.logicalcpu"]).and_then(|s| s.trim().parse().ok());
+    let packages = output("sysctl", &["-n", "hw.packages"]).and_then(|s| s.trim().parse().ok());
+    let freq_hz = output("sysctl", &["-n", "hw.cpufrequency"]).and_then(|s| s.trim().parse().ok());
+    build_macos_cpus(brand, physical, logical, packages, freq_hz)
+}
+
+/// Collects the live physical CPUs (Windows) from `Win32_Processor`.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> Vec<Cpu> {
+    crate::sys::powershell(
+        "Get-CimInstance Win32_Processor | Select-Object \
+         Name,Manufacturer,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed | \
+         ConvertTo-Json -Compress",
+    )
+    .map(|json| parse_win_cpus(&json))
+    .unwrap_or_default()
+}
+
+/// Collects the live physical CPUs (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<Cpu> {
     Vec::new()
+}
+
+/// Assembles macOS CPUs from the `sysctl` totals: one entry per package, with
+/// the core/thread totals split evenly across `hw.packages` (default 1).
+#[must_use]
+pub fn build_macos_cpus(
+    brand: Option<String>,
+    physical: Option<u32>,
+    logical: Option<u32>,
+    packages: Option<u32>,
+    freq_hz: Option<u64>,
+) -> Vec<Cpu> {
+    if brand.is_none() && physical.is_none() && logical.is_none() {
+        return Vec::new();
+    }
+    let packages = packages.filter(|p| *p > 0).unwrap_or(1);
+    let manufacturer = brand.as_deref().and_then(cpu_vendor);
+    let cores = physical.map(|c| (c / packages).max(1));
+    let threads = logical.map(|t| (t / packages).max(1));
+    let speed = freq_hz.map(|hz| hz / 1_000_000);
+    (0..packages)
+        .map(|_| Cpu {
+            name: brand.clone(),
+            manufacturer: manufacturer.clone(),
+            speed,
+            cores,
+            threads,
+        })
+        .collect()
+}
+
+/// Parses a `Win32_Processor` `ConvertTo-Json` result (an object for a single
+/// socket, an array for several) into one [`Cpu`] per socket.
+#[must_use]
+pub fn parse_win_cpus(json: &str) -> Vec<Cpu> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    crate::jsonutil::array(value)
+        .iter()
+        .map(|item| Cpu {
+            name: crate::jsonutil::str_field(item, "Name"),
+            manufacturer: crate::jsonutil::str_field(item, "Manufacturer"),
+            speed: crate::jsonutil::u64_field(item, "MaxClockSpeed"),
+            cores: crate::jsonutil::u64_field(item, "NumberOfCores").map(|n| n as u32),
+            threads: crate::jsonutil::u64_field(item, "NumberOfLogicalProcessors")
+                .map(|n| n as u32),
+        })
+        .filter(|cpu| cpu != &Cpu::default())
+        .collect()
+}
+
+/// Maps a CPU brand string to a friendly manufacturer name.
+fn cpu_vendor(brand: &str) -> Option<String> {
+    let lower = brand.to_ascii_lowercase();
+    if lower.contains("intel") {
+        Some("Intel".to_owned())
+    } else if lower.contains("amd") {
+        Some("AMD".to_owned())
+    } else if lower.contains("apple") {
+        Some("Apple".to_owned())
+    } else {
+        None
+    }
 }
 
 /// Parses `/proc/cpuinfo` into the physical CPUs, ordered by `physical id`.
@@ -214,5 +308,54 @@ cpu cores\t: 6
     #[test]
     fn empty_input_yields_no_cpus() {
         assert!(parse_cpuinfo("").is_empty());
+    }
+
+    #[test]
+    fn macos_cpus_split_totals_across_packages() {
+        use super::build_macos_cpus;
+        // Single-package Apple Silicon (no frequency).
+        let cpus = build_macos_cpus(Some("Apple M2".to_owned()), Some(8), Some(8), Some(1), None);
+        assert_eq!(cpus.len(), 1);
+        assert_eq!(cpus[0].name.as_deref(), Some("Apple M2"));
+        assert_eq!(cpus[0].manufacturer.as_deref(), Some("Apple"));
+        assert_eq!(cpus[0].cores, Some(8));
+        assert_eq!(cpus[0].threads, Some(8));
+        assert_eq!(cpus[0].speed, None);
+
+        // Dual-socket Intel: 16 cores / 32 threads split across 2 packages.
+        let cpus = build_macos_cpus(
+            Some("Intel(R) Xeon(R)".to_owned()),
+            Some(16),
+            Some(32),
+            Some(2),
+            Some(2_600_000_000),
+        );
+        assert_eq!(cpus.len(), 2);
+        assert_eq!(cpus[0].manufacturer.as_deref(), Some("Intel"));
+        assert_eq!(cpus[0].cores, Some(8));
+        assert_eq!(cpus[0].threads, Some(16));
+        assert_eq!(cpus[0].speed, Some(2600)); // 2.6 GHz -> MHz
+
+        assert!(build_macos_cpus(None, None, None, None, None).is_empty());
+    }
+
+    #[test]
+    fn parses_windows_processor_json() {
+        use super::parse_win_cpus;
+        // Single socket -> a bare object.
+        let one = r#"{"Name":"Intel(R) Core(TM) i7-9750H","Manufacturer":"GenuineIntel",
+            "NumberOfCores":6,"NumberOfLogicalProcessors":12,"MaxClockSpeed":2600}"#;
+        let cpus = parse_win_cpus(one);
+        assert_eq!(cpus.len(), 1);
+        assert_eq!(cpus[0].cores, Some(6));
+        assert_eq!(cpus[0].threads, Some(12));
+        assert_eq!(cpus[0].speed, Some(2600));
+        assert!(cpus[0].name.as_deref().unwrap().contains("i7-9750H"));
+
+        // Two sockets -> an array.
+        let two = r#"[{"Name":"Xeon","NumberOfCores":8,"MaxClockSpeed":3000},
+                      {"Name":"Xeon","NumberOfCores":8,"MaxClockSpeed":3000}]"#;
+        assert_eq!(parse_win_cpus(two).len(), 2);
+        assert!(parse_win_cpus("nonsense").is_empty());
     }
 }

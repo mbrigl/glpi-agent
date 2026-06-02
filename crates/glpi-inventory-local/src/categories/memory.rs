@@ -76,11 +76,89 @@ pub fn collect() -> Vec<MemoryModule> {
     }
 }
 
-/// Collects the live memory modules (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects the live memory (macOS): the total RAM as one module.
+///
+/// macOS exposes per-DIMM detail only inconsistently (memory is soldered on
+/// Apple Silicon), so only the total from `hw.memsize` is reported.
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> Vec<MemoryModule> {
+    crate::sys::output("sysctl", &["-n", "hw.memsize"])
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .map(|bytes| vec![memory_from_total_bytes(bytes)])
+        .unwrap_or_default()
+}
+
+/// Collects the live memory modules (Windows) from `Win32_PhysicalMemory`.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> Vec<MemoryModule> {
+    crate::sys::powershell(
+        "Get-CimInstance Win32_PhysicalMemory | Select-Object \
+         Capacity,Speed,Manufacturer,PartNumber,SerialNumber,DeviceLocator,SMBIOSMemoryType | \
+         ConvertTo-Json -Compress",
+    )
+    .map(|json| parse_win_memory(&json))
+    .unwrap_or_default()
+}
+
+/// Collects the live memory modules (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<MemoryModule> {
     Vec::new()
+}
+
+/// Synthesizes a single "System Memory" module from the total RAM in bytes.
+#[must_use]
+pub fn memory_from_total_bytes(bytes: u64) -> MemoryModule {
+    MemoryModule {
+        capacity: Some(bytes / (1024 * 1024)),
+        caption: Some("System Memory".to_owned()),
+        ..MemoryModule::default()
+    }
+}
+
+/// Parses a `Win32_PhysicalMemory` `ConvertTo-Json` result into the populated
+/// memory modules (one per DIMM).
+#[must_use]
+pub fn parse_win_memory(json: &str) -> Vec<MemoryModule> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    crate::jsonutil::array(value)
+        .iter()
+        .map(|item| MemoryModule {
+            capacity: crate::jsonutil::u64_field(item, "Capacity").map(|b| b / (1024 * 1024)),
+            memory_type: crate::jsonutil::u64_field(item, "SMBIOSMemoryType")
+                .and_then(smbios_memory_type),
+            speed: crate::jsonutil::u64_field(item, "Speed"),
+            caption: crate::jsonutil::str_field(item, "DeviceLocator"),
+            manufacturer: crate::jsonutil::str_field(item, "Manufacturer"),
+            serial_number: crate::jsonutil::str_field(item, "SerialNumber"),
+            model: crate::jsonutil::str_field(item, "PartNumber"),
+        })
+        .filter(|m| m != &MemoryModule::default())
+        .collect()
+}
+
+/// Maps an SMBIOS memory-type code (SMBIOS spec 7.18.2) to a name.
+fn smbios_memory_type(code: u64) -> Option<String> {
+    let name = match code {
+        20 => "DDR",
+        21 => "DDR2",
+        22 => "DDR2 FB-DIMM",
+        24 => "DDR3",
+        26 => "DDR4",
+        34 => "DDR5",
+        27 => "LPDDR",
+        28 => "LPDDR2",
+        29 => "LPDDR3",
+        30 => "LPDDR4",
+        35 => "LPDDR5",
+        _ => return None,
+    };
+    Some(name.to_owned())
 }
 
 /// Parses a dmidecode size (`"16384 MB"`, `"16 GB"`) into megabytes.
@@ -162,5 +240,31 @@ Memory Device
     #[test]
     fn no_memory_devices_yields_empty() {
         assert!(parse_dmidecode_memory("Handle\nBIOS Information\n\tVendor: x\n").is_empty());
+    }
+
+    #[test]
+    fn macos_total_becomes_one_module() {
+        use super::memory_from_total_bytes;
+        let m = memory_from_total_bytes(17_179_869_184); // 16 GiB
+        assert_eq!(m.capacity, Some(16384));
+        assert_eq!(m.caption.as_deref(), Some("System Memory"));
+    }
+
+    #[test]
+    fn parses_windows_physical_memory_json() {
+        use super::parse_win_memory;
+        // Capacity arrives as a quoted big number; type is the SMBIOS code 26 (DDR4).
+        let json = r#"[{"Capacity":"17179869184","Speed":3200,"Manufacturer":"Samsung",
+            "PartNumber":"M471A1K43DB1-CWE ","SerialNumber":"12345","DeviceLocator":"DIMM 0",
+            "SMBIOSMemoryType":26}]"#;
+        let modules = parse_win_memory(json);
+        assert_eq!(modules.len(), 1);
+        let m = &modules[0];
+        assert_eq!(m.capacity, Some(16384));
+        assert_eq!(m.memory_type.as_deref(), Some("DDR4"));
+        assert_eq!(m.speed, Some(3200));
+        assert_eq!(m.caption.as_deref(), Some("DIMM 0"));
+        assert_eq!(m.model.as_deref(), Some("M471A1K43DB1-CWE")); // trimmed
+        assert!(parse_win_memory("oops").is_empty());
     }
 }
