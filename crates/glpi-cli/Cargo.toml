@@ -18,6 +18,7 @@ path = "src/main.rs"
 glpi-core = { path = "../glpi-core" }
 glpi-discovery = { path = "../glpi-discovery" }
 glpi-inventory-local = { path = "../glpi-inventory-local" }
+glpi-inventory-remote = { path = "../glpi-inventory-remote" }
 glpi-transport = { path = "../glpi-transport" }
 glpi-scheduler = { path = "../glpi-scheduler" }
 glpi-http = { path = "../glpi-http" }

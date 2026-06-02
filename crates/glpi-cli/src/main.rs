@@ -3,11 +3,10 @@
 //! `glpi-agent` — command-line entry point for the GLPI Agent Rust workspace
 //! (v2.0.0).
 //!
-//! The first wired-up subcommand is `netdiscovery`, which scans IPv4 ranges and
-//! prints the discovered devices as JSON (the other subcommands — inventory,
-//! netinventory, esx, remoteinventory, inject, wakeup, daemon — land in later
-//! phases). Logging honours `RUST_LOG` and is written to stderr so stdout stays
-//! clean for the JSON result.
+//! Subcommands: `inventory` (local), `netdiscovery`, `netinventory`,
+//! `remoteinventory` (SSH, with `--remote-workers` parallelism), `inject` and
+//! `daemon`; `esx` and `wakeup` land in later phases. Logging honours `RUST_LOG`
+//! and is written to stderr so stdout stays clean for the JSON result.
 
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -15,16 +14,25 @@ use std::time::Duration;
 
 use std::path::Path;
 
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
 use chrono::Utc;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use glpi_core::config::{Loader, Options};
 use glpi_core::protocol::glpi::InventoryRequest;
 use glpi_core::types::snmp::SnmpCredentials;
 use glpi_discovery::{Ipv4Range, NetDiscoveryTask, NetInventoryTask};
 use glpi_http::{HttpServer, TrustList, DEFAULT_HTTP_PORT};
+use glpi_inventory_local::Content;
+use glpi_inventory_remote::{
+    AssetnameSupport, RemoteInventory, RemoteModes, RemoteSession, RemoteTarget, RusshOptions,
+    RusshSession, SshCliSession,
+};
 use glpi_scheduler::{jitter, RunSchedule};
 use glpi_transport::{GlpiClient, Injector};
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 use tracing_subscriber::EnvFilter;
 
 /// The GLPI Agent command-line interface.
@@ -51,6 +59,8 @@ enum Command {
     Netdiscovery(NetDiscoveryArgs),
     /// Inventory a single device over SNMP (NetInventory).
     Netinventory(NetInventoryArgs),
+    /// Inventory remote hosts over SSH (RemoteInventory).
+    Remoteinventory(RemoteInventoryArgs),
     /// Send existing inventory files (JSON/XML) to a GLPI server.
     Inject(InjectArgs),
     /// Run continuously: periodic NetDiscovery plus an HTTP control server.
@@ -147,6 +157,60 @@ struct NetInventoryArgs {
     snmp_retries: u32,
 }
 
+/// SSH transport for remote inventory.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum Transport {
+    /// Pure-Rust `russh` transport (no system `ssh` needed). SSH mode 2.
+    Russh,
+    /// The system `ssh` command-line client. SSH mode 1.
+    Cli,
+}
+
+#[derive(Args)]
+struct RemoteInventoryArgs {
+    /// Remote targets (`ssh://[user[:password]@]host[:port][/?mode=…]`),
+    /// repeatable.
+    #[arg(required = true, value_name = "URL")]
+    targets: Vec<String>,
+
+    /// SSH transport to use.
+    #[arg(long, value_enum, default_value_t = Transport::Russh)]
+    transport: Transport,
+
+    /// Private-key file for public-key auth (repeatable; tried in order).
+    #[arg(short = 'i', long = "identity", value_name = "PATH")]
+    identities: Vec<PathBuf>,
+
+    /// `assetname-support` mode: 1 short, 2 as-is, 3 fqdn (overrides the URL's
+    /// `?assetname-support=`).
+    #[arg(long, value_name = "1|2|3")]
+    assetname_support: Option<String>,
+
+    /// Number of hosts inventoried concurrently.
+    #[arg(long, default_value_t = 1)]
+    remote_workers: usize,
+
+    /// Connection timeout in seconds.
+    #[arg(long, default_value_t = 15)]
+    timeout_secs: u64,
+
+    /// Exclude an inventory category (repeatable).
+    #[arg(long = "no-category", value_name = "CATEGORY")]
+    no_category: Vec<String>,
+
+    /// GLPI server URL to submit each host to (repeatable). If omitted, the
+    /// inventories are printed as JSON.
+    #[arg(short = 's', long = "server", value_name = "URL")]
+    servers: Vec<String>,
+
+    /// GLPI `itemtype` for the submissions (GLPI 11+ genericity).
+    #[arg(long, default_value = "Computer")]
+    itemtype: String,
+
+    #[command(flatten)]
+    http: HttpClientArgs,
+}
+
 #[derive(Args)]
 struct InjectArgs {
     /// Inventory files to send (JSON or XML; format inferred from extension).
@@ -215,6 +279,7 @@ async fn main() -> Result<()> {
         Command::Inventory(args) => run_inventory(args, &options).await,
         Command::Netdiscovery(args) => run_netdiscovery(args).await,
         Command::Netinventory(args) => run_netinventory(args).await,
+        Command::Remoteinventory(args) => run_remoteinventory(args, &options).await,
         Command::Inject(args) => run_inject(args).await,
         Command::Daemon(args) => run_daemon(args).await,
     }
@@ -439,6 +504,165 @@ async fn run_netinventory(args: NetInventoryArgs) -> Result<()> {
     Ok(())
 }
 
+/// A remote host's collected inventory: `(deviceid, content)` on success.
+type HostOutcome = (String, Result<(String, Content)>);
+
+/// Inventories one or more remote hosts over SSH, up to `--remote-workers` at a
+/// time. With `--server`, each host's inventory is submitted; otherwise the
+/// inventories are printed as a JSON array.
+async fn run_remoteinventory(args: RemoteInventoryArgs, options: &Options) -> Result<()> {
+    let targets = args
+        .targets
+        .iter()
+        .map(|url| RemoteTarget::parse(url).with_context(|| format!("invalid target {url:?}")))
+        .collect::<Result<Vec<_>>>()?;
+
+    let assetname_override = match &args.assetname_support {
+        Some(value) => Some(
+            AssetnameSupport::from_option(value)
+                .map_err(|e| anyhow::anyhow!("invalid --assetname-support: {e}"))?,
+        ),
+        None => None,
+    };
+
+    let mut disabled = options.no_category.clone();
+    disabled.extend(args.no_category.clone());
+    let timeout = Duration::from_secs(args.timeout_secs);
+
+    // Inventory hosts concurrently, capped by --remote-workers.
+    let semaphore = Arc::new(Semaphore::new(args.remote_workers.max(1)));
+    let mut tasks = JoinSet::new();
+    let count = targets.len();
+    for (index, target) in targets.into_iter().enumerate() {
+        let semaphore = semaphore.clone();
+        let identities = args.identities.clone();
+        let disabled = disabled.clone();
+        let transport = args.transport;
+        let host = target.host.clone();
+        tasks.spawn(async move {
+            let _permit = semaphore.acquire_owned().await.expect("semaphore open");
+            let result = inventory_remote_host(
+                target,
+                transport,
+                identities,
+                timeout,
+                assetname_override,
+                disabled,
+            )
+            .await;
+            (index, host, result)
+        });
+    }
+
+    let mut results: Vec<Option<HostOutcome>> = (0..count).map(|_| None).collect();
+    while let Some(joined) = tasks.join_next().await {
+        let (index, host, result) = joined.context("remote inventory task failed to join")?;
+        results[index] = Some((host, result));
+    }
+
+    let servers = if args.servers.is_empty() {
+        options.server.clone()
+    } else {
+        args.servers.clone()
+    };
+    let no_ssl_check = args.http.no_ssl_check || options.no_ssl_check;
+
+    let mut json = Vec::new();
+    let mut failures = 0usize;
+    for entry in results.into_iter().flatten() {
+        let (host, result) = entry;
+        match result {
+            Ok((deviceid, content)) => {
+                if servers.is_empty() {
+                    json.push(serde_json::json!({
+                        "target": host,
+                        "deviceid": deviceid,
+                        "content": content,
+                    }));
+                } else {
+                    let request = InventoryRequest::new(deviceid.clone(), &content)
+                        .with_itemtype(&args.itemtype);
+                    for server in &servers {
+                        let client = build_client(server, &args.http, no_ssl_check)?;
+                        client
+                            .submit_inventory(&request)
+                            .await
+                            .with_context(|| format!("submitting {host} inventory to {server}"))?;
+                        tracing::info!(server, %deviceid, "remote inventory submitted");
+                    }
+                }
+            }
+            Err(error) => {
+                failures += 1;
+                tracing::warn!(target = %host, "remote inventory failed: {error:#}");
+            }
+        }
+    }
+
+    if servers.is_empty() {
+        println!("{}", serde_json::to_string_pretty(&json)?);
+    }
+    if failures > 0 {
+        anyhow::bail!("{failures} of {count} remote host(s) failed");
+    }
+    Ok(())
+}
+
+/// Connects to one remote host, resolves its asset name (device id) and
+/// collects its inventory.
+async fn inventory_remote_host(
+    target: RemoteTarget,
+    transport: Transport,
+    identities: Vec<PathBuf>,
+    timeout: Duration,
+    assetname_override: Option<AssetnameSupport>,
+    disabled: Vec<String>,
+) -> Result<(String, Content)> {
+    let modes = RemoteModes::from_target(&target);
+    let mut session: Box<dyn RemoteSession> = match transport {
+        Transport::Russh => {
+            let mut opts = RusshOptions::new();
+            opts.connect_timeout = timeout;
+            for identity in &identities {
+                opts = opts.with_identity(identity.clone());
+            }
+            Box::new(
+                RusshSession::connect(&target, &opts)
+                    .await
+                    .with_context(|| format!("connecting to {}", target.host))?,
+            )
+        }
+        Transport::Cli => {
+            let mut session = SshCliSession::new(&target).accept_new_host_keys(true);
+            if let Some(identity) = identities.first() {
+                session = session.with_identity(identity.to_string_lossy().into_owned());
+            }
+            Box::new(session)
+        }
+    };
+
+    // Per-target assetname-support: CLI flag wins, else the URL option, else short.
+    let assetname = assetname_override
+        .or_else(|| {
+            target
+                .option("assetname-support")
+                .and_then(|value| AssetnameSupport::from_option(value).ok())
+        })
+        .unwrap_or_default();
+    let deviceid = assetname
+        .resolve(session.as_mut(), modes.perl())
+        .await
+        .unwrap_or_else(|_| target.host.clone());
+
+    let content = RemoteInventory::new()
+        .with_disabled_categories(disabled)
+        .with_modes(modes)
+        .collect(session.as_mut())
+        .await
+        .with_context(|| format!("collecting inventory from {}", target.host))?;
+    Ok((deviceid, content))
+}
+
 /// Runs the NetDiscovery scan and prints the result as JSON to stdout.
 async fn run_netdiscovery(args: NetDiscoveryArgs) -> Result<()> {
     let task = NetDiscoveryTask::new(parse_ranges(&args.ranges)?)
@@ -548,6 +772,56 @@ mod tests {
         assert_eq!(args.concurrency, 64);
         assert!(!args.arp);
         assert!(args.communities.is_empty());
+    }
+
+    #[test]
+    fn parses_remoteinventory_with_targets_and_options() {
+        use super::Transport;
+        let cli = Cli::try_parse_from([
+            "glpi-agent",
+            "remoteinventory",
+            "ssh://admin@10.0.0.5/?mode=ssh_perl",
+            "ssh://10.0.0.6",
+            "--transport",
+            "cli",
+            "-i",
+            "/keys/id_ed25519",
+            "--remote-workers",
+            "4",
+            "--assetname-support",
+            "3",
+            "--no-category",
+            "software",
+        ])
+        .unwrap();
+        let Command::Remoteinventory(args) = cli.command else {
+            panic!("expected remoteinventory");
+        };
+        assert_eq!(
+            args.targets,
+            vec!["ssh://admin@10.0.0.5/?mode=ssh_perl", "ssh://10.0.0.6"]
+        );
+        assert_eq!(args.transport, Transport::Cli);
+        assert_eq!(
+            args.identities,
+            vec![std::path::PathBuf::from("/keys/id_ed25519")]
+        );
+        assert_eq!(args.remote_workers, 4);
+        assert_eq!(args.assetname_support.as_deref(), Some("3"));
+        assert_eq!(args.no_category, vec!["software"]);
+    }
+
+    #[test]
+    fn remoteinventory_defaults_and_requires_a_target() {
+        use super::Transport;
+        assert!(Cli::try_parse_from(["glpi-agent", "remoteinventory"]).is_err());
+        let cli = Cli::try_parse_from(["glpi-agent", "remoteinventory", "ssh://host"]).unwrap();
+        let Command::Remoteinventory(args) = cli.command else {
+            panic!("expected remoteinventory");
+        };
+        assert_eq!(args.transport, Transport::Russh);
+        assert_eq!(args.remote_workers, 1);
+        assert_eq!(args.timeout_secs, 15);
     }
 
     #[test]

@@ -71,9 +71,10 @@ We chose **Phased Approach**, because:
   `russh` feature: password + key auth, TOFU host keys, channel exec),
   `assetname-support`, **mode 3 (`perl`)** — remote `perl` one-liners gated on a
   capability probe (richer `Net::CUPS` printers, `Net::Domain` FQDN fallback,
-  `RemoteModes` from `?mode=`), and the Linux command orchestration — done
-- Still pending: persistent `known_hosts` pinning, WinRM, `remote-workers`
-  parallelism, delta state files, CLI `remoteinventory` wiring
+  `RemoteModes` from `?mode=`), the Linux command orchestration, and the
+  `remoteinventory` CLI subcommand with `--remote-workers` parallelism
+  (Semaphore-bounded, optional per-host server submission) — done
+- Still pending: persistent `known_hosts` pinning, WinRM, delta state files
 - `glpi-vsphere`: VMware ESX/vCenter
 - State files and delta diff
 
