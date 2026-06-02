@@ -39,7 +39,12 @@ pub mod wmi;
 
 pub use checksum::{file_sha256_hex, file_sha512_hex, sha256_hex, sha512_hex};
 pub use file::{find_files, glob_match, FindFilter, FoundFile};
-pub use registry::{MockRegistry, RegistryReader, RegistryValue, UnsupportedRegistry};
+#[cfg(windows)]
+pub use registry::WindowsRegistry;
+pub use registry::{
+    decode_multi_sz, decode_utf16le, MockRegistry, RegistryReader, RegistryValue,
+    UnsupportedRegistry,
+};
 pub use task::{
     CollectContext, CollectFunction, CollectJob, CollectTask, CommandRunner, JobResult,
     MockCommandRunner, ShellCommandRunner,

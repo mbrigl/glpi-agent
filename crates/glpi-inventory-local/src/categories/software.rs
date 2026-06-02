@@ -82,9 +82,16 @@ pub fn collect() -> Vec<Software> {
         Get-ItemProperty $paths -ErrorAction SilentlyContinue | \
         Where-Object {$_.DisplayName} | \
         Select-Object DisplayName,DisplayVersion,Publisher | ConvertTo-Json -Compress";
-    crate::sys::powershell(script)
+    let mut software = crate::sys::powershell(script)
         .map(|json| parse_win_software(&json))
-        .unwrap_or_default()
+        .unwrap_or_default();
+    // Plus the Store / UWP packages.
+    if let Some(json) = crate::sys::powershell(
+        "Get-AppxPackage | Select-Object Name,Version | ConvertTo-Json -Compress",
+    ) {
+        software.extend(parse_win_appx(&json));
+    }
+    software
 }
 
 /// Collects installed packages (unsupported-platform stub).
@@ -107,6 +114,25 @@ pub fn parse_win_software(json: &str) -> Vec<Software> {
             Some(Software {
                 name: crate::jsonutil::str_field(item, "DisplayName")?,
                 version: crate::jsonutil::str_field(item, "DisplayVersion"),
+                arch: None,
+            })
+        })
+        .collect()
+}
+
+/// Parses a `Get-AppxPackage` `ConvertTo-Json` result (Windows Store / UWP)
+/// into software; nameless packages are skipped.
+#[must_use]
+pub fn parse_win_appx(json: &str) -> Vec<Software> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    crate::jsonutil::array(value)
+        .iter()
+        .filter_map(|item| {
+            Some(Software {
+                name: crate::jsonutil::str_field(item, "Name")?,
+                version: crate::jsonutil::str_field(item, "Version"),
                 arch: None,
             })
         })
@@ -203,6 +229,18 @@ mod tests {
         assert_eq!(apps[0].version.as_deref(), Some("23.01"));
         assert_eq!(apps[1].name, "Mozilla Firefox");
         assert!(parse_win_software("bad").is_empty());
+    }
+
+    #[test]
+    fn parses_windows_appx_json() {
+        use super::parse_win_appx;
+        let json =
+            r#"[{"Name":"Microsoft.WindowsCalculator","Version":"11.2."},{"Version":"1.0"}]"#;
+        let apps = parse_win_appx(json);
+        // The nameless package is skipped.
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].name, "Microsoft.WindowsCalculator");
+        assert_eq!(apps[0].version.as_deref(), Some("11.2."));
     }
 
     #[test]

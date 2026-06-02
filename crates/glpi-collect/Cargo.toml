@@ -18,5 +18,8 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 tracing = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+
 [dev-dependencies]
 tempfile = "3"

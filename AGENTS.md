@@ -624,11 +624,21 @@ sound, USB, batteries, PCI controllers, monitors (EDID via the Windows registry
 / macOS `ioreg`) and antivirus. Each runs a system tool and feeds a pure,
 Linux-tested parser.
 
-**Remaining refinements** (not blockers): per-DIMM macOS memory (only the total
-is reported), macOS battery capacity/voltage (`SPPowerDataType` exposes only the
-identity), and the richer Windows paths from the plan — WMI on a dedicated COM
-worker thread, registry wildcards, the certificate store (**COM code must run on
-a dedicated worker thread, not `Send`**), plus macOS IOKit / Keychain.
+Detail refinements done since: macOS per-DIMM memory (`SPMemoryDataType`, falling
+back to the total), macOS battery capacity/voltage (`ioreg AppleSmartBattery`),
+Windows Store/UWP packages (`Get-AppxPackage`), and a live Windows registry
+reader for the Collect task (`glpi-collect`, `winreg` + `REG_MULTI_SZ`/UTF-16LE
+decoders).
+
+**Deliberately deferred** (out of the local-inventory scope or not verifiable
+here):
+- **Native WMI on a COM worker thread.** The collectors use PowerShell
+  `Get-CimInstance` instead, which returns the same WMI data as UTF-8 JSON and
+  is testable. A native `wmi`-crate path on a dedicated COM thread (COM is not
+  `Send`) is a performance/no-PowerShell optimization, not new data.
+- **Certificate inventory** — the Windows certificate store (CNG) and macOS
+  Keychain — belongs to the SSL/transport surface, not a local-inventory
+  category.
 
 **Exotic Unix** (base inventory): Solaris/OmniOS, HP-UX, AIX, FreeBSD.
 

@@ -78,12 +78,12 @@ pub fn collect() -> Vec<Battery> {
     .unwrap_or_default()
 }
 
-/// Collects the live batteries (macOS) from `system_profiler SPPowerDataType`.
+/// Collects the live batteries (macOS) from `ioreg`'s `AppleSmartBattery`.
 #[cfg(target_os = "macos")]
 #[must_use]
 pub fn collect() -> Vec<Battery> {
-    crate::sys::output("system_profiler", &["-json", "SPPowerDataType"])
-        .map(|json| parse_macos_battery(&json))
+    crate::sys::output("ioreg", &["-r", "-c", "AppleSmartBattery"])
+        .map(|text| parse_ioreg_battery(&text))
         .unwrap_or_default()
 }
 
@@ -94,34 +94,53 @@ pub fn collect() -> Vec<Battery> {
     Vec::new()
 }
 
-/// Parses `system_profiler -json SPPowerDataType` (macOS) into the battery, from
-/// the entry carrying `sppower_battery_model_info`. Capacity/voltage are not
-/// reliably exposed there, so only the identity fields are filled.
+/// Parses `ioreg -r -c AppleSmartBattery` (macOS) into the battery.
+///
+/// Reads the `"Key" = value` property lines: `DesignCapacity` (mAh) and
+/// `Voltage` (mV) give the design capacity in mWh; `Serial`, `Manufacturer` and
+/// `DeviceName` give the identity.
 #[must_use]
-pub fn parse_macos_battery(json: &str) -> Vec<Battery> {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
-        return Vec::new();
-    };
-    let entries = value
-        .get("SPPowerDataType")
-        .and_then(serde_json::Value::as_array);
-    for entry in entries.into_iter().flatten() {
-        if let Some(info) = entry.get("sppower_battery_model_info") {
-            let field = |key: &str| crate::jsonutil::str_field(info, key);
-            let battery = Battery {
-                name: field("sppower_battery_device_name"),
-                manufacturer: field("sppower_battery_manufacturer"),
-                serial: field("sppower_battery_serial_number"),
-                chemistry: None,
-                voltage: None,
-                capacity: None,
-            };
-            if battery != Battery::default() {
-                return vec![battery];
-            }
-        }
+pub fn parse_ioreg_battery(text: &str) -> Vec<Battery> {
+    let mut props = std::collections::HashMap::new();
+    for line in text.lines() {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix('"') else {
+            continue;
+        };
+        let Some(key_end) = rest.find('"') else {
+            continue;
+        };
+        let key = &rest[..key_end];
+        let Some(eq) = rest[key_end + 1..].find('=') else {
+            continue;
+        };
+        let value = rest[key_end + 1 + eq + 1..].trim().trim_matches('"');
+        props
+            .entry(key.to_owned())
+            .or_insert_with(|| value.to_owned());
     }
-    Vec::new()
+    let num = |key: &str| props.get(key).and_then(|v| v.parse::<u64>().ok());
+    let text_field = |key: &str| props.get(key).filter(|v| !v.is_empty()).cloned();
+
+    let voltage = num("Voltage");
+    let capacity = match (num("DesignCapacity"), voltage) {
+        // mAh × mV / 1000 = mWh.
+        (Some(mah), Some(mv)) => Some(mah * mv / 1000),
+        _ => None,
+    };
+    let battery = Battery {
+        name: text_field("DeviceName"),
+        manufacturer: text_field("Manufacturer"),
+        serial: text_field("Serial").or_else(|| text_field("BatterySerialNumber")),
+        chemistry: None,
+        voltage,
+        capacity,
+    };
+    if battery == Battery::default() {
+        Vec::new()
+    } else {
+        vec![battery]
+    }
 }
 
 /// Parses a `Win32_Battery` `ConvertTo-Json` result into the batteries.
@@ -220,16 +239,26 @@ POWER_SUPPLY_ENERGY_FULL_DESIGN=60000000
     }
 
     #[test]
-    fn parses_macos_battery_json() {
-        use super::parse_macos_battery;
-        let json = r#"{"SPPowerDataType":[{"_name":"spbattery_information",
-            "sppower_battery_model_info":{"sppower_battery_device_name":"bq40z651",
-            "sppower_battery_serial_number":"F5K123","sppower_battery_manufacturer":"SMP"}}]}"#;
-        let batteries = parse_macos_battery(json);
+    fn parses_macos_ioreg_battery() {
+        use super::parse_ioreg_battery;
+        let text = "\
++-o AppleSmartBattery  <class AppleSmartBattery>
+    {
+      \"DesignCapacity\" = 8694
+      \"Voltage\" = 12600
+      \"Serial\" = \"F5K123\"
+      \"Manufacturer\" = \"SMP\"
+      \"DeviceName\" = \"bq40z651\"
+    }
+";
+        let batteries = parse_ioreg_battery(text);
         assert_eq!(batteries.len(), 1);
-        assert_eq!(batteries[0].name.as_deref(), Some("bq40z651"));
-        assert_eq!(batteries[0].serial.as_deref(), Some("F5K123"));
-        assert_eq!(batteries[0].manufacturer.as_deref(), Some("SMP"));
-        assert!(parse_macos_battery(r#"{"SPPowerDataType":[]}"#).is_empty());
+        let b = &batteries[0];
+        assert_eq!(b.name.as_deref(), Some("bq40z651"));
+        assert_eq!(b.serial.as_deref(), Some("F5K123"));
+        assert_eq!(b.manufacturer.as_deref(), Some("SMP"));
+        assert_eq!(b.voltage, Some(12_600));
+        assert_eq!(b.capacity, Some(8694 * 12_600 / 1000)); // mAh × mV / 1000 = mWh
+        assert!(parse_ioreg_battery("no battery here").is_empty());
     }
 }

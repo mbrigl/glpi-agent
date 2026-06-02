@@ -76,13 +76,20 @@ pub fn collect() -> Vec<MemoryModule> {
     }
 }
 
-/// Collects the live memory (macOS): the total RAM as one module.
+/// Collects the live memory (macOS).
 ///
-/// macOS exposes per-DIMM detail only inconsistently (memory is soldered on
-/// Apple Silicon), so only the total from `hw.memsize` is reported.
+/// Prefers the per-DIMM detail from `system_profiler SPMemoryDataType` (Intel
+/// Macs); when none is available (memory is soldered on Apple Silicon) it falls
+/// back to a single module synthesized from the `hw.memsize` total.
 #[cfg(target_os = "macos")]
 #[must_use]
 pub fn collect() -> Vec<MemoryModule> {
+    let dimms = crate::sys::output("system_profiler", &["-json", "SPMemoryDataType"])
+        .map(|json| parse_macos_memory(&json))
+        .unwrap_or_default();
+    if !dimms.is_empty() {
+        return dimms;
+    }
     crate::sys::output("sysctl", &["-n", "hw.memsize"])
         .and_then(|s| s.trim().parse::<u64>().ok())
         .map(|bytes| vec![memory_from_total_bytes(bytes)])
@@ -107,6 +114,48 @@ pub fn collect() -> Vec<MemoryModule> {
 #[must_use]
 pub fn collect() -> Vec<MemoryModule> {
     Vec::new()
+}
+
+/// Parses `system_profiler -json SPMemoryDataType` (macOS) into the populated
+/// memory modules, walking each controller's `_items` (and tolerating the
+/// flat Apple-Silicon shape). Empty slots are skipped.
+#[must_use]
+pub fn parse_macos_memory(json: &str) -> Vec<MemoryModule> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    let mut modules = Vec::new();
+    for entry in value
+        .get("SPMemoryDataType")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        match entry.get("_items").and_then(serde_json::Value::as_array) {
+            Some(items) => modules.extend(items.iter().filter_map(macos_dimm)),
+            None => modules.extend(macos_dimm(entry)),
+        }
+    }
+    modules
+}
+
+/// Builds a [`MemoryModule`] from a macOS DIMM object, or `None` for an empty
+/// slot (no/`empty` `dimm_size`).
+fn macos_dimm(item: &serde_json::Value) -> Option<MemoryModule> {
+    let size = crate::jsonutil::str_field(item, "dimm_size")
+        .filter(|s| !s.eq_ignore_ascii_case("empty"))?;
+    let clean = |key: &str| {
+        crate::jsonutil::str_field(item, key).filter(|v| !v.eq_ignore_ascii_case("empty"))
+    };
+    Some(MemoryModule {
+        capacity: parse_size_mb(&size),
+        memory_type: clean("dimm_type"),
+        speed: clean("dimm_speed").as_deref().and_then(parse_speed),
+        caption: crate::jsonutil::str_field(item, "_name"),
+        manufacturer: clean("dimm_manufacturer"),
+        serial_number: clean("dimm_serial_number"),
+        model: clean("dimm_part_number"),
+    })
 }
 
 /// Synthesizes a single "System Memory" module from the total RAM in bytes.
@@ -266,5 +315,23 @@ Memory Device
         assert_eq!(m.caption.as_deref(), Some("DIMM 0"));
         assert_eq!(m.model.as_deref(), Some("M471A1K43DB1-CWE")); // trimmed
         assert!(parse_win_memory("oops").is_empty());
+    }
+
+    #[test]
+    fn parses_macos_memory_json() {
+        use super::parse_macos_memory;
+        let json = r#"{"SPMemoryDataType":[{"_name":"memory","_items":[
+            {"_name":"BANK 0/DIMM0","dimm_size":"8 GB","dimm_type":"DDR4","dimm_speed":"2667 MHz",
+             "dimm_manufacturer":"Micron","dimm_part_number":"MTA8","dimm_serial_number":"AB12"},
+            {"_name":"BANK 1/DIMM0","dimm_size":"empty","dimm_type":"empty"}]}]}"#;
+        let modules = parse_macos_memory(json);
+        // The empty slot is skipped.
+        assert_eq!(modules.len(), 1);
+        let m = &modules[0];
+        assert_eq!(m.capacity, Some(8192));
+        assert_eq!(m.memory_type.as_deref(), Some("DDR4"));
+        assert_eq!(m.speed, Some(2667));
+        assert_eq!(m.caption.as_deref(), Some("BANK 0/DIMM0"));
+        assert_eq!(m.model.as_deref(), Some("MTA8"));
     }
 }
