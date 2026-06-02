@@ -49,7 +49,9 @@ We chose **Phased Approach**, because:
 - PDU support (GLPI 12+): the `PDU` device type and `PDU.PLUGS` outlet
   inventory (number / name / connector type) on a glpi-version hint threaded
   through `MibRegistry`/`NetInventoryTask` (`netinventory --glpi-version`);
-  RNX reads the outlet table, Bachmann / DigiPower switch type by version
+  RNX and Raritan read their outlet tables into plugs, Bachmann / DigiPower
+  switch type by version. (Upstream Eaton has no outlet/PDU-type logic — it is
+  classified via `sysobject.ids` — so it is intentionally unchanged.)
 
 ### Phase 4: Platform-Specific Features (🟡 In Progress)
 - Windows: COM/WMI worker, Registry config, Certificate store (⏳ pending)
