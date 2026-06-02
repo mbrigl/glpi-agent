@@ -13,6 +13,9 @@ workspace = true
 [dependencies]
 chrono.workspace = true
 serde = { workspace = true }
+serde_json.workspace = true
+tokio = { workspace = true }
+glpi-core = { path = "../glpi-core" }
 
 [dev-dependencies]
-serde_json.workspace = true
+tokio = { workspace = true }

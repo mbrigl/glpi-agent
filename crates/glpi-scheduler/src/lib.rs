@@ -15,8 +15,10 @@
 
 pub mod backoff;
 pub mod event;
+pub mod ipc;
 pub mod schedule;
 
 pub use backoff::Backoff;
 pub use event::{Event, EventKind};
+pub use ipc::{read_message, write_message, IpcMessage};
 pub use schedule::{jitter, RunSchedule};
