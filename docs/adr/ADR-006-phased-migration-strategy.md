@@ -44,7 +44,7 @@ We chose **Phased Approach**, because:
 ### Phase 3: NetInventory + MIBs (🟡 In Progress)
 - MIB framework
 - Standard MIBs (8): system, if, entity, printer, bridge, lldp, cdp, ip
-- Vendor MIBs (40+): Cisco, Juniper, Fortinet, Mikrotik, printers (HP, Brother, Ricoh, Konica/Sindoh, Lexmark, Xerox, Canon, Epson, OKI, Pantum), network (D-Link, Intelbras, Tiesse, Aerohive, Telco, FoxGate, Nokia/Alcatel, WatchGuard), storage (EMC, Hitachi Vantara, Radware), PDUs (Eaton, Raritan, Bachmann, RNX, DigiPower), etc.
+- Vendor MIBs (69+): networking, printers, storage, PDUs/UPS, telephony, KVM, sensors and servers. Networking incl. Cisco (+Meraki/+UCS board), Juniper, Fortinet, Mikrotik, Nokia/Alcatel, D-Link (+DGS1210), Brocade, Netgear, Aruba, Aerohive, WatchGuard, Telco, FoxGate, Tiesse, Intelbras, Voltaire, TP-Link, Ubiquiti, DefencePro, Radware; printers HP, Brother, Ricoh, Konica/Sindoh, Lexmark, Xerox, Canon, Epson, OKI, Pantum, Kyocera, Toshiba, Zebra; storage EMC, Hitachi Vantara, HP Citizen; PDUs/UPS Eaton, Raritan, Bachmann, RNX, DigiPower, APC/UPS-MIB/Riello, Voltronic; telephony Avaya, Htek, Snom, Multitech; sensors/servers Akcp, Hwg, Meinberg, Siemens, SiemensSicam, CheckPoint, Wyse ThinOS, iDRAC, iLO, Avocent. A few upstream modules that mutate ports/components/SIM/process state remain deferred (CiscoPortSecurity, Force10S, Netgear, Digi, Panasas, LinuxAppliance).
 - NetInventory task
 
 ### Phase 4: Platform-Specific Features (⏳ Pending)

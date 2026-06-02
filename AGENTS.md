@@ -43,14 +43,14 @@ This is a **Rust rewrite** of the [GLPI Agent](https://github.com/glpi-project/g
 | `glpi-transport` | ✅ Complete | HTTP client (reqwest), glpi-injector |
 | `glpi-discovery` | ✅ Core | Scanner, methods (Ping, ARP, NetBIOS, SNMP) |
 | Standard MIBs | ✅ Complete | 8 MIBs: system, if, entity, printer, bridge, lldp, cdp, ip |
-| Vendor MIBs | 🟡 40+ | Cisco, Juniper, Fortinet, Mikrotik, QNAP, Sophos, Hikvision, Eaton, Dell, NetScaler, SonicWall, Ruckus, Zyxel, Raritan, Quantum, Infortrend, OKI, Epson, Canon, Pantum, Xerox, HP, Brother, Ricoh, Konica/Sindoh, Lexmark, D-Link, Intelbras, Tiesse, Aerohive, Telco, FoxGate, Nokia/Alcatel, WatchGuard, EMC, Hitachi Vantara, Radware, Bachmann, RNX, DigiPower |
+| Vendor MIBs | 🟡 69+ | Networking, printers, storage, PDUs/UPS, telephony, KVM, sensors and servers — Cisco (+Meraki, +UCS board), Juniper, Fortinet, Mikrotik, Nokia/Alcatel, D-Link (+DGS1210), Brocade, Force10/Dell, Netgear, Aruba, Aerohive, WatchGuard, Sophos, Telco, FoxGate, Tiesse, Intelbras, Voltaire, TP-Link, Ubiquiti, DefencePro, Radware, NetScaler, SonicWall, Ruckus, Zyxel; printers HP, Brother, Ricoh, Konica/Sindoh, Lexmark, Xerox, Canon, Epson, OKI, Pantum, Kyocera, Toshiba, Zebra; storage EMC, Hitachi Vantara, HP Citizen, QNAP, Infortrend, Quantum; PDUs/UPS Eaton, Raritan, Bachmann, RNX, DigiPower, APC/UPS-MIB/Riello, Voltronic; telephony Avaya, Htek, Snom, Multitech; KVM Avocent; sensors Akcp, Hwg, Meinberg, Siemens, SiemensSicam; appliances CheckPoint, Wyse ThinOS, Hikvision; servers iDRAC, iLO |
 | Local Inventory (Linux) | ✅ Complete | All 20+ categories |
 | Local Inventory (Windows) | ❌ Not Started | Needs COM worker thread |
 | Local Inventory (macOS) | ❌ Not Started | Needs System Profiler, IOKit |
 | CLI (`glpi-agent`) | 🟡 Partial | Subcommands work |
 | Daemon | 🟡 Partial | Scheduler + HTTP server core |
 
-**Highest Priority**: Remaining vendor MIBs (network: Aruba, Netgear, CiscoUcsBoard; telephony: Avaya, Snom, Htek; LinuxAppliance, tp_link, Avocent) + Windows/macOS inventory.
+**Highest Priority**: Windows/macOS inventory. Deferred SNMP vendor modules that need port/component/SIM/process state not yet modelled: CiscoPortSecurity (port connections), Force10S & Netgear (chassis component tree), Digi (SIM cards/modems), Panasas (session peer IP), LinuxAppliance (multi-vendor process/snmpEngineID heuristic).
 
 ---
 
@@ -96,7 +96,7 @@ crates/
 │   │       │   │   ├── lldp_mib.rs
 │   │       │   │   ├── cdp_mib.rs
 │   │       │   │   └── ip_mib.rs
-│   │       │   └── vendor/  # 40+ vendor MIBs
+│   │       │   └── vendor/  # 69+ vendor MIBs
 │   │       │       ├── cisco.rs
 │   │       │       ├── juniper.rs
 │   │       │       ├── fortinet.rs
