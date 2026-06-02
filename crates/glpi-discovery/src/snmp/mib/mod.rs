@@ -36,7 +36,8 @@ pub mod vendor;
 pub use bridge_mib::BridgeMib;
 pub use cdp_mib::CdpMib;
 pub use device::{
-    Component, DeviceInfo, Neighbor, NeighborProtocol, NetworkDevice, Port, Printer, Supply,
+    Component, DeviceInfo, Firmware, Neighbor, NeighborProtocol, NetworkDevice, PageCounters, Port,
+    Printer, Supply,
 };
 pub use entity_mib::EntityMib;
 pub use if_mib::IfMib;
@@ -169,6 +170,12 @@ pub(crate) async fn get_string(session: &mut dyn SnmpQuery, oid: &[u64]) -> Resu
         .await?
         .and_then(|value| value.as_str())
         .filter(|s| !s.is_empty()))
+}
+
+/// Reads `oid` as an integer counter, shared by the vendor MIB modules that
+/// expose page counters and other numeric scalars.
+pub(crate) async fn get_number(session: &mut dyn SnmpQuery, oid: &[u64]) -> Result<Option<i64>> {
+    Ok(session.get(oid).await?.as_ref().and_then(as_number))
 }
 
 /// Walks a single-index table column and applies `set` to each row, creating

@@ -193,6 +193,56 @@ pub struct Supply {
     pub unit: Option<i64>,
 }
 
+/// Per-type page counters (GLPI `PAGECOUNTERS`), populated by vendor MIBs that
+/// expose richer counters than the standard `prtMarkerLifeCount`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct PageCounters {
+    /// `TOTAL` — total pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<i64>,
+    /// `BLACK` — black-and-white pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub black: Option<i64>,
+    /// `COLOR` — color pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<i64>,
+    /// `RECTOVERSO` — duplex pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rectoverso: Option<i64>,
+    /// `SCANNED` — scanned pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scanned: Option<i64>,
+    /// `PRINTTOTAL` — total printed pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub print_total: Option<i64>,
+    /// `PRINTBLACK` — printed black pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub print_black: Option<i64>,
+    /// `PRINTCOLOR` — printed color pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub print_color: Option<i64>,
+    /// `COPYTOTAL` — total copied pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copy_total: Option<i64>,
+    /// `COPYBLACK` — copied black pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copy_black: Option<i64>,
+    /// `COPYCOLOR` — copied color pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copy_color: Option<i64>,
+    /// `FAXTOTAL` — total faxed pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fax_total: Option<i64>,
+}
+
+impl PageCounters {
+    /// `true` if no counter was populated.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        *self == PageCounters::default()
+    }
+}
+
 /// Printer-specific inventory (RFC 3805 `Printer-MIB`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Printer {
@@ -200,6 +250,26 @@ pub struct Printer {
     pub total_pages: Option<i64>,
     /// Consumables (toner/ink cartridges, …), ordered by table index.
     pub supplies: Vec<Supply>,
+    /// Per-type page counters from vendor MIBs.
+    #[serde(skip_serializing_if = "PageCounters::is_empty")]
+    pub page_counters: PageCounters,
+}
+
+/// A firmware / software entry of a device (GLPI `FIRMWARES`), used by vendor
+/// MIBs that report integrated software components (antivirus engines, line
+/// cards, sub-system versions, …).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Firmware {
+    /// Short name of the firmware entry.
+    pub name: Option<String>,
+    /// Human-readable description.
+    pub description: Option<String>,
+    /// Firmware kind (`system`, `software`, `service`, `mib`, …).
+    pub r#type: Option<String>,
+    /// Version string.
+    pub version: Option<String>,
+    /// Manufacturer.
+    pub manufacturer: Option<String>,
 }
 
 /// A full network-device inventory result.
@@ -215,4 +285,20 @@ pub struct NetworkDevice {
     pub components: Vec<Component>,
     /// Printer details, when the device exposes the `Printer-MIB`.
     pub printer: Option<Printer>,
+    /// Firmware / software entries reported by vendor MIBs.
+    pub firmwares: Vec<Firmware>,
+}
+
+impl NetworkDevice {
+    /// Returns the printer record, creating an empty one if absent. Used by
+    /// vendor MIBs that contribute page counters to a device the standard
+    /// `Printer-MIB` may not have flagged.
+    pub fn printer_mut(&mut self) -> &mut Printer {
+        self.printer.get_or_insert_with(Printer::default)
+    }
+
+    /// Appends a firmware entry.
+    pub fn add_firmware(&mut self, firmware: Firmware) {
+        self.firmwares.push(firmware);
+    }
 }

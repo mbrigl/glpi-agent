@@ -44,7 +44,7 @@ We chose **Phased Approach**, because:
 ### Phase 3: NetInventory + MIBs (🟡 In Progress)
 - MIB framework
 - Standard MIBs (8): system, if, entity, printer, bridge, lldp, cdp, ip
-- Vendor MIBs (20+): Cisco, Juniper, Fortinet, Mikrotik, etc.
+- Vendor MIBs (26+): Cisco, Juniper, Fortinet, Mikrotik, printers (HP, Brother, Ricoh, Konica/Sindoh, Lexmark, Xerox, Canon, Epson, OKI, Pantum), etc.
 - NetInventory task
 
 ### Phase 4: Platform-Specific Features (⏳ Pending)

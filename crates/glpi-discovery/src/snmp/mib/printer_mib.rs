@@ -53,6 +53,7 @@ impl MibSupport for PrinterMib {
             device.printer = Some(Printer {
                 total_pages,
                 supplies,
+                ..Printer::default()
             });
         }
 
