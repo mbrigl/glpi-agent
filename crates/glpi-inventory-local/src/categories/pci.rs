@@ -75,14 +75,45 @@ pub fn collect() -> Vec<Controller> {
     .unwrap_or_default()
 }
 
-/// Collects the live PCI controllers (other platforms: not yet implemented).
-///
-/// macOS exposes PCI devices via `system_profiler SPPCIDataType`, which is empty
-/// on most modern (Apple Silicon) machines; left for a follow-up.
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+/// Collects the live PCI controllers (macOS) from `SPPCIDataType` (often empty
+/// on Apple Silicon, populated on Intel Macs with PCIe).
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> Vec<Controller> {
+    crate::sys::output("system_profiler", &["-json", "SPPCIDataType"])
+        .map(|json| parse_macos_controllers(&json))
+        .unwrap_or_default()
+}
+
+/// Collects the live PCI controllers (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<Controller> {
     Vec::new()
+}
+
+/// Parses `system_profiler -json SPPCIDataType` (macOS) into controllers.
+#[must_use]
+pub fn parse_macos_controllers(json: &str) -> Vec<Controller> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    value
+        .get("SPPCIDataType")
+        .and_then(serde_json::Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| Controller {
+                    name: crate::jsonutil::str_field(item, "_name"),
+                    manufacturer: crate::jsonutil::str_field(item, "sppci_vendor"),
+                    controller_type: crate::jsonutil::str_field(item, "sppci_device_type"),
+                    slot: crate::jsonutil::str_field(item, "sppci_slot_name"),
+                })
+                .filter(|c| c != &Controller::default())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Parses a `Win32_PnPEntity` (PCI) `ConvertTo-Json` result into controllers.
@@ -155,5 +186,17 @@ mod tests {
         );
         assert_eq!(controllers[0].manufacturer.as_deref(), Some("Intel"));
         assert_eq!(controllers[0].controller_type.as_deref(), Some("Net"));
+    }
+
+    #[test]
+    fn parses_macos_pci_json() {
+        use super::parse_macos_controllers;
+        let json = r#"{"SPPCIDataType":[{"_name":"pci8086,1234","sppci_vendor":"Intel",
+            "sppci_device_type":"sppci_othernetwork","sppci_slot_name":"Slot-1"}]}"#;
+        let controllers = parse_macos_controllers(json);
+        assert_eq!(controllers.len(), 1);
+        assert_eq!(controllers[0].name.as_deref(), Some("pci8086,1234"));
+        assert_eq!(controllers[0].slot.as_deref(), Some("Slot-1"));
+        assert!(parse_macos_controllers(r#"{"SPPCIDataType":[]}"#).is_empty());
     }
 }

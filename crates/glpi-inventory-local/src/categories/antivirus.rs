@@ -32,13 +32,23 @@ const KNOWN: &[(&str, &str)] = &[
     ("Trellix", "/opt/McAfee/ens/tp/bin/mfetpd"),
 ];
 
-/// Returns the products whose marker path satisfies `exists`.
-#[must_use]
-pub fn detect_present<F>(exists: F) -> Vec<Antivirus>
+/// Known macOS endpoint-security products and an install marker.
+#[cfg(any(target_os = "macos", test))]
+const KNOWN_MACOS: &[(&str, &str)] = &[
+    ("CrowdStrike Falcon", "/Applications/Falcon.app"),
+    ("SentinelOne", "/Library/Sentinel/sentinel-agent.bundle"),
+    ("WithSecure", "/Library/Application Support/F-Secure"),
+    ("ESET", "/Applications/ESET Endpoint Security.app"),
+    ("Sophos", "/Applications/Sophos/Sophos Endpoint.app"),
+    ("Microsoft Defender", "/Applications/Microsoft Defender.app"),
+];
+
+/// Returns the products from `markers` whose path satisfies `exists`.
+fn detect<F>(markers: &[(&str, &str)], exists: F) -> Vec<Antivirus>
 where
     F: Fn(&str) -> bool,
 {
-    KNOWN
+    markers
         .iter()
         .filter(|(_, marker)| exists(marker))
         .map(|(name, _)| Antivirus {
@@ -46,6 +56,15 @@ where
             enabled: true,
         })
         .collect()
+}
+
+/// Returns the (Linux) products whose marker path satisfies `exists`.
+#[must_use]
+pub fn detect_present<F>(exists: F) -> Vec<Antivirus>
+where
+    F: Fn(&str) -> bool,
+{
+    detect(KNOWN, exists)
 }
 
 /// Detects installed antivirus products from the filesystem (Linux).
@@ -67,11 +86,16 @@ pub fn collect() -> Vec<Antivirus> {
     .unwrap_or_default()
 }
 
-/// Detects installed antivirus products (other platforms: not yet implemented).
-///
-/// macOS has no common security-center API; endpoint products would need the
-/// per-vendor marker approach, left for a follow-up.
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+/// Detects installed antivirus products (macOS) by their install markers
+/// (no common security-center API exists on macOS).
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> Vec<Antivirus> {
+    detect(KNOWN_MACOS, |path| std::path::Path::new(path).exists())
+}
+
+/// Detects installed antivirus products (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<Antivirus> {
     Vec::new()
@@ -125,5 +149,13 @@ mod tests {
         assert_eq!(products[0].name, "Microsoft Defender");
         assert!(products.iter().all(|a| a.enabled));
         assert!(parse_win_antivirus("bad").is_empty());
+    }
+
+    #[test]
+    fn detects_macos_products_by_marker() {
+        let found = super::detect(super::KNOWN_MACOS, |path| path.contains("Falcon.app"));
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "CrowdStrike Falcon");
+        assert!(super::detect(super::KNOWN_MACOS, |_| false).is_empty());
     }
 }

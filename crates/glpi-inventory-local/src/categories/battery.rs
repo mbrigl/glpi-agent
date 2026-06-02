@@ -78,13 +78,49 @@ pub fn collect() -> Vec<Battery> {
     .unwrap_or_default()
 }
 
-/// Collects the live batteries (other platforms: not yet implemented).
-///
-/// macOS battery detail lives in `system_profiler SPPowerDataType`, whose deeply
-/// nested, version-dependent shape is left for a follow-up.
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+/// Collects the live batteries (macOS) from `system_profiler SPPowerDataType`.
+#[cfg(target_os = "macos")]
 #[must_use]
 pub fn collect() -> Vec<Battery> {
+    crate::sys::output("system_profiler", &["-json", "SPPowerDataType"])
+        .map(|json| parse_macos_battery(&json))
+        .unwrap_or_default()
+}
+
+/// Collects the live batteries (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+#[must_use]
+pub fn collect() -> Vec<Battery> {
+    Vec::new()
+}
+
+/// Parses `system_profiler -json SPPowerDataType` (macOS) into the battery, from
+/// the entry carrying `sppower_battery_model_info`. Capacity/voltage are not
+/// reliably exposed there, so only the identity fields are filled.
+#[must_use]
+pub fn parse_macos_battery(json: &str) -> Vec<Battery> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    let entries = value
+        .get("SPPowerDataType")
+        .and_then(serde_json::Value::as_array);
+    for entry in entries.into_iter().flatten() {
+        if let Some(info) = entry.get("sppower_battery_model_info") {
+            let field = |key: &str| crate::jsonutil::str_field(info, key);
+            let battery = Battery {
+                name: field("sppower_battery_device_name"),
+                manufacturer: field("sppower_battery_manufacturer"),
+                serial: field("sppower_battery_serial_number"),
+                chemistry: None,
+                voltage: None,
+                capacity: None,
+            };
+            if battery != Battery::default() {
+                return vec![battery];
+            }
+        }
+    }
     Vec::new()
 }
 
@@ -181,5 +217,19 @@ POWER_SUPPLY_ENERGY_FULL_DESIGN=60000000
         assert_eq!(b.capacity, Some(60_000));
         assert_eq!(b.chemistry.as_deref(), Some("Lithium-ion"));
         assert!(parse_win_batteries("bad").is_empty());
+    }
+
+    #[test]
+    fn parses_macos_battery_json() {
+        use super::parse_macos_battery;
+        let json = r#"{"SPPowerDataType":[{"_name":"spbattery_information",
+            "sppower_battery_model_info":{"sppower_battery_device_name":"bq40z651",
+            "sppower_battery_serial_number":"F5K123","sppower_battery_manufacturer":"SMP"}}]}"#;
+        let batteries = parse_macos_battery(json);
+        assert_eq!(batteries.len(), 1);
+        assert_eq!(batteries[0].name.as_deref(), Some("bq40z651"));
+        assert_eq!(batteries[0].serial.as_deref(), Some("F5K123"));
+        assert_eq!(batteries[0].manufacturer.as_deref(), Some("SMP"));
+        assert!(parse_macos_battery(r#"{"SPPowerDataType":[]}"#).is_empty());
     }
 }

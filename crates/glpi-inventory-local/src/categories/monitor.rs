@@ -84,11 +84,84 @@ pub fn collect() -> Vec<Monitor> {
         .collect()
 }
 
-/// Collects monitors (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects monitors (macOS) by extracting the `IODisplayEDID` blobs from
+/// `ioreg` and decoding each.
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> Vec<Monitor> {
+    crate::sys::output("ioreg", &["-l", "-w0"])
+        .map(|text| parse_ioreg_edid(&text))
+        .unwrap_or_default()
+}
+
+/// Collects monitors (Windows) by reading each display's EDID from the
+/// registry (`…\DISPLAY\…\Device Parameters\EDID`).
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> Vec<Monitor> {
+    crate::sys::powershell(
+        "Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Enum\\DISPLAY' -Recurse \
+         -ErrorAction SilentlyContinue | Where-Object {$_.Property -contains 'EDID'} | \
+         ForEach-Object {[pscustomobject]@{EDID=(Get-ItemProperty -Path $_.PSPath -Name EDID).EDID}} | \
+         ConvertTo-Json -Compress -Depth 4",
+    )
+    .map(|json| parse_win_monitors(&json))
+    .unwrap_or_default()
+}
+
+/// Collects monitors (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<Monitor> {
     Vec::new()
+}
+
+/// Parses the Windows registry EDID dump (`[{ "EDID": [byte, …] }, …]`) into
+/// monitors by decoding each EDID byte array.
+#[must_use]
+pub fn parse_win_monitors(json: &str) -> Vec<Monitor> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    crate::jsonutil::array(value)
+        .iter()
+        .filter_map(|item| {
+            let bytes: Vec<u8> = item
+                .get("EDID")
+                .and_then(serde_json::Value::as_array)?
+                .iter()
+                .filter_map(|n| n.as_u64().map(|b| b as u8))
+                .collect();
+            parse_edid(&bytes)
+        })
+        .collect()
+}
+
+/// Parses `ioreg -l` output (macOS), decoding each `"IODisplayEDID" = <hex>`
+/// blob into a monitor.
+#[must_use]
+pub fn parse_ioreg_edid(text: &str) -> Vec<Monitor> {
+    text.lines()
+        .filter(|line| line.contains("IODisplayEDID"))
+        .filter_map(|line| {
+            let start = line.find('<')?;
+            let end = line[start..].find('>')? + start;
+            let bytes = decode_hex(&line[start + 1..end])?;
+            parse_edid(&bytes)
+        })
+        .collect()
+}
+
+/// Decodes a whitespace-tolerant hex string into bytes.
+fn decode_hex(hex: &str) -> Option<Vec<u8>> {
+    let hex: String = hex.chars().filter(|c| !c.is_whitespace()).collect();
+    if hex.is_empty() || !hex.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect()
 }
 
 /// Decodes the 3-letter PNP manufacturer id from bytes 8–9.
@@ -164,5 +237,30 @@ mod tests {
     fn rejects_bad_header_and_short_data() {
         assert_eq!(parse_edid(&[0u8; 128]), None);
         assert_eq!(parse_edid(&[0u8; 10]), None);
+    }
+
+    #[test]
+    fn parses_windows_registry_edid() {
+        use super::parse_win_monitors;
+        let edid = sample_edid();
+        // Model the `[{ "EDID": [..] }]` shape PowerShell produces.
+        let json = serde_json::to_string(&serde_json::json!([{ "EDID": edid }])).unwrap();
+        let monitors = parse_win_monitors(&json);
+        assert_eq!(monitors.len(), 1);
+        assert_eq!(monitors[0].manufacturer.as_deref(), Some("DEL"));
+        assert_eq!(monitors[0].caption.as_deref(), Some("DELL U2412"));
+    }
+
+    #[test]
+    fn parses_macos_ioreg_edid() {
+        use super::parse_ioreg_edid;
+        let hex: String = sample_edid().iter().map(|b| format!("{b:02x}")).collect();
+        let text = format!("    | |   \"IODisplayEDID\" = <{hex}>\n");
+        let monitors = parse_ioreg_edid(&text);
+        assert_eq!(monitors.len(), 1);
+        assert_eq!(monitors[0].caption.as_deref(), Some("DELL U2412"));
+        assert_eq!(monitors[0].year, Some(2014));
+        // No EDID line -> nothing.
+        assert!(parse_ioreg_edid("nothing here").is_empty());
     }
 }
