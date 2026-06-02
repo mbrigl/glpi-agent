@@ -303,12 +303,28 @@ mod tests {
         assert!(result.is_some());
     }
 
+    // On Unix, loopback promptly answers a closed port with RST (Connection
+    // refused), proving the host is up. On Windows the runner may instead drop
+    // the SYN (so connect times out), so this live check is Unix-only; the
+    // classifier itself is covered cross-platform by the unit test below.
+    #[cfg(unix)]
     #[tokio::test]
     async fn tcp_ping_treats_refused_localhost_as_alive() {
-        // Nothing listens on port 1; loopback replies with RST (Connection
-        // refused), which proves the host is up.
         let method = PingMethod::tcp_only(Duration::from_millis(500), vec![1]);
         let result = method.probe("127.0.0.1".parse().unwrap()).await.unwrap();
         assert!(result.is_some());
+    }
+
+    #[test]
+    fn tcp_outcome_classifies_liveness() {
+        // A completed handshake or a refusal both prove the host is up; a
+        // timeout / unreachable does not. (Cross-platform; no live socket.)
+        assert!(super::tcp_outcome_is_alive(None));
+        assert!(super::tcp_outcome_is_alive(Some(
+            std::io::ErrorKind::ConnectionRefused
+        )));
+        assert!(!super::tcp_outcome_is_alive(Some(
+            std::io::ErrorKind::TimedOut
+        )));
     }
 }

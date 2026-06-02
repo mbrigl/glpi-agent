@@ -250,15 +250,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("app.log"), b"x").unwrap();
 
-        let json = format!(
-            r#"[
-                {{"uuid":"cmd","function":"runCommand","command":"echo hi"}},
-                {{"uuid":"file","function":"findFile","dir":"{}","filter":{{"name":"*.log"}}}},
-                {{"uuid":"reg","function":"getFromRegistry","key":"HKLM/App"}},
-                {{"uuid":"wmi","function":"getFromWMI","class":"Win32_Service"}}
-            ]"#,
-            dir.path().display()
-        );
+        // Build via serde_json so the directory path is escaped correctly on
+        // every platform (Windows paths contain backslashes).
+        let json = serde_json::json!([
+            {"uuid": "cmd", "function": "runCommand", "command": "echo hi"},
+            {"uuid": "file", "function": "findFile", "dir": dir.path().to_str().unwrap(),
+             "filter": {"name": "*.log"}},
+            {"uuid": "reg", "function": "getFromRegistry", "key": "HKLM/App"},
+            {"uuid": "wmi", "function": "getFromWMI", "class": "Win32_Service"}
+        ])
+        .to_string();
         let jobs = CollectTask::parse_jobs(&json).unwrap();
 
         let registry = MockRegistry::new().with_value(

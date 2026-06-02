@@ -33,7 +33,9 @@ impl PidFile {
     ///
     /// [`AgentError::Config`] if another **live** instance already holds the
     /// file, or the file cannot be written. A file whose owner is no longer
-    /// running is treated as stale and taken over.
+    /// running is treated as stale and taken over (Unix only; on other
+    /// platforms there is no portable liveness probe, so an existing file is
+    /// conservatively treated as live — see `process_is_alive`).
     pub fn acquire(path: impl Into<PathBuf>) -> Result<Self> {
         let path = path.into();
         if let Some(pid) = read_pid(&path) {
@@ -146,6 +148,12 @@ pub fn detach() -> Result<()> {
     Ok(())
 }
 
+/// Background detach is Unix-only (it relies on `fork`/`setsid`). On other
+/// platforms this is unsupported; run the agent as a managed service instead.
+///
+/// # Errors
+///
+/// Always returns [`AgentError::Config`] explaining that detach is Unix-only.
 #[cfg(not(unix))]
 pub fn detach() -> Result<()> {
     Err(AgentError::Config(
@@ -184,6 +192,10 @@ mod tests {
         let _second = PidFile::acquire(&path).unwrap();
     }
 
+    // Taking over a stale pid file depends on the liveness probe detecting that
+    // the recorded pid is gone, which is Unix-only (see `process_is_alive`); on
+    // other platforms acquire conservatively refuses to reuse an existing file.
+    #[cfg(unix)]
     #[test]
     fn a_stale_pid_file_is_taken_over() {
         let dir = tempfile::tempdir().unwrap();

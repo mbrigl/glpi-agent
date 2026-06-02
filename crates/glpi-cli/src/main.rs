@@ -416,8 +416,30 @@ struct DaemonArgs {
     conf_reload_interval: u64,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+/// Entry point.
+///
+/// The command-dispatch future is large (every subcommand's future is a field
+/// of `main`'s state machine, dominated by `daemon`), so it is run on a
+/// dedicated thread with a generous stack rather than via `#[tokio::main]`:
+/// Windows' default 1 MiB main-thread stack overflows it (Linux/macOS default
+/// to 8 MiB). This also covers the `__task-worker` child, which re-enters here.
+fn main() -> Result<()> {
+    std::thread::Builder::new()
+        .name("glpi-agent".to_owned())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .context("building the Tokio runtime")?
+                .block_on(run_cli())
+        })
+        .context("spawning the agent runtime thread")?
+        .join()
+        .map_err(|_| anyhow::anyhow!("the agent runtime thread panicked"))?
+}
+
+async fn run_cli() -> Result<()> {
     let cli = Cli::parse();
 
     // Reject a bad logger combination before doing any work, then install the
