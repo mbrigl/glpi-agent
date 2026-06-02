@@ -34,7 +34,34 @@ pub trait RemoteSession: Send {
     async fn read_file(&mut self, path: &str) -> Result<String> {
         self.run(&format!("cat -- {}", shell_quote(path))).await
     }
+
+    /// Returns `true` if `program` is runnable on the remote host (`command -v`).
+    /// A transport/command failure is reported as "not runnable".
+    async fn can_run(&mut self, program: &str) -> bool {
+        let command = format!(
+            "if command -v {} >/dev/null 2>&1; then echo {MARKER}; fi",
+            shell_quote(program)
+        );
+        matches!(self.run(&command).await, Ok(out) if out.contains(MARKER))
+    }
+
+    /// Returns `true` if remote `perl` can load `module` (optionally at or above
+    /// `min_version`). Used to gate the `perl`-mode enhancements.
+    async fn perl_module(&mut self, module: &str, min_version: Option<&str>) -> bool {
+        let probe = match min_version {
+            Some(version) => format!("exit(${module}::VERSION < {version} ? 1 : 0)"),
+            None => "1".to_owned(),
+        };
+        let command = format!(
+            "perl -M{module} -e {} >/dev/null 2>&1 && echo {MARKER}",
+            shell_quote(&probe)
+        );
+        matches!(self.run(&command).await, Ok(out) if out.contains(MARKER))
+    }
 }
+
+/// Sentinel printed by the capability probes (unlikely to occur otherwise).
+const MARKER: &str = "glpi-agent-ok";
 
 /// Single-quotes a string for safe use as one POSIX shell word.
 #[must_use]
@@ -50,6 +77,8 @@ pub fn shell_quote(s: &str) -> String {
 pub struct MockSession {
     commands: HashMap<String, String>,
     files: HashMap<String, String>,
+    programs: std::collections::HashSet<String>,
+    perl_modules: std::collections::HashSet<String>,
 }
 
 impl MockSession {
@@ -72,6 +101,20 @@ impl MockSession {
         self.files.insert(path.to_owned(), contents.to_owned());
         self
     }
+
+    /// Marks `program` as runnable on the host (drives [`RemoteSession::can_run`]).
+    #[must_use]
+    pub fn with_program(mut self, program: &str) -> Self {
+        self.programs.insert(program.to_owned());
+        self
+    }
+
+    /// Marks a Perl `module` as loadable (drives [`RemoteSession::perl_module`]).
+    #[must_use]
+    pub fn with_perl_module(mut self, module: &str) -> Self {
+        self.perl_modules.insert(module.to_owned());
+        self
+    }
 }
 
 #[async_trait]
@@ -88,6 +131,14 @@ impl RemoteSession for MockSession {
             .get(path)
             .cloned()
             .ok_or_else(|| AgentError::Task(format!("mock: no such file {path:?}")))
+    }
+
+    async fn can_run(&mut self, program: &str) -> bool {
+        self.programs.contains(program)
+    }
+
+    async fn perl_module(&mut self, module: &str, _min_version: Option<&str>) -> bool {
+        self.perl_modules.contains(module)
     }
 }
 

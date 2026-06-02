@@ -12,25 +12,33 @@
 //! Implemented so far (Phase 7): the `ssh://`/`winrm://` target model
 //! ([`RemoteTarget`]), the [`RemoteSession`] seam with an offline
 //! [`MockSession`], **SSH mode 1** (the command-line `ssh` client,
-//! [`SshCliSession`]), the [`AssetnameSupport`] option, and the Linux command
-//! orchestration below. Still to come: russh (SSH mode 2), Perl-on-remote
-//! (mode 3), WinRM, `remote-workers` parallelism and delta state files.
+//! [`SshCliSession`]), the [`AssetnameSupport`] option, **mode 3 (`perl`)** —
+//! remote `perl` one-liners gated on a capability probe ([`RemoteModes`],
+//! richer `Net::CUPS` printers, `Net::Domain` FQDN fallback) — and the Linux
+//! command orchestration below. Still to come: russh (SSH mode 2, libssh2),
+//! WinRM, `remote-workers` parallelism and delta state files.
 
 pub mod assetname;
+pub mod mode;
 pub mod session;
 pub mod ssh;
 pub mod target;
 
 pub use assetname::AssetnameSupport;
+pub use mode::RemoteModes;
 pub use session::{MockSession, RemoteSession};
 pub use ssh::SshCliSession;
 pub use target::{RemoteScheme, RemoteTarget};
 
 use std::collections::HashSet;
 
-use glpi_core::error::Result;
+use glpi_core::error::{AgentError, Result};
 use glpi_inventory_local as local;
-use local::{Content, OperatingSystem};
+use local::{Content, OperatingSystem, Printer};
+
+/// The `perl -MNet::CUPS` one-liner used in `perl` mode to enumerate printers
+/// with their URI, driver and description (richer than `lpstat -p`).
+const CUPS_PRINTERS_COMMAND: &str = "perl -MNet::CUPS -e 'map { print \"uri: \".$_->getUri().\"\\nname: \".$_->getName().\"\\ndriver: \".$_->getOptionValue(\"printer-make-and-model\").\"\\ndescription: \".$_->getDescription().\"\\n---\\n\" } Net::CUPS->new->getDestinations()'";
 
 /// Runs the inventory category command set against a [`RemoteSession`].
 ///
@@ -41,6 +49,8 @@ use local::{Content, OperatingSystem};
 pub struct RemoteInventory {
     /// Disabled category names (lower-cased), from `no-category`.
     disabled: HashSet<String>,
+    /// Enabled remote modes (notably `perl`).
+    modes: RemoteModes,
 }
 
 impl RemoteInventory {
@@ -64,6 +74,13 @@ impl RemoteInventory {
         self
     }
 
+    /// Sets the enabled remote modes (e.g. `perl`).
+    #[must_use]
+    pub fn with_modes(mut self, modes: RemoteModes) -> Self {
+        self.modes = modes;
+        self
+    }
+
     /// Returns `true` if `category` should be collected.
     #[must_use]
     fn enabled(&self, category: &str) -> bool {
@@ -78,6 +95,14 @@ impl RemoteInventory {
     /// absent"); returns [`Result`] so future transports can surface a fatal
     /// connection error without an API break.
     pub async fn collect(&self, session: &mut dyn RemoteSession) -> Result<Content> {
+        // `perl` mode is only meaningful when the remote host actually has a
+        // usable perl interpreter (faithful to the upstream precondition).
+        if self.modes.perl() && !session.can_run("perl").await {
+            return Err(AgentError::Unsupported(
+                "mode perl required but remote host can't run perl".to_owned(),
+            ));
+        }
+
         let mut content = Content {
             version_client: Some(local::content::VERSION_CLIENT.to_owned()),
             ..Content::default()
@@ -174,9 +199,23 @@ impl RemoteInventory {
             }
         }
         if self.enabled("printer") {
-            if let Some(text) = try_run(session, "lpstat -p").await {
-                content.printers = local::parse_lpstat(&text);
-            }
+            // In perl mode, prefer the richer Net::CUPS enumeration (URI,
+            // driver, serial); otherwise fall back to `lpstat -p`.
+            let from_perl = if self.modes.perl() {
+                try_run(session, CUPS_PRINTERS_COMMAND)
+                    .await
+                    .map(|text| parse_cups_printers(&text))
+                    .filter(|p| !p.is_empty())
+            } else {
+                None
+            };
+            content.printers = match from_perl {
+                Some(printers) => printers,
+                None => try_run(session, "lpstat -p")
+                    .await
+                    .map(|text| local::parse_lpstat(&text))
+                    .unwrap_or_default(),
+            };
         }
 
         Ok(content)
@@ -191,6 +230,61 @@ async fn try_run(session: &mut dyn RemoteSession, command: &str) -> Option<Strin
 /// Reads `path`, returning its non-empty contents or `None` on any failure.
 async fn try_read(session: &mut dyn RemoteSession, path: &str) -> Option<String> {
     session.read_file(path).await.ok().filter(|s| !s.is_empty())
+}
+
+/// Parses the `perl -MNet::CUPS` output ([`CUPS_PRINTERS_COMMAND`]) into
+/// printers. Records are `key: value` lines terminated by a `---` separator;
+/// the serial is extracted from a `serial=`/`uuid=` parameter in the device URI.
+fn parse_cups_printers(text: &str) -> Vec<Printer> {
+    let mut printers = Vec::new();
+    let mut current = Printer::default();
+    let mut have_fields = false;
+    for line in text.lines() {
+        if line.trim() == "---" {
+            if have_fields && !current.name.is_empty() {
+                printers.push(std::mem::take(&mut current));
+            } else {
+                current = Printer::default();
+            }
+            have_fields = false;
+            continue;
+        }
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        let value = value.trim();
+        if value.is_empty() {
+            continue;
+        }
+        have_fields = true;
+        match key.trim() {
+            "name" => current.name = value.to_owned(),
+            "description" => current.description = Some(value.to_owned()),
+            "driver" => current.driver = Some(value.to_owned()),
+            "uri" => {
+                current.serial = serial_from_uri(value);
+                current.port = Some(value.to_owned());
+            }
+            _ => {}
+        }
+    }
+    if have_fields && !current.name.is_empty() {
+        printers.push(current);
+    }
+    printers
+}
+
+/// Extracts a `serial=`/`uuid=` value from a CUPS device URI's query string.
+fn serial_from_uri(uri: &str) -> Option<String> {
+    let query = uri.split_once('?')?.1;
+    query
+        .split('&')
+        .find_map(|param| {
+            param
+                .strip_prefix("serial=")
+                .or_else(|| param.strip_prefix("uuid="))
+        })
+        .map(str::to_owned)
 }
 
 #[cfg(test)]
@@ -252,6 +346,54 @@ mod tests {
         assert!(content.cpus.is_empty());
         // A still-enabled category is unaffected.
         assert_eq!(content.users.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn perl_mode_requires_remote_perl() {
+        // perl mode but the host can't run perl -> hard error.
+        let mut session = linux_host();
+        let err = RemoteInventory::new()
+            .with_modes(super::RemoteModes::parse("perl"))
+            .collect(&mut session)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("perl"));
+    }
+
+    #[tokio::test]
+    async fn perl_mode_uses_net_cups_for_printers() {
+        let cups = "uri: ipp://printer.local/ipp/print?serial=ABC123\n\
+                    name: Reception\n\
+                    driver: HP LaserJet\n\
+                    description: Reception desk\n\
+                    ---\n";
+        let mut session = linux_host()
+            .with_program("perl")
+            .with_command(super::CUPS_PRINTERS_COMMAND, cups);
+        let content = RemoteInventory::new()
+            .with_modes(super::RemoteModes::parse("ssh_perl"))
+            .collect(&mut session)
+            .await
+            .unwrap();
+        assert_eq!(content.printers.len(), 1);
+        let printer = &content.printers[0];
+        assert_eq!(printer.name, "Reception");
+        assert_eq!(printer.driver.as_deref(), Some("HP LaserJet"));
+        assert_eq!(printer.description.as_deref(), Some("Reception desk"));
+        assert_eq!(printer.serial.as_deref(), Some("ABC123"));
+        assert_eq!(
+            printer.port.as_deref(),
+            Some("ipp://printer.local/ipp/print?serial=ABC123")
+        );
+    }
+
+    #[test]
+    fn parse_cups_printers_handles_multiple_blocks() {
+        let text = "uri: socket://10.0.0.7\nname: A\n---\nuri: usb://x?serial=SN9\nname: B\n---\n";
+        let printers = super::parse_cups_printers(text);
+        assert_eq!(printers.len(), 2);
+        assert_eq!(printers[0].name, "A");
+        assert_eq!(printers[1].serial.as_deref(), Some("SN9"));
     }
 
     #[tokio::test]

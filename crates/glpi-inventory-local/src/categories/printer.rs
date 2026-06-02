@@ -17,6 +17,18 @@ pub struct Printer {
     /// Coarse status ("Idle", "Printing", "Disabled").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// Human-readable description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Driver / make-and-model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub driver: Option<String>,
+    /// Device URI / port.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<String>,
+    /// Serial number, when the device URI carries one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub serial: Option<String>,
 }
 
 /// Parses `lpstat -p` output into printers.
@@ -32,6 +44,7 @@ pub fn parse_lpstat(text: &str) -> Vec<Printer> {
             Some(Printer {
                 name: name.to_owned(),
                 status: status_of(line),
+                ..Printer::default()
             })
         })
         .collect()
