@@ -313,6 +313,21 @@ struct DaemonArgs {
     /// to it over the IPC protocol, instead of inline in the daemon.
     #[arg(long)]
     fork_tasks: bool,
+
+    /// Detach into the background (Unix): re-exec as a session leader with null
+    /// stdio and exit the foreground process.
+    #[arg(short = 'd', long)]
+    daemonize: bool,
+
+    /// Write the daemon's process id to this file (and refuse to start if a
+    /// live instance already holds it). Removed on clean shutdown.
+    #[arg(long, value_name = "PATH")]
+    pidfile: Option<PathBuf>,
+
+    /// Reload the configuration every N seconds (`0` = use the config's
+    /// `conf-reload-interval`, or never if that is also `0`).
+    #[arg(long, default_value_t = 0)]
+    conf_reload_interval: u64,
 }
 
 #[tokio::main]
@@ -325,14 +340,16 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
-    let options = load_options(cli.conf_file.as_deref(), cli.conf_dir.as_deref())?;
+    let conf_file = cli.conf_file.clone();
+    let conf_dir = cli.conf_dir.clone();
+    let options = load_options(conf_file.as_deref(), conf_dir.as_deref())?;
     match cli.command {
         Command::Inventory(args) => run_inventory(args, &options).await,
         Command::Netdiscovery(args) => run_netdiscovery(args).await,
         Command::Netinventory(args) => run_netinventory(args).await,
         Command::Remoteinventory(args) => run_remoteinventory(args, &options).await,
         Command::Inject(args) => run_inject(args).await,
-        Command::Daemon(args) => run_daemon(args).await,
+        Command::Daemon(args) => run_daemon(args, conf_file, conf_dir, options).await,
         Command::TaskWorker => run_task_worker().await,
     }
 }
@@ -480,7 +497,34 @@ fn v2c_credentials(communities: &[String]) -> Vec<SnmpCredentials> {
 
 /// Runs continuously: a periodic NetDiscovery scan plus an HTTP control server
 /// that can trigger an immediate scan via `/now`. Stops on Ctrl-C.
-async fn run_daemon(args: DaemonArgs) -> Result<()> {
+///
+/// With `--daemonize`, the process first re-execs itself detached into the
+/// background and returns. A `--pidfile` is held for the daemon's lifetime
+/// (refusing a second live instance), and the configuration is reloaded every
+/// `conf-reload-interval` seconds.
+async fn run_daemon(
+    args: DaemonArgs,
+    conf_file: Option<PathBuf>,
+    conf_dir: Option<PathBuf>,
+    mut options: Options,
+) -> Result<()> {
+    // Background detach: re-exec ourselves detached, then let this process exit.
+    // The re-exec'd child carries the marker so it skips this branch.
+    if args.daemonize && !glpi_scheduler::is_detached_child() {
+        glpi_scheduler::detach().context("detaching into the background")?;
+        tracing::info!("detached agent into the background");
+        return Ok(());
+    }
+
+    // Hold a pid file for the daemon's lifetime (removed on drop at shutdown).
+    let _pidfile = match &args.pidfile {
+        Some(path) => Some(
+            glpi_scheduler::PidFile::acquire(path.clone())
+                .with_context(|| format!("acquiring pid file {}", path.display()))?,
+        ),
+        None => None,
+    };
+
     // Validate ranges up front (the task is rebuilt per run; in fork mode the
     // child rebuilds it from the event parameters).
     let task = NetDiscoveryTask::new(parse_ranges(&args.ranges)?)
@@ -489,6 +533,18 @@ async fn run_daemon(args: DaemonArgs) -> Result<()> {
 
     // The netdiscovery event handed to a child worker when `--fork-tasks` is set.
     let scan_event = netdiscovery_event(&args);
+
+    // Config reload cadence: the CLI flag wins, else the configured value.
+    let reload_secs = if args.conf_reload_interval > 0 {
+        args.conf_reload_interval
+    } else {
+        u64::from(options.conf_reload_interval)
+    };
+    let mut reload_tick = (reload_secs > 0).then(|| {
+        let mut interval = tokio::time::interval(Duration::from_secs(reload_secs));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        interval
+    });
 
     // HTTP control server (optional), yielding /now trigger events.
     let mut triggers = if args.no_httpd {
@@ -514,6 +570,8 @@ async fn run_daemon(args: DaemonArgs) -> Result<()> {
     tracing::info!(
         interval = args.interval,
         first_run_in = (schedule.next_run() - Utc::now()).num_seconds().max(0),
+        conf_reload_interval = reload_secs,
+        pidfile = ?args.pidfile,
         "daemon started"
     );
 
@@ -541,13 +599,81 @@ async fn run_daemon(args: DaemonArgs) -> Result<()> {
                     tracing::debug!(task = %event.task, "event targets another task; ignored");
                 }
             }
+            () = tick_reload(&mut reload_tick) => {
+                match reload_options(conf_file.as_deref(), conf_dir.as_deref()) {
+                    Ok(reloaded) => {
+                        let changes = describe_changes(&options, &reloaded);
+                        if changes.is_empty() {
+                            tracing::debug!("configuration reloaded; no changes");
+                        } else {
+                            tracing::info!(changes = ?changes, "configuration reloaded");
+                            options = reloaded;
+                        }
+                    }
+                    Err(err) => tracing::warn!(error = %err, "configuration reload failed"),
+                }
+            }
             result = tokio::signal::ctrl_c() => {
                 result.context("waiting for Ctrl-C")?;
                 tracing::info!("shutting down");
+                // `_pidfile` is dropped here, removing the pid file.
                 return Ok(());
             }
         }
     }
+}
+
+/// Awaits the next configuration-reload tick, or never resolves when reloading
+/// is disabled (so the `select!` arm stays dormant).
+async fn tick_reload(reload_tick: &mut Option<tokio::time::Interval>) {
+    match reload_tick {
+        Some(interval) => {
+            interval.tick().await;
+        }
+        None => std::future::pending().await,
+    }
+}
+
+/// Reloads the layered configuration from the same sources as start-up.
+fn reload_options(conf_file: Option<&Path>, conf_dir: Option<&Path>) -> Result<Options> {
+    load_options(conf_file, conf_dir)
+}
+
+/// Describes the notable differences between two resolved configurations, for
+/// logging on reload. Returns an empty vector when nothing relevant changed.
+fn describe_changes(old: &Options, new: &Options) -> Vec<String> {
+    let mut changes = Vec::new();
+    if old.server != new.server {
+        changes.push(format!("server: {:?} -> {:?}", old.server, new.server));
+    }
+    if old.no_category != new.no_category {
+        changes.push(format!(
+            "no-category: {:?} -> {:?}",
+            old.no_category, new.no_category
+        ));
+    }
+    if old.no_ssl_check != new.no_ssl_check {
+        changes.push(format!(
+            "no-ssl-check: {} -> {}",
+            old.no_ssl_check, new.no_ssl_check
+        ));
+    }
+    if old.httpd_trust != new.httpd_trust {
+        changes.push(format!(
+            "httpd-trust: {:?} -> {:?}",
+            old.httpd_trust, new.httpd_trust
+        ));
+    }
+    if old.conf_reload_interval != new.conf_reload_interval {
+        changes.push(format!(
+            "conf-reload-interval: {} -> {}",
+            old.conf_reload_interval, new.conf_reload_interval
+        ));
+    }
+    if old.debug != new.debug {
+        changes.push(format!("debug: {} -> {}", old.debug, new.debug));
+    }
+    changes
 }
 
 /// Awaits the next `/now` trigger event, or never resolves when the HTTP server
@@ -1283,5 +1409,44 @@ mod tests {
     fn parses_hidden_task_worker_subcommand() {
         let cli = Cli::try_parse_from(["glpi-agent", "__task-worker"]).unwrap();
         assert!(matches!(cli.command, Command::TaskWorker));
+    }
+
+    #[test]
+    fn parses_daemon_lifecycle_options() {
+        let cli = Cli::try_parse_from([
+            "glpi-agent",
+            "daemon",
+            "10.0.0.1",
+            "--daemonize",
+            "--pidfile",
+            "/run/glpi-agent.pid",
+            "--conf-reload-interval",
+            "300",
+        ])
+        .unwrap();
+        let Command::Daemon(args) = cli.command else {
+            panic!("expected daemon");
+        };
+        assert!(args.daemonize);
+        assert_eq!(
+            args.pidfile,
+            Some(std::path::PathBuf::from("/run/glpi-agent.pid"))
+        );
+        assert_eq!(args.conf_reload_interval, 300);
+    }
+
+    #[test]
+    fn describe_changes_reports_only_changed_fields() {
+        use glpi_core::config::Options;
+        let old = Options::default();
+        let mut new = Options::default();
+        assert!(super::describe_changes(&old, &old).is_empty());
+
+        new.server = vec!["https://glpi.example/front/inventory.php".to_owned()];
+        new.debug = 2;
+        let changes = super::describe_changes(&old, &new);
+        assert_eq!(changes.len(), 2);
+        assert!(changes.iter().any(|c| c.starts_with("server:")));
+        assert!(changes.iter().any(|c| c.starts_with("debug:")));
     }
 }

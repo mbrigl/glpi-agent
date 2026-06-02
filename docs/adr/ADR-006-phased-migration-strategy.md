@@ -98,8 +98,16 @@ We chose **Phased Approach**, because:
   `task`, `category`, `delay`) to a typed `Event` and delivers it to the daemon
   over the trigger channel; the daemon logs the event kind/task and honours its
   `delay` and task target — done
-- Still pending: ToolBox UI pages, and the rest of the daemon lifecycle
-  (background fork/detach + PID file, `conf-reload-interval`), plus wiring the
+- Daemon lifecycle (`glpi-scheduler::lifecycle`): a `PidFile` (RAII; written on
+  acquire, removed on drop, refusing a second live instance and taking over a
+  stale file) and background `detach` (re-exec as a `setsid` session leader with
+  null stdio — fork-safe under the async runtime, unlike a bare `fork()`).
+  Wired on `daemon`: `--daemonize` / `-d`, `--pidfile`, and a
+  `--conf-reload-interval` that reloads the layered config on a timer and logs
+  the changed fields (`conf-reload-interval` falls back to the config value) —
+  done
+- Still pending: ToolBox UI pages, applying more reloaded settings live (only
+  logged today), syslog/logfile output for a detached daemon, and wiring the
   remaining real tasks (inventory, …) into the `__task-worker` entry point
 
 ### Phase 6: Local Inventory (🟡 Linux Complete)
