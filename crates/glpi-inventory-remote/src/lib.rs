@@ -12,20 +12,25 @@
 //! Implemented so far (Phase 7): the `ssh://`/`winrm://` target model
 //! ([`RemoteTarget`]), the [`RemoteSession`] seam with an offline
 //! [`MockSession`], **SSH mode 1** (the command-line `ssh` client,
-//! [`SshCliSession`]), the [`AssetnameSupport`] option, **mode 3 (`perl`)** —
-//! remote `perl` one-liners gated on a capability probe ([`RemoteModes`],
-//! richer `Net::CUPS` printers, `Net::Domain` FQDN fallback) — and the Linux
-//! command orchestration below. Still to come: russh (SSH mode 2, libssh2),
-//! WinRM, `remote-workers` parallelism and delta state files.
+//! [`SshCliSession`]), **SSH mode 2** (the pure-Rust `russh` transport,
+//! [`RusshSession`], behind the default `russh` feature), the
+//! [`AssetnameSupport`] option, **mode 3 (`perl`)** — remote `perl` one-liners
+//! gated on a capability probe ([`RemoteModes`], richer `Net::CUPS` printers,
+//! `Net::Domain` FQDN fallback) — and the Linux command orchestration below.
+//! Still to come: WinRM, `remote-workers` parallelism and delta state files.
 
 pub mod assetname;
 pub mod mode;
+#[cfg(feature = "russh")]
+pub mod russh;
 pub mod session;
 pub mod ssh;
 pub mod target;
 
 pub use assetname::AssetnameSupport;
 pub use mode::RemoteModes;
+#[cfg(feature = "russh")]
+pub use russh::{RusshOptions, RusshSession};
 pub use session::{MockSession, RemoteSession};
 pub use ssh::SshCliSession;
 pub use target::{RemoteScheme, RemoteTarget};

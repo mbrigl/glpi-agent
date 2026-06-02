@@ -67,11 +67,13 @@ We chose **Phased Approach**, because:
 ### Phase 7: Remote Inventory (🟡 In Progress)
 - `glpi-inventory-remote`: target model (`ssh://`/`winrm://`), `RemoteSession`
   seam (reuses the local parsers verbatim), **SSH mode 1** (command-line `ssh`),
+  **SSH mode 2** (pure-Rust `russh` transport, `ring` backend, behind the default
+  `russh` feature: password + key auth, TOFU host keys, channel exec),
   `assetname-support`, **mode 3 (`perl`)** — remote `perl` one-liners gated on a
   capability probe (richer `Net::CUPS` printers, `Net::Domain` FQDN fallback,
   `RemoteModes` from `?mode=`), and the Linux command orchestration — done
-- Still pending: russh (SSH mode 2, libssh2), WinRM, `remote-workers`
-  parallelism, delta state files
+- Still pending: persistent `known_hosts` pinning, WinRM, `remote-workers`
+  parallelism, delta state files, CLI `remoteinventory` wiring
 - `glpi-vsphere`: VMware ESX/vCenter
 - State files and delta diff
 
