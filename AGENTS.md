@@ -43,14 +43,14 @@ This is a **Rust rewrite** of the [GLPI Agent](https://github.com/glpi-project/g
 | `glpi-transport` | ✅ Complete | HTTP client (reqwest), glpi-injector |
 | `glpi-discovery` | ✅ Core | Scanner, methods (Ping, ARP, NetBIOS, SNMP) |
 | Standard MIBs | ✅ Complete | 8 MIBs: system, if, entity, printer, bridge, lldp, cdp, ip |
-| Vendor MIBs | 🟡 26+ | Cisco, Juniper, Fortinet, Mikrotik, QNAP, Sophos, Hikvision, Eaton, Dell, NetScaler, SonicWall, Ruckus, Zyxel, Raritan, Quantum, Infortrend, OKI, Epson, Canon, Pantum, Xerox, HP, Brother, Ricoh, Konica/Sindoh, Lexmark |
+| Vendor MIBs | 🟡 34+ | Cisco, Juniper, Fortinet, Mikrotik, QNAP, Sophos, Hikvision, Eaton, Dell, NetScaler, SonicWall, Ruckus, Zyxel, Raritan, Quantum, Infortrend, OKI, Epson, Canon, Pantum, Xerox, HP, Brother, Ricoh, Konica/Sindoh, Lexmark, D-Link, Intelbras, Tiesse, Aerohive, Telco, FoxGate, Nokia/Alcatel, WatchGuard |
 | Local Inventory (Linux) | ✅ Complete | All 20+ categories |
 | Local Inventory (Windows) | ❌ Not Started | Needs COM worker thread |
 | Local Inventory (macOS) | ❌ Not Started | Needs System Profiler, IOKit |
 | CLI (`glpi-agent`) | 🟡 Partial | Subcommands work |
 | Daemon | 🟡 Partial | Scheduler + HTTP server core |
 
-**Highest Priority**: Remaining vendor MIBs (network: Aruba, Netgear, Dlink, Nokia, Extreme; storage: HitachiVantara, EMC; telephony: Avaya, Snom; LinuxAppliance, tp_link) + Windows/macOS inventory.
+**Highest Priority**: Remaining vendor MIBs (network: Aruba, Netgear, CiscoUcsBoard; storage: HitachiVantara, EMC, Radware; PDUs: Bachmann, RNX, DigiPower; telephony: Avaya, Snom; LinuxAppliance, tp_link) + Windows/macOS inventory.
 
 ---
 
@@ -96,7 +96,7 @@ crates/
 │   │       │   │   ├── lldp_mib.rs
 │   │       │   │   ├── cdp_mib.rs
 │   │       │   │   └── ip_mib.rs
-│   │       │   └── vendor/  # 26+ vendor MIBs
+│   │       │   └── vendor/  # 34+ vendor MIBs
 │   │       │       ├── cisco.rs
 │   │       │       ├── juniper.rs
 │   │       │       ├── fortinet.rs
