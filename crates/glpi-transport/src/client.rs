@@ -78,7 +78,7 @@ impl GlpiClient {
     /// non-success status, or the body is not a valid [`ContactResponse`].
     pub async fn contact(&self, request: &ContactRequest) -> Result<ContactResponse> {
         let response = self.post(request).await?;
-        let response = check_status(response)?;
+        let response = check_status(response).await?;
         response
             .json::<ContactResponse>()
             .await
@@ -96,7 +96,7 @@ impl GlpiClient {
         request: &InventoryRequest<C>,
     ) -> Result<()> {
         let response = self.post(request).await?;
-        check_status(response)?;
+        check_status(response).await?;
         Ok(())
     }
 
@@ -121,7 +121,7 @@ impl GlpiClient {
             .send()
             .await
             .map_err(|e| AgentError::Transport(e.to_string()))?;
-        check_status(response)?;
+        check_status(response).await?;
         Ok(())
     }
 
@@ -282,12 +282,30 @@ fn load_identity(path: &Path) -> Result<Identity> {
 
 /// Maps a non-success HTTP status onto an [`AgentError`], passing successes
 /// through unchanged.
-fn check_status(response: reqwest::Response) -> Result<reqwest::Response> {
+///
+/// On failure the response body is appended to the message when present: GLPI
+/// returns the validation reason there (e.g. `{"status":"error","message":"JSON
+/// does not validate. …"}`), which the bare status code would otherwise hide.
+/// The body is truncated to keep the error readable.
+async fn check_status(response: reqwest::Response) -> Result<reqwest::Response> {
     let status = response.status();
     if status.is_success() {
         return Ok(response);
     }
-    let message = format!("server returned HTTP {status}");
+    let body = response.text().await.unwrap_or_default();
+    let body = body.trim();
+    let message = if body.is_empty() {
+        format!("server returned HTTP {status}")
+    } else {
+        const MAX_BODY: usize = 512;
+        let detail: String = body.chars().take(MAX_BODY).collect();
+        let ellipsis = if body.chars().nth(MAX_BODY).is_some() {
+            "…"
+        } else {
+            ""
+        };
+        format!("server returned HTTP {status}: {detail}{ellipsis}")
+    };
     Err(match status {
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => AgentError::Auth(message),
         _ => AgentError::Transport(message),

@@ -100,6 +100,24 @@ impl Hardware {
     }
 }
 
+/// Normalizes a BIOS release date to GLPI's ISO `YYYY-MM-DD` form.
+///
+/// Both `dmidecode` (`Release Date`) and `/sys/class/dmi/id/bios_date` report
+/// the date as `MM/DD/YYYY` (US order). GLPI's inventory schema rejects that
+/// shape — it requires `YYYY-MM-DD` — so we reorder the components and pad the
+/// month/day to two digits. A value that is empty, already ISO, or otherwise
+/// doesn't match the `MM/DD/YYYY` shape is returned unchanged.
+fn normalize_bios_date(date: Option<String>) -> Option<String> {
+    let date = date?;
+    if let [m, d, y] = date.split('/').collect::<Vec<_>>()[..] {
+        let numeric = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+        if y.len() == 4 && numeric(y) && numeric(m) && numeric(d) {
+            return Some(format!("{y}-{m:0>2}-{d:0>2}"));
+        }
+    }
+    Some(date)
+}
+
 /// Parses `dmidecode` output into the BIOS and hardware identity.
 #[must_use]
 pub fn parse_dmidecode_hardware(text: &str) -> (Bios, Hardware) {
@@ -109,7 +127,7 @@ pub fn parse_dmidecode_hardware(text: &str) -> (Bios, Hardware) {
     for block in dmi::parse_blocks(text) {
         match block.name.as_str() {
             "BIOS Information" => {
-                bios.bios_date = clean(block.get("Release Date"));
+                bios.bios_date = normalize_bios_date(clean(block.get("Release Date")));
                 bios.bios_manufacturer = clean(block.get("Vendor"));
                 bios.bios_version = clean(block.get("Version"));
             }
@@ -149,7 +167,7 @@ where
 {
     let field = |name: &str| clean(read(name).as_deref());
     let bios = Bios {
-        bios_date: field("bios_date"),
+        bios_date: normalize_bios_date(field("bios_date")),
         bios_manufacturer: field("bios_vendor"),
         bios_version: field("bios_version"),
         system_manufacturer: field("sys_vendor"),
@@ -336,7 +354,8 @@ Chassis Information
             Some("American Megatrends Inc.")
         );
         assert_eq!(bios.bios_version.as_deref(), Some("1.2.0"));
-        assert_eq!(bios.bios_date.as_deref(), Some("03/15/2023"));
+        // dmidecode's MM/DD/YYYY is normalized to GLPI's ISO YYYY-MM-DD.
+        assert_eq!(bios.bios_date.as_deref(), Some("2023-03-15"));
         assert_eq!(bios.system_manufacturer.as_deref(), Some("Dell Inc."));
         assert_eq!(bios.system_model.as_deref(), Some("OptiPlex 7090"));
         assert_eq!(bios.system_serial.as_deref(), Some("ABC1234"));
@@ -355,6 +374,20 @@ Chassis Information
         let (bios, hardware) = parse_dmidecode_hardware("");
         assert!(bios.is_empty());
         assert!(hardware.is_empty());
+    }
+
+    #[test]
+    fn normalizes_bios_date_to_iso() {
+        use super::normalize_bios_date;
+        let n = |s: &str| normalize_bios_date(Some(s.to_owned()));
+        // dmidecode / sysfs MM/DD/YYYY is reordered to ISO.
+        assert_eq!(n("01/26/2026").as_deref(), Some("2026-01-26"));
+        // Single-digit month/day are zero-padded.
+        assert_eq!(n("3/5/2023").as_deref(), Some("2023-03-05"));
+        // Already-ISO and unrecognized shapes pass through untouched.
+        assert_eq!(n("2023-03-15").as_deref(), Some("2023-03-15"));
+        assert_eq!(n("garbage").as_deref(), Some("garbage"));
+        assert_eq!(normalize_bios_date(None), None);
     }
 
     #[test]
