@@ -10,8 +10,9 @@
 use serde::Serialize;
 
 use crate::categories::{
-    Battery, Bios, Controller, Cpu, EnvVar, Hardware, MemoryModule, Monitor, NetworkInterface,
-    OperatingSystem, Printer, Process, Software, Sound, Storage, UsbDevice, User, Video,
+    Antivirus, Battery, Bios, Controller, Cpu, EnvVar, Hardware, MemoryModule, Monitor,
+    NetworkInterface, OperatingSystem, Printer, Process, Software, Sound, Storage, UsbDevice, User,
+    Video,
 };
 
 /// The agent identifier GLPI requires in `content.versionclient`.
@@ -80,6 +81,9 @@ pub struct Content {
     /// Monitors.
     #[serde(rename = "monitors", skip_serializing_if = "Vec::is_empty")]
     pub monitors: Vec<Monitor>,
+    /// Antivirus / endpoint-security products.
+    #[serde(rename = "antivirus", skip_serializing_if = "Vec::is_empty")]
+    pub antivirus: Vec<Antivirus>,
 }
 
 #[cfg(test)]

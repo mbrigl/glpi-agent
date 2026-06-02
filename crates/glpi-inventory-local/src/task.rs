@@ -11,8 +11,8 @@
 use std::collections::HashSet;
 
 use crate::categories::{
-    battery, cpu, environment, hardware, memory, monitor, network, os, pci, printer, process,
-    software, sound, storage, usb, user, video,
+    antivirus, battery, cpu, environment, hardware, memory, monitor, network, os, pci, printer,
+    process, software, sound, storage, usb, user, video,
 };
 use crate::content::Content;
 
@@ -122,6 +122,9 @@ impl LocalInventory {
         }
         if self.is_enabled("monitor") {
             content.monitors = monitor::collect();
+        }
+        if self.is_enabled("antivirus") {
+            content.antivirus = antivirus::collect();
         }
         content
     }

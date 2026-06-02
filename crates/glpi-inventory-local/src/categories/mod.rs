@@ -26,6 +26,7 @@
 //! - [`printer`] — CUPS printers (`lpstat -p`),
 //! - [`monitor`] — monitors via EDID (`/sys/class/drm`).
 
+pub mod antivirus;
 pub mod battery;
 pub mod cpu;
 pub mod environment;
@@ -46,6 +47,7 @@ pub mod video;
 
 pub(crate) mod dmi;
 
+pub use antivirus::{detect_present as detect_antivirus, Antivirus};
 pub use battery::{parse_power_supply_uevent, Battery};
 pub use cpu::{parse_cpuinfo, Cpu};
 pub use environment::{from_vars as env_from_vars, EnvVar};
