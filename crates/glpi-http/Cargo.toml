@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 glpi-core = { path = "../glpi-core" }
+glpi-scheduler = { path = "../glpi-scheduler" }
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true

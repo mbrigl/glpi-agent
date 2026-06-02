@@ -30,7 +30,7 @@ use glpi_inventory_remote::{
     AssetnameSupport, RemoteInventory, RemoteModes, RemoteSession, RemoteTarget, RusshOptions,
     RusshSession, SshCliSession, WinRmOptions, WinRmSession,
 };
-use glpi_scheduler::{jitter, RunSchedule};
+use glpi_scheduler::{jitter, Event, RunSchedule};
 use glpi_transport::{GlpiClient, Injector};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
@@ -508,9 +508,18 @@ async fn run_daemon(args: DaemonArgs) -> Result<()> {
                 schedule.schedule_next(Utc::now());
             }
             event = recv_trigger(&mut triggers) => {
-                tracing::info!(?event, "received /now trigger");
-                scan_once(&task).await;
-                schedule.schedule_next(Utc::now());
+                tracing::info!(kind = ?event.kind, task = %event.task, delay = event.delay, "received /now event");
+                if event.delay > 0 {
+                    tokio::time::sleep(Duration::from_secs(event.delay)).await;
+                }
+                // This daemon runs NetDiscovery; honour events targeting it or
+                // all tasks, and skip those aimed at a different task.
+                if matches!(event.task.as_str(), "all" | "netdiscovery" | "") {
+                    scan_once(&task).await;
+                    schedule.schedule_next(Utc::now());
+                } else {
+                    tracing::debug!(task = %event.task, "event targets another task; ignored");
+                }
             }
             result = tokio::signal::ctrl_c() => {
                 result.context("waiting for Ctrl-C")?;
@@ -521,11 +530,9 @@ async fn run_daemon(args: DaemonArgs) -> Result<()> {
     }
 }
 
-/// Awaits the next `/now` trigger, or never resolves when the HTTP server is
-/// disabled (so the `select!` arm stays dormant).
-async fn recv_trigger(
-    triggers: &mut Option<tokio::sync::mpsc::Receiver<glpi_http::NowRequest>>,
-) -> glpi_http::NowRequest {
+/// Awaits the next `/now` trigger event, or never resolves when the HTTP server
+/// is disabled (so the `select!` arm stays dormant).
+async fn recv_trigger(triggers: &mut Option<tokio::sync::mpsc::Receiver<Event>>) -> Event {
     match triggers {
         Some(rx) => match rx.recv().await {
             Some(event) => event,

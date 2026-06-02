@@ -78,8 +78,13 @@ We chose **Phased Approach**, because:
 - HTTP-server plugins (`glpi-plugins`): the Proxy plugin (config + store/forward
   + pass-through loop guard) and the SSL plugin (HTTPS-listener config +
   validation); request routing / TLS listener wiring into `glpi-http` remain
-- Still pending: ToolBox UI pages, the daemon lifecycle wiring (fork/detach,
-  conf-reload), and connecting the plugins/events into the embedded server
+- Event wiring: the embedded server maps each `/now` request (`partial`, `full`,
+  `task`, `category`, `delay`) to a typed `Event` and delivers it to the daemon
+  over the trigger channel; the daemon logs the event kind/task and honours its
+  `delay` and task target — done
+- Still pending: ToolBox UI pages, the daemon lifecycle (fork/detach,
+  conf-reload, task-fork child spawn), and mounting the plugins (proxy route /
+  TLS listener) in the embedded server
 
 ### Phase 6: Local Inventory (🟡 Linux Complete)
 - Linux: All 20+ categories

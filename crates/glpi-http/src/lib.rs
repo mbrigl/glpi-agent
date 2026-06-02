@@ -7,7 +7,8 @@
 //!
 //! - [`trust`] — [`TrustList`], the `httpd-trust` access control,
 //! - [`server`] — [`HttpServer`] serving `/status` and `/now` (axum), gated by
-//!   the trust list.
+//!   the trust list. A `/now` request is parsed into a typed
+//!   [`Event`](glpi_scheduler::Event) and delivered to the daemon.
 //!
 //! The ToolBox UI pages and the proxy / SSL plugins (plan §2) are deferred to a
 //! later unit; this is the daemon's core control endpoint surface.
@@ -15,5 +16,5 @@
 pub mod server;
 pub mod trust;
 
-pub use server::{HttpServer, NowRequest, DEFAULT_HTTP_PORT};
+pub use server::{HttpServer, DEFAULT_HTTP_PORT};
 pub use trust::TrustList;
