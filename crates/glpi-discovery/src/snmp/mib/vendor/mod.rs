@@ -15,15 +15,19 @@ use std::sync::Arc;
 
 use super::MibRegistry;
 
+pub mod canon;
 pub mod cisco;
 pub mod dell;
 pub mod eaton;
+pub mod epson;
 pub mod fortinet;
 pub mod hikvision;
 pub mod infortrend;
 pub mod juniper;
 pub mod mikrotik;
 pub mod netscaler;
+pub mod oki;
+pub mod pantum;
 pub mod qnap;
 pub mod quantum;
 pub mod raritan;
@@ -32,15 +36,19 @@ pub mod sonicwall;
 pub mod sophos;
 pub mod zyxel;
 
+pub use canon::CanonMib;
 pub use cisco::CiscoMib;
 pub use dell::DellMib;
 pub use eaton::EatonMib;
+pub use epson::EpsonMib;
 pub use fortinet::FortinetMib;
 pub use hikvision::HikvisionMib;
 pub use infortrend::InfortrendMib;
 pub use juniper::JuniperMib;
 pub use mikrotik::MikrotikMib;
 pub use netscaler::NetscalerMib;
+pub use oki::OkiMib;
+pub use pantum::PantumMib;
 pub use qnap::QnapMib;
 pub use quantum::QuantumMib;
 pub use raritan::RaritanMib;
@@ -67,4 +75,8 @@ pub fn register_all(registry: &mut MibRegistry) {
     registry.register(Arc::new(RaritanMib));
     registry.register(Arc::new(QuantumMib));
     registry.register(Arc::new(InfortrendMib));
+    registry.register(Arc::new(OkiMib));
+    registry.register(Arc::new(EpsonMib));
+    registry.register(Arc::new(CanonMib));
+    registry.register(Arc::new(PantumMib));
 }
