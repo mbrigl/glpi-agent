@@ -218,6 +218,16 @@ struct RemoteInventoryArgs {
     #[arg(long, default_value = "Computer")]
     itemtype: String,
 
+    /// Directory holding per-device delta state. When set, each host submits a
+    /// `partial` inventory carrying only its changed sections.
+    #[arg(long, value_name = "DIR")]
+    statedir: Option<PathBuf>,
+
+    /// Send at most this many consecutive partial inventories per host before
+    /// forcing a full one (`0` disables partials). Requires `--statedir`.
+    #[arg(long, default_value_t = 0)]
+    full_inventory_postpone: u32,
+
     #[command(flatten)]
     http: HttpClientArgs,
 }
@@ -340,40 +350,66 @@ async fn run_inventory(args: InventoryArgs, options: &Options) -> Result<()> {
         .or_else(|| content.hardware.as_ref().and_then(|h| h.name.clone()))
         .unwrap_or_else(|| "glpi-agent".to_owned());
     let no_ssl_check = args.http.no_ssl_check || options.no_ssl_check;
+    submit_inventory(
+        &servers,
+        &args.http,
+        no_ssl_check,
+        &args.itemtype,
+        &deviceid,
+        &content,
+        args.statedir.as_deref(),
+        args.full_inventory_postpone,
+    )
+    .await
+}
 
-    // With a state directory, submit a delta (partial) inventory; otherwise the
-    // full content.
-    if let Some(statedir) = &args.statedir {
-        let previous = delta::load_state(statedir, &deviceid)
+/// Submits `content` for `deviceid` to every server. With a `statedir`, submits
+/// a delta (`partial`) inventory of only the changed sections (honouring
+/// `full_inventory_postpone`) and persists the new state; otherwise the full
+/// content.
+#[allow(clippy::too_many_arguments)]
+async fn submit_inventory(
+    servers: &[String],
+    http: &HttpClientArgs,
+    no_ssl_check: bool,
+    itemtype: &str,
+    deviceid: &str,
+    content: &Content,
+    statedir: Option<&Path>,
+    full_inventory_postpone: u32,
+) -> Result<()> {
+    if let Some(statedir) = statedir {
+        let previous = delta::load_state(statedir, deviceid)
             .with_context(|| format!("loading delta state for {deviceid}"))?;
-        let plan = delta::plan(&content, previous.as_ref(), args.full_inventory_postpone)
+        let plan = delta::plan(content, previous.as_ref(), full_inventory_postpone)
             .context("planning delta inventory")?;
         let request =
-            InventoryRequest::new(deviceid.clone(), &plan.content).with_itemtype(&args.itemtype);
-        for server in &servers {
-            let client = build_client(server, &args.http, no_ssl_check)?;
+            InventoryRequest::new(deviceid.to_owned(), &plan.content).with_itemtype(itemtype);
+        for server in servers {
+            let client = build_client(server, http, no_ssl_check)?;
             client
                 .submit_inventory(&request)
                 .await
                 .with_context(|| format!("submitting inventory to {server}"))?;
             tracing::info!(
                 server,
+                %deviceid,
                 mode = ?plan.mode,
                 sections = plan.changed_sections.len(),
                 "inventory submitted"
             );
         }
-        delta::save_state(statedir, &deviceid, &plan.state)
+        delta::save_state(statedir, deviceid, &plan.state)
             .with_context(|| format!("saving delta state for {deviceid}"))?;
     } else {
-        let request = InventoryRequest::new(deviceid, &content).with_itemtype(&args.itemtype);
-        for server in &servers {
-            let client = build_client(server, &args.http, no_ssl_check)?;
+        let request = InventoryRequest::new(deviceid.to_owned(), content).with_itemtype(itemtype);
+        for server in servers {
+            let client = build_client(server, http, no_ssl_check)?;
             client
                 .submit_inventory(&request)
                 .await
                 .with_context(|| format!("submitting inventory to {server}"))?;
-            tracing::info!(server, itemtype = %request.itemtype, "inventory submitted");
+            tracing::info!(server, %deviceid, "inventory submitted");
         }
     }
     Ok(())
@@ -617,16 +653,18 @@ async fn run_remoteinventory(args: RemoteInventoryArgs, options: &Options) -> Re
                         "content": content,
                     }));
                 } else {
-                    let request = InventoryRequest::new(deviceid.clone(), &content)
-                        .with_itemtype(&args.itemtype);
-                    for server in &servers {
-                        let client = build_client(server, &args.http, no_ssl_check)?;
-                        client
-                            .submit_inventory(&request)
-                            .await
-                            .with_context(|| format!("submitting {host} inventory to {server}"))?;
-                        tracing::info!(server, %deviceid, "remote inventory submitted");
-                    }
+                    submit_inventory(
+                        &servers,
+                        &args.http,
+                        no_ssl_check,
+                        &args.itemtype,
+                        &deviceid,
+                        &content,
+                        args.statedir.as_deref(),
+                        args.full_inventory_postpone,
+                    )
+                    .await
+                    .with_context(|| format!("submitting {host} inventory"))?;
                 }
             }
             Err(error) => {
@@ -829,6 +867,10 @@ mod tests {
             "3",
             "--no-category",
             "software",
+            "--statedir",
+            "/var/state",
+            "--full-inventory-postpone",
+            "5",
         ])
         .unwrap();
         let Command::Remoteinventory(args) = cli.command else {
@@ -846,6 +888,8 @@ mod tests {
         assert_eq!(args.remote_workers, 4);
         assert_eq!(args.assetname_support.as_deref(), Some("3"));
         assert_eq!(args.no_category, vec!["software"]);
+        assert_eq!(args.statedir, Some(std::path::PathBuf::from("/var/state")));
+        assert_eq!(args.full_inventory_postpone, 5);
     }
 
     #[test]
