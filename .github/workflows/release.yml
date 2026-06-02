@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
 # Builds the `glpi-agent` installer for all three platforms:
-#   - Linux  : .deb + .rpm        (x86_64, aarch64)
+#   - Linux  : .deb + .rpm + .tar.gz + .AppImage  (x86_64, aarch64),
+#              plus Snap (x86_64, aarch64) and Flatpak (x86_64) in their own jobs
 #   - Windows: .msi (WiX)         (x86_64, aarch64)
 #   - macOS  : .pkg               (x86_64, aarch64)
 #
@@ -103,6 +104,45 @@ jobs:
           tar -C target/${{ matrix.target }}/release -czf \
             "dist/${BIN_NAME}-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz" "${BIN_NAME}"
 
+      - name: Package Linux (AppImage)
+        if: matrix.kind == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq imagemagick
+          arch="$(uname -m)"
+          appdir="AppDir"
+          rm -rf "$appdir"
+          mkdir -p "$appdir/usr/bin" "$appdir/usr/share/applications" \
+                   "$appdir/usr/share/icons/hicolor/256x256/apps"
+          cp "target/${{ matrix.target }}/release/${BIN_NAME}" "$appdir/usr/bin/"
+          cat > "$appdir/usr/share/applications/${BIN_NAME}.desktop" <<DESKTOP
+          [Desktop Entry]
+          Type=Application
+          Name=GLPI Agent
+          Exec=${BIN_NAME}
+          Icon=${BIN_NAME}
+          Categories=Utility;System;
+          Terminal=true
+          DESKTOP
+          cp "$appdir/usr/share/applications/${BIN_NAME}.desktop" "$appdir/${BIN_NAME}.desktop"
+          # A simple solid-colour launcher icon (font-independent).
+          convert -size 256x256 xc:'#1565C0' \
+            "$appdir/usr/share/icons/hicolor/256x256/apps/${BIN_NAME}.png"
+          cp "$appdir/usr/share/icons/hicolor/256x256/apps/${BIN_NAME}.png" "$appdir/${BIN_NAME}.png"
+          cat > "$appdir/AppRun" <<'APPRUN'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/glpi-agent" "$@"
+          APPRUN
+          chmod +x "$appdir/AppRun"
+          curl -fsSL -o appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${arch}.AppImage"
+          chmod +x appimagetool
+          ARCH="$arch" ./appimagetool --appimage-extract-and-run "$appdir" \
+            "dist/${BIN_NAME}-${{ steps.version.outputs.version }}-${arch}.AppImage"
+
       # ---------- Windows: .msi ----------
       - name: Install WiX toolset
         if: matrix.kind == 'windows'
@@ -142,9 +182,73 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  snap:
+    name: snap-${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            os: ubuntu-latest
+          - arch: arm64
+            os: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build snap
+        id: snapcraft
+        uses: snapcore/action-build@v1
+      - name: Collect snap
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "${{ steps.snapcraft.outputs.snap }}" dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-snap-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  flatpak:
+    name: flatpak-x86_64
+    needs: build
+    runs-on: ubuntu-latest
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:freedesktop-24.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the Linux x86_64 build
+        uses: actions/download-artifact@v4
+        with:
+          name: installers-linux-x86_64
+          path: dl
+      - name: Stage the prebuilt binary next to the manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -C dl -xzf dl/${BIN_NAME}-*-x86_64-unknown-linux-gnu.tar.gz
+          install -Dm755 "dl/${BIN_NAME}" "packaging/flatpak/${BIN_NAME}"
+      - name: Build Flatpak bundle
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: glpi-agent.flatpak
+          manifest-path: packaging/flatpak/org.glpi.Agent.yaml
+          cache-key: flatpak-builder-${{ github.sha }}
+      - name: Collect flatpak
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp glpi-agent.flatpak "dist/${BIN_NAME}-x86_64.flatpak"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-flatpak-x86_64
+          path: dist/*
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, snap, flatpak]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:

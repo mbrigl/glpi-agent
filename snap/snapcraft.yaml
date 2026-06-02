@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Snap package for the GLPI agent, built by .github/workflows/release.yml via
+# snapcore/action-build. Classic confinement: an inventory agent needs broad
+# read access to the host (/proc, /sys, dmidecode, package databases) that
+# strict confinement would block.
+
+name: glpi-agent
+base: core24
+adopt-info: glpi-agent
+summary: GLPI inventory agent (Rust rewrite)
+description: |
+  A Rust rewrite of the GLPI inventory agent. Collects local, network (SNMP),
+  remote (SSH/WinRM) and VMware vSphere inventory and reports it to a GLPI
+  server, and runs the collect, deploy and wake-on-LAN tasks.
+license: GPL-2.0-only
+grade: stable
+confinement: classic
+
+platforms:
+  amd64:
+  arm64:
+
+parts:
+  glpi-agent:
+    plugin: rust
+    source: .
+    rust-path: [crates/glpi-cli]
+    rust-channel: stable
+    override-pull: |
+      craftctl default
+      craftctl set version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+
+apps:
+  glpi-agent:
+    command: bin/glpi-agent

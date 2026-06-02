@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Flatpak manifest for the GLPI agent. The release workflow builds the binary
+# once with cargo, then this manifest bundles that prebuilt executable (so the
+# Flatpak build stays offline and does not re-vendor the Cargo dependency tree).
+# The binary is staged next to this manifest as `glpi-agent` by the workflow.
+app-id: org.glpi.Agent
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: glpi-agent
+
+finish-args:
+  # An inventory agent needs to reach the GLPI server and read the host.
+  - --share=network
+  - --filesystem=host
+  - --device=all
+
+modules:
+  - name: glpi-agent
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 glpi-agent /app/bin/glpi-agent
+    sources:
+      - type: file
+        path: glpi-agent

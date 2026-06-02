@@ -647,11 +647,14 @@ Linux is complete; most category collectors are currently a "non-Linux stub".
 ### Phase 10 (Stabilization + packaging) — in progress
 
 - **Done**: cross-crate integration tests + JSON schema-parity golden tests
-  (`crates/glpi-agent-tests`), a CPU-bound performance smoke test, and the
-  test-suite parity audit map ([tests/PARITY.md](tests/PARITY.md)).
-- **Remaining**: OS packaging (MSI / DEB / RPM / Snap / AppImage / PKG),
-  cross-compilation matrix, a static libiec61850 per platform, a live SNMPv3
-  round-trip test, a security/CVE audit, and man pages + a migration guide.
+  (`crates/glpi-agent-tests`), a CPU-bound performance smoke test, the
+  test-suite parity audit map ([tests/PARITY.md](tests/PARITY.md)), and the
+  release pipeline ([.github/workflows/release.yml](.github/workflows/release.yml))
+  building installers for all three platforms across x86_64 + aarch64:
+  Linux `.deb`/`.rpm`/`.tar.gz`/`.AppImage` plus Snap and Flatpak, Windows
+  `.msi` (WiX), macOS `.pkg`.
+- **Remaining**: a static libiec61850 per platform, a live SNMPv3 round-trip
+  test, a security/CVE audit, and man pages + a migration guide.
 - **Also pending**: the ToolBox HTTP UI pages (incl. the IEC 61850 config page).
 
 ---

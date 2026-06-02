@@ -21,7 +21,7 @@ separate it from the Perl 1.x line.
 > | 7 | Remote inventory (SSH modes 1–3, WinRM) | 🟡 substantial |
 > | 8 | vSphere / ESX (`glpi-agent esx`, dump/dumpfile) | ✅ complete |
 > | 9 | Collect, Deploy, WakeOnLan (`glpi-agent wakeup`) | ✅ complete |
-> | 10 | Stabilization + packaging | 🟡 integration / parity tests done; packaging pending |
+> | 10 | Stabilization + packaging | 🟡 integration / parity tests done; release installers for all 3 platforms (see below) |
 >
 > The `glpi-agent` CLI exposes `inventory`, `netdiscovery`, `netinventory`, `remoteinventory`, `esx`,
 > `wakeup`, `inject` and `daemon`. Every fallible network/OS boundary sits behind a seam with an
@@ -30,9 +30,13 @@ separate it from the Perl 1.x line.
 > cross-crate `glpi-agent-tests` crate) locks the GLPI wire format. The test-suite parity audit map
 > lives in [tests/PARITY.md](tests/PARITY.md).
 >
+> Installers are built by [.github/workflows/release.yml](.github/workflows/release.yml) on a `v*`
+> tag — Linux `.deb` / `.rpm` / `.tar.gz` / `.AppImage` plus Snap and Flatpak, Windows `.msi` (WiX)
+> and macOS `.pkg`, for x86_64 and aarch64.
+>
 > Deferred to platform-specific / later phases: Windows/macOS inventory categories and certificate
-> stores, the libiec61850 link (off by default, behind the `libiec61850` feature), and OS packaging
-> (MSI / DEB / RPM / PKG) with cross-compilation.
+> stores, the libiec61850 link (off by default, behind the `libiec61850` feature), and a static
+> libiec61850 bundled per platform.
 >
 > See [glpi-agent-crates-summary.md](glpi-agent-crates-summary.md) for the crate map and
 > [glpi-agent-rust-migration-plan.md](glpi-agent-rust-migration-plan.md) for the phased plan.
