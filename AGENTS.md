@@ -73,7 +73,7 @@ crates/
 │       ├── auth.rs         # Authentication handlers
 │       └── injector.rs     # glpi-injector functionality
 │
-├── NETWORK (Phase 2-3 🟡)
+├── NETWORK (Phase 2-4 🟡)
 │   ├── glpi-discovery/      # Network discovery core
 │   │   ├── ip_range.rs      # IP range expansion (CIDR, start-end)
 │   │   ├── scanner.rs       # Parallel scanner with semaphores
@@ -130,11 +130,11 @@ crates/
 │           ├── printer.rs    # Local printers (CUPS)
 │           └── monitor.rs     # Monitors via EDID
 │
-└── DAEMON & CLI (Phase 5 🟡)
+└── DAEMON & CLI (Phase 5 ✅ + Phase 9 ✅)
     ├── glpi-cli/          # CLI binary (published as glpi-agent)
     │   └── src/main.rs    # Subcommands: inventory, netdiscovery, netinventory, remoteinventory, esx, wakeup, inject, daemon
     ├── glpi-scheduler/    # Daemon scheduling
-    ├── glpi-http/         # Embedded HTTP server (ToolBox)
+    ├── glpi-http/         # Embedded HTTP server (ToolBox: pages pending)
     ├── glpi-collect/      # Collect task v3.0 (Phase 9 ✅)
     ├── glpi-deploy/       # Deploy task v3.5 (Phase 9 ✅)
     ├── glpi-wakeonlan/    # WakeOnLan task (Phase 9 ✅)
@@ -602,20 +602,13 @@ cargo udeps --workspace
 
 ## 🎯 Current Priorities & How to Help
 
-### High Priority (Phase 3: NetInventory + MIBs)
+Phases 1–5, 8 and 9 are complete, and Phase 4 (IEC 61850) is done. The remaining
+work is platform-specific inventory, finishing remote inventory, and the
+Phase 10 stabilization/packaging tail.
 
-**Vendor MIBs needed**: HP, Brother, Lexmark, Dell Networking, Aruba, Palo Alto, Ricoh, Kyocera, Fujitsu, Lenovo
+### High Priority (Phase 6: Local Inventory — Windows & macOS)
 
-**How to help**:
-1. Find the Perl MIB module: `GLPI::Agent::SNMP::MibSupport::[Vendor]`
-2. Create file: `crates/glpi-discovery/src/snmp/mib/vendor/[vendor].rs`
-3. Follow the pattern from `xerox.rs` or `cisco.rs`
-4. Use `WalkSession` with fixture data for tests
-5. Register in `mod.rs` and the MIB registry
-
-**Fixtures**: Use `snmpwalk -v 2c -c public <device> -On > fixture.walk` from Perl agent
-
-### High Priority (Phase 6: Local Inventory)
+Linux is complete; most category collectors are currently a "non-Linux stub".
 
 **Windows Inventory Categories** (15+ needed):
 - WMI-based system information
@@ -627,16 +620,39 @@ cargo udeps --workspace
 - IOKit for hardware info
 - Keychain for certificates
 
+**Exotic Unix** (base inventory): Solaris/OmniOS, HP-UX, AIX, FreeBSD.
+
 **Note**: Use `#[cfg(target_os = "windows")]` and `#[cfg(target_os = "macos")]` respectively.
 
 **Important**: Windows code must run on a dedicated COM worker thread (not `Send`).
 
-### Medium Priority (Phase 5: CLI + Daemon)
+### Medium Priority (Phase 7: finish Remote inventory)
 
-- Complete daemon mode
-- ToolBox HTTP server (/status, /now, /)
-- Configuration refinements
-- Category filtering improvements
+- Delta-inventory state files / checksums and maintenance cleanup
+- `assetname-support` edge cases; WinRM remote registry refinements
+
+### Medium Priority (Phase 3: more vendor MIBs)
+
+**Vendor MIBs still wanted**: HP, Brother, Lexmark, Dell Networking, Aruba, Palo Alto, Ricoh, Kyocera, Fujitsu, Lenovo
+
+**How to help**:
+1. Find the Perl MIB module: `GLPI::Agent::SNMP::MibSupport::[Vendor]`
+2. Create file: `crates/glpi-discovery/src/snmp/mib/vendor/[vendor].rs`
+3. Follow the pattern from `xerox.rs` or `cisco.rs`
+4. Use `WalkSession` with fixture data for tests
+5. Register in `mod.rs` and the MIB registry
+
+**Fixtures**: Use `snmpwalk -v 2c -c public <device> -On > fixture.walk` from Perl agent
+
+### Phase 10 (Stabilization + packaging) — in progress
+
+- **Done**: cross-crate integration tests + JSON schema-parity golden tests
+  (`crates/glpi-agent-tests`), a CPU-bound performance smoke test, and the
+  test-suite parity audit map ([tests/PARITY.md](tests/PARITY.md)).
+- **Remaining**: OS packaging (MSI / DEB / RPM / Snap / AppImage / PKG),
+  cross-compilation matrix, a static libiec61850 per platform, a live SNMPv3
+  round-trip test, a security/CVE audit, and man pages + a migration guide.
+- **Also pending**: the ToolBox HTTP UI pages (incl. the IEC 61850 config page).
 
 ---
 
@@ -745,5 +761,5 @@ fn process_device(device_id: &str) {
 
 ---
 
-*Last updated: June 2026*
+*Last updated: June 2026 (Phases 4, 8 & 9 complete; Phase 10 stabilization in progress)*
 *Maintainer: GLPI Agent Rust Team*

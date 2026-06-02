@@ -5,26 +5,34 @@ upstream agent is written in Perl; this project re-implements it as a Cargo work
 crates while staying compatible with the GLPI inventory protocol. It starts at **v2.0.0** to
 separate it from the Perl 1.x line.
 
-> **Status: Phase 1 (Foundation) complete** for the cross-platform surface. The Cargo workspace and
-> all 14 member crates exist; the two base crates are implemented and tested, and the task/daemon
-> crates are still placeholder skeletons awaiting their phases.
+> **Status: all nine tasks implemented; stabilization (Phase 10) under way.** The Cargo workspace and
+> its member crates are in place; the cross-platform surface is implemented and tested, with the
+> remaining work being platform-specific inventory (Windows / macOS / exotic Unix) and packaging.
 >
-> - **`glpi-core`** — `error`, `types` (device / network / SNMP / inventory), `config` (layered
->   options + precedence merge, plus `agent.cfg` / `conf.d` / `GLPI_AGENT_*` source parsers),
->   `protocol::glpi` (native JSON `contact`/`inventory`), `protocol::fusion` (FusionInventory XML),
->   category filtering, and `logging` (stderr / file / callback backends, level from `debug`).
->   _Implemented & tested._
-> - **`glpi-transport`** — `GlpiClient` / `GlpiClientBuilder`, a reqwest (rustls) HTTP client for the
->   `contact` handshake and inventory submission, with Basic and OAuth2 bearer auth, TLS options
->   (custom CA, client certificate, `no-ssl-check`, timeout) and error mapping; plus `Injector`, which
->   replays existing inventory files (JSON/XML) to a server. _Implemented & tested (wiremock)._
-> - A **golden-file harness** (`glpi-core/tests/golden.rs`) compares serialized protocol messages
->   against committed fixtures — the seed for parity testing against the Perl agent in later phases.
-> - Everything else (`glpi-discovery`, `glpi-inventory-local`, `glpi-vsphere`, `glpi-cli`, …) is a
->   skeleton awaiting its phase.
+> Phase status (see [AGENTS.md](AGENTS.md) for the per-crate breakdown):
 >
-> Deferred to platform-specific / later phases: Windows registry config + Windows/macOS certificate
-> stores, SSL fingerprint pinning, the `syslog` backend, and a `tracing` bridge.
+> | Phase | Area | Status |
+> | ----- | ---- | ------ |
+> | 1 | Foundation — `glpi-core`, `glpi-transport` | ✅ complete |
+> | 2–3 | NetDiscovery + NetInventory (8 standard + 69 vendor MIBs) | ✅ core; MIBs grow |
+> | 4 | IEC 61850 (scan + SNMP merge; libiec61850 FFI behind a feature) | ✅ complete |
+> | 5 | CLI + daemon + HTTP control server + plugins | ✅ complete |
+> | 6 | Local inventory | 🟡 Linux done; Windows / macOS / exotic Unix pending |
+> | 7 | Remote inventory (SSH modes 1–3, WinRM) | 🟡 substantial |
+> | 8 | vSphere / ESX (`glpi-agent esx`, dump/dumpfile) | ✅ complete |
+> | 9 | Collect, Deploy, WakeOnLan (`glpi-agent wakeup`) | ✅ complete |
+> | 10 | Stabilization + packaging | 🟡 integration / parity tests done; packaging pending |
+>
+> The `glpi-agent` CLI exposes `inventory`, `netdiscovery`, `netinventory`, `remoteinventory`, `esx`,
+> `wakeup`, `inject` and `daemon`. Every fallible network/OS boundary sits behind a seam with an
+> in-memory mock, so the whole suite runs offline; a **golden-file parity harness**
+> (`glpi-core/tests/golden.rs`, `crates/glpi-inventory-local/tests/glpi_schema.rs`, and the
+> cross-crate `glpi-agent-tests` crate) locks the GLPI wire format. The test-suite parity audit map
+> lives in [tests/PARITY.md](tests/PARITY.md).
+>
+> Deferred to platform-specific / later phases: Windows/macOS inventory categories and certificate
+> stores, the libiec61850 link (off by default, behind the `libiec61850` feature), and OS packaging
+> (MSI / DEB / RPM / PKG) with cross-compilation.
 >
 > See [glpi-agent-crates-summary.md](glpi-agent-crates-summary.md) for the crate map and
 > [glpi-agent-rust-migration-plan.md](glpi-agent-rust-migration-plan.md) for the phased plan.

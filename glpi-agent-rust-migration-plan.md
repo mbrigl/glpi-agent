@@ -895,20 +895,20 @@ platform-freebsd = []
 - [ ] All 22 inventory categories on Linux, Windows, macOS
 - [ ] Solaris, HP-UX, AIX, FreeBSD: base inventory
 - [ ] 43 MIB modules (8 standard + 35 vendor) implemented
-- [ ] JSON output schema-compatible with GLPI Agent 1.17 (automated golden-file tests)
+- [x] JSON output schema-compatible with GLPI Agent 1.17 (automated golden-file tests — `glpi-core/tests/golden.rs`, `glpi-inventory-local/tests/glpi_schema.rs`, `glpi-agent-tests`)
 - [ ] FusionInventory XML format fully compatible
-- [ ] GLPI 11+ genericity: itemtype, esx-itemtype
+- [x] GLPI 11+ genericity: itemtype, esx-itemtype
 - [ ] Partial inventory + full-inventory-postpone + required-category
 - [ ] All 35+ config options from §5 implemented
 - [ ] SNMPv3 full algorithm matrix verified against device walks
 - [ ] Scan performance ≥ 2× faster than Perl (NetDiscovery benchmark)
 - [ ] Idle daemon memory < 50 MB
 - [ ] Platforms: Windows x86_64/ARM64, Linux x86_64/ARM64, macOS x86_64/ARM64
-- [ ] IEC 61850 as an optional feature (not a mandatory link)
+- [x] IEC 61850 as an optional feature (not a mandatory link — `libiec61850` cargo feature)
 - [ ] A new MIB module implementable in < 150 lines of Rust
 - [ ] A new inventory category implementable in < 200 lines of Rust
 - [ ] Test coverage > 80% for discovery core and NetInventory
-- [ ] **Every Perl `t/` test file has a migrated Rust counterpart (parity map produced in Phase 10)**
+- [ ] **Every Perl `t/` test file has a migrated Rust counterpart** — parity map produced in Phase 10 ([tests/PARITY.md](tests/PARITY.md)); migration ongoing (Windows/macOS/exotic categories pending)
 - [ ] **All `resources/**` fixtures imported and reused as Rust test data (no regenerated/synthetic substitutes for real-device captures)**
 - [ ] **Each module's migrated tests pass before that module is considered done (per-phase gate, not deferred)**
 - [ ] **SNMPv3 crypto validated against published RFC 3414/7860 test vectors**
