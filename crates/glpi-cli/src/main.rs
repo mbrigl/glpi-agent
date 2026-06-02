@@ -30,8 +30,13 @@ use glpi_inventory_remote::{
     AssetnameSupport, RemoteInventory, RemoteModes, RemoteSession, RemoteTarget, RusshOptions,
     RusshSession, SshCliSession, WinRmOptions, WinRmSession,
 };
-use glpi_scheduler::{jitter, Event, RunSchedule};
+use glpi_scheduler::{
+    jitter, read_initial_event, Event, IpcMessage, RunSchedule, TaskWorker, WorkerReporter,
+};
 use glpi_transport::{GlpiClient, Injector};
+use std::collections::BTreeMap;
+use tokio::io::AsyncWrite;
+use tokio::process::Command as ProcessCommand;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tracing_subscriber::EnvFilter;
@@ -66,6 +71,10 @@ enum Command {
     Inject(InjectArgs),
     /// Run continuously: periodic NetDiscovery plus an HTTP control server.
     Daemon(DaemonArgs),
+    /// Internal: run a single task in a child worker process, exchanging the
+    /// task event and its results over the task-fork IPC protocol on stdio.
+    #[command(name = "__task-worker", hide = true)]
+    TaskWorker,
 }
 
 #[derive(Args)]
@@ -299,6 +308,11 @@ struct DaemonArgs {
     /// Comma-separated trusted clients (IPs / CIDRs) for the HTTP server.
     #[arg(long, default_value = "")]
     httpd_trust: String,
+
+    /// Run each scan in an isolated child worker process (task-fork), talking
+    /// to it over the IPC protocol, instead of inline in the daemon.
+    #[arg(long)]
+    fork_tasks: bool,
 }
 
 #[tokio::main]
@@ -319,6 +333,7 @@ async fn main() -> Result<()> {
         Command::Remoteinventory(args) => run_remoteinventory(args, &options).await,
         Command::Inject(args) => run_inject(args).await,
         Command::Daemon(args) => run_daemon(args).await,
+        Command::TaskWorker => run_task_worker().await,
     }
 }
 
@@ -466,9 +481,14 @@ fn v2c_credentials(communities: &[String]) -> Vec<SnmpCredentials> {
 /// Runs continuously: a periodic NetDiscovery scan plus an HTTP control server
 /// that can trigger an immediate scan via `/now`. Stops on Ctrl-C.
 async fn run_daemon(args: DaemonArgs) -> Result<()> {
+    // Validate ranges up front (the task is rebuilt per run; in fork mode the
+    // child rebuilds it from the event parameters).
     let task = NetDiscoveryTask::new(parse_ranges(&args.ranges)?)
         .with_credentials(v2c_credentials(&args.communities))
         .with_timeout(Duration::from_millis(args.timeout_ms));
+
+    // The netdiscovery event handed to a child worker when `--fork-tasks` is set.
+    let scan_event = netdiscovery_event(&args);
 
     // HTTP control server (optional), yielding /now trigger events.
     let mut triggers = if args.no_httpd {
@@ -504,7 +524,7 @@ async fn run_daemon(args: DaemonArgs) -> Result<()> {
 
         tokio::select! {
             () = tokio::time::sleep(wait) => {
-                scan_once(&task).await;
+                run_scan(&task, &scan_event, args.fork_tasks).await;
                 schedule.schedule_next(Utc::now());
             }
             event = recv_trigger(&mut triggers) => {
@@ -515,7 +535,7 @@ async fn run_daemon(args: DaemonArgs) -> Result<()> {
                 // This daemon runs NetDiscovery; honour events targeting it or
                 // all tasks, and skip those aimed at a different task.
                 if matches!(event.task.as_str(), "all" | "netdiscovery" | "") {
-                    scan_once(&task).await;
+                    run_scan(&task, &scan_event, args.fork_tasks).await;
                     schedule.schedule_next(Utc::now());
                 } else {
                     tracing::debug!(task = %event.task, "event targets another task; ignored");
@@ -542,7 +562,16 @@ async fn recv_trigger(triggers: &mut Option<tokio::sync::mpsc::Receiver<Event>>)
     }
 }
 
-/// Runs one NetDiscovery scan and logs the result count.
+/// Runs one NetDiscovery scan, either inline or in a forked child worker.
+async fn run_scan(task: &NetDiscoveryTask, scan_event: &Event, fork_tasks: bool) {
+    if fork_tasks {
+        forked_scan(scan_event).await;
+    } else {
+        scan_once(task).await;
+    }
+}
+
+/// Runs one NetDiscovery scan inline and logs the result count.
 async fn scan_once(task: &NetDiscoveryTask) {
     tracing::info!(targets = task.target_count(), "scanning");
     let devices = task.run().await;
@@ -551,6 +580,139 @@ async fn scan_once(task: &NetDiscoveryTask) {
         Err(err) => tracing::error!(error = %err, "failed to serialize scan result"),
     }
     tracing::info!(count = devices.len(), "scan complete");
+}
+
+/// Builds the `netdiscovery` [`Event`] carrying the daemon's scan parameters,
+/// so a child worker can rebuild the task from it.
+fn netdiscovery_event(args: &DaemonArgs) -> Event {
+    let mut params = BTreeMap::new();
+    params.insert("ranges".to_owned(), args.ranges.join(","));
+    if !args.communities.is_empty() {
+        params.insert("communities".to_owned(), args.communities.join(","));
+    }
+    params.insert("timeout_ms".to_owned(), args.timeout_ms.to_string());
+    Event::run_now("netdiscovery", 0, params)
+}
+
+/// Spawns this binary as a `__task-worker` child to run one scan, streaming the
+/// worker's logs/progress and printing the produced inventory result.
+async fn forked_scan(event: &Event) {
+    let exe = match std::env::current_exe() {
+        Ok(path) => path,
+        Err(err) => {
+            tracing::error!(error = %err, "cannot locate the agent binary to fork a worker");
+            return;
+        }
+    };
+    let mut command = ProcessCommand::new(exe);
+    command.arg("__task-worker");
+
+    let worker = match TaskWorker::spawn(command, event).await {
+        Ok(worker) => worker,
+        Err(err) => {
+            tracing::error!(error = %err, "failed to spawn task worker");
+            return;
+        }
+    };
+
+    let outcome = worker
+        .run_to_completion(|message| match message {
+            IpcMessage::Log { level, message } => {
+                tracing::info!(worker = true, %level, "{message}");
+            }
+            IpcMessage::Progress { task, percent } => {
+                tracing::debug!(worker = true, %task, percent, "worker progress");
+            }
+            _ => {}
+        })
+        .await;
+
+    match outcome {
+        Ok(outcome) => {
+            for (_content_type, data) in &outcome.results {
+                if let Ok(text) = std::str::from_utf8(data) {
+                    println!("{text}");
+                }
+            }
+            tracing::info!(
+                success = outcome.success,
+                results = outcome.results.len(),
+                "task worker finished"
+            );
+        }
+        Err(err) => tracing::error!(error = %err, "task worker failed"),
+    }
+}
+
+/// The `__task-worker` child entry point: reads the task [`Event`] from stdin,
+/// runs it, and reports logs / progress / results / completion on stdout over
+/// the task-fork IPC protocol.
+async fn run_task_worker() -> Result<()> {
+    let mut stdin = tokio::io::stdin();
+    let event = read_initial_event(&mut stdin)
+        .await
+        .context("reading the task event from the parent")?;
+
+    let mut reporter = WorkerReporter::new(tokio::io::stdout());
+    reporter
+        .log("info", format!("worker starting task '{}'", event.task))
+        .await
+        .context("reporting worker start")?;
+
+    match run_worker_task(&event, &mut reporter).await {
+        Ok(()) => reporter.done(true, None).await?,
+        Err(err) => {
+            let detail = format!("{err:#}");
+            let _ = reporter.log("error", detail.clone()).await;
+            reporter.done(false, Some(detail)).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Runs the task named by `event` inside the worker, emitting its results via
+/// `reporter`. Unknown tasks are an error (reported as a failed `Done`).
+async fn run_worker_task<W>(event: &Event, reporter: &mut WorkerReporter<W>) -> Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    match event.task.as_str() {
+        // A deterministic, side-effect-free task used to exercise the fork path.
+        "selftest" => {
+            reporter.progress("selftest", 100).await?;
+            reporter.result("text/plain", b"ok".to_vec()).await?;
+            Ok(())
+        }
+        "netdiscovery" | "all" => {
+            let specs = split_param(event.get("ranges"));
+            let communities = split_param(event.get("communities"));
+            let timeout_ms = event
+                .get("timeout_ms")
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(1000);
+            let task = NetDiscoveryTask::new(parse_ranges(&specs)?)
+                .with_credentials(v2c_credentials(&communities))
+                .with_timeout(Duration::from_millis(timeout_ms));
+            reporter.progress("netdiscovery", 0).await?;
+            let devices = task.run().await;
+            reporter.progress("netdiscovery", 100).await?;
+            reporter
+                .result("application/json", serde_json::to_vec(&devices)?)
+                .await?;
+            Ok(())
+        }
+        other => anyhow::bail!("task '{other}' is not supported by the worker"),
+    }
+}
+
+/// Splits a comma-separated event parameter into its non-empty parts.
+fn split_param(value: Option<&str>) -> Vec<String> {
+    value
+        .unwrap_or_default()
+        .split(',')
+        .filter(|part| !part.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 /// A cheap, dependency-free pseudo-random fraction in `[0, 1)` for jitter,
@@ -1104,5 +1266,22 @@ mod tests {
         assert_eq!(args.interval, 3600);
         assert_eq!(args.httpd_port, glpi_http::DEFAULT_HTTP_PORT);
         assert!(!args.no_httpd);
+        assert!(!args.fork_tasks);
+    }
+
+    #[test]
+    fn daemon_accepts_fork_tasks() {
+        let cli =
+            Cli::try_parse_from(["glpi-agent", "daemon", "10.0.0.1", "--fork-tasks"]).unwrap();
+        let Command::Daemon(args) = cli.command else {
+            panic!("expected daemon");
+        };
+        assert!(args.fork_tasks);
+    }
+
+    #[test]
+    fn parses_hidden_task_worker_subcommand() {
+        let cli = Cli::try_parse_from(["glpi-agent", "__task-worker"]).unwrap();
+        assert!(matches!(cli.command, Command::TaskWorker));
     }
 }

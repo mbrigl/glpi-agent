@@ -74,7 +74,15 @@ We chose **Phased Approach**, because:
   taskrun / partial / maintenance / job) with `from_params` and serde
 - Task-fork IPC (`glpi-scheduler::ipc`): length-prefixed `IpcMessage` frames
   (Event / Log / Progress / Result / Done) over any async stream, handling
-  arbitrarily long messages; child-process spawn is the remaining integration
+  arbitrarily long messages
+- Task-fork process spawn (`glpi-scheduler::fork`): the parent (`TaskWorker`)
+  spawns a worker command with piped stdio, sends it the `Event` and streams
+  back its messages to completion; the child halves (`read_initial_event` +
+  `WorkerReporter`) read the event off stdin and report progress/results on
+  stdout. Wired in the CLI: a hidden `__task-worker` subcommand runs a task
+  (`selftest`, `netdiscovery`) over IPC, and `daemon --fork-tasks` runs each
+  scan in such a child instead of inline — verified by an end-to-end test that
+  spawns the real `glpi-agent` binary and round-trips the protocol over OS pipes
 - HTTP-server plugins (`glpi-plugins`): the Proxy plugin (config + store/forward
   + pass-through loop guard) and the SSL plugin (HTTPS-listener config +
   validation)
@@ -90,8 +98,9 @@ We chose **Phased Approach**, because:
   `task`, `category`, `delay`) to a typed `Event` and delivers it to the daemon
   over the trigger channel; the daemon logs the event kind/task and honours its
   `delay` and task target — done
-- Still pending: ToolBox UI pages, and the daemon lifecycle (fork/detach,
-  conf-reload, task-fork child spawn)
+- Still pending: ToolBox UI pages, and the rest of the daemon lifecycle
+  (background fork/detach + PID file, `conf-reload-interval`), plus wiring the
+  remaining real tasks (inventory, …) into the `__task-worker` entry point
 
 ### Phase 6: Local Inventory (🟡 Linux Complete)
 - Linux: All 20+ categories

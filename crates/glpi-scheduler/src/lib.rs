@@ -9,16 +9,21 @@
 //!   failures,
 //! - [`schedule`] — [`RunSchedule`], next-run tracking with `delaytime` jitter,
 //! - [`event`] — [`Event`], the typed agent events (`init`, `runnow`,
-//!   `taskrun`, `partial`, `maintenance`, `job`).
+//!   `taskrun`, `partial`, `maintenance`, `job`),
+//! - [`ipc`] — the framed task-fork IPC protocol,
+//! - [`fork`] — the parent/child halves that run a task in a child process over
+//!   that protocol.
 //!
 //! Targets and the daemon loop follow in later units.
 
 pub mod backoff;
 pub mod event;
+pub mod fork;
 pub mod ipc;
 pub mod schedule;
 
 pub use backoff::Backoff;
 pub use event::{Event, EventKind};
+pub use fork::{collect_messages, read_initial_event, TaskWorker, WorkerOutcome, WorkerReporter};
 pub use ipc::{read_message, write_message, IpcMessage};
 pub use schedule::{jitter, RunSchedule};
