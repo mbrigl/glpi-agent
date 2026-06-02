@@ -192,6 +192,15 @@ struct RemoteInventoryArgs {
     #[arg(short = 'i', long = "identity", value_name = "PATH")]
     identities: Vec<PathBuf>,
 
+    /// `known_hosts` file for SSH host-key verification (new hosts are pinned
+    /// Trust-On-First-Use unless `--strict-host-keys`).
+    #[arg(long, value_name = "PATH")]
+    known_hosts: Option<PathBuf>,
+
+    /// Reject hosts absent from `known_hosts` (disable Trust-On-First-Use).
+    #[arg(long)]
+    strict_host_keys: bool,
+
     /// `assetname-support` mode: 1 short, 2 as-is, 3 fqdn (overrides the URL's
     /// `?assetname-support=`).
     #[arg(long, value_name = "1|2|3")]
@@ -600,7 +609,16 @@ async fn run_remoteinventory(args: RemoteInventoryArgs, options: &Options) -> Re
 
     let mut disabled = options.no_category.clone();
     disabled.extend(args.no_category.clone());
-    let timeout = Duration::from_secs(args.timeout_secs);
+
+    let run_opts = RemoteRunOptions {
+        transport: args.transport,
+        identities: args.identities.clone(),
+        timeout: Duration::from_secs(args.timeout_secs),
+        known_hosts: args.known_hosts.clone(),
+        strict_host_keys: args.strict_host_keys,
+        assetname_override,
+        disabled,
+    };
 
     // Inventory hosts concurrently, capped by --remote-workers.
     let semaphore = Arc::new(Semaphore::new(args.remote_workers.max(1)));
@@ -608,21 +626,11 @@ async fn run_remoteinventory(args: RemoteInventoryArgs, options: &Options) -> Re
     let count = targets.len();
     for (index, target) in targets.into_iter().enumerate() {
         let semaphore = semaphore.clone();
-        let identities = args.identities.clone();
-        let disabled = disabled.clone();
-        let transport = args.transport;
+        let run_opts = run_opts.clone();
         let host = target.host.clone();
         tasks.spawn(async move {
             let _permit = semaphore.acquire_owned().await.expect("semaphore open");
-            let result = inventory_remote_host(
-                target,
-                transport,
-                identities,
-                timeout,
-                assetname_override,
-                disabled,
-            )
-            .await;
+            let result = inventory_remote_host(target, &run_opts).await;
             (index, host, result)
         });
     }
@@ -683,41 +691,56 @@ async fn run_remoteinventory(args: RemoteInventoryArgs, options: &Options) -> Re
     Ok(())
 }
 
+/// Per-host settings shared across the parallel remote-inventory tasks.
+#[derive(Clone)]
+struct RemoteRunOptions {
+    transport: Transport,
+    identities: Vec<PathBuf>,
+    timeout: Duration,
+    known_hosts: Option<PathBuf>,
+    strict_host_keys: bool,
+    assetname_override: Option<AssetnameSupport>,
+    disabled: Vec<String>,
+}
+
 /// Connects to one remote host, resolves its asset name (device id) and
 /// collects its inventory.
 async fn inventory_remote_host(
     target: RemoteTarget,
-    transport: Transport,
-    identities: Vec<PathBuf>,
-    timeout: Duration,
-    assetname_override: Option<AssetnameSupport>,
-    disabled: Vec<String>,
+    opts: &RemoteRunOptions,
 ) -> Result<(String, Content)> {
     let modes = RemoteModes::from_target(&target);
-    let mut session: Box<dyn RemoteSession> = match transport {
+    let mut session: Box<dyn RemoteSession> = match opts.transport {
         Transport::Russh => {
-            let mut opts = RusshOptions::new();
-            opts.connect_timeout = timeout;
-            for identity in &identities {
-                opts = opts.with_identity(identity.clone());
+            let mut russh = RusshOptions::new();
+            russh.connect_timeout = opts.timeout;
+            russh.strict_host_keys = opts.strict_host_keys;
+            russh.known_hosts.clone_from(&opts.known_hosts);
+            for identity in &opts.identities {
+                russh = russh.with_identity(identity.clone());
             }
             Box::new(
-                RusshSession::connect(&target, &opts)
+                RusshSession::connect(&target, &russh)
                     .await
                     .with_context(|| format!("connecting to {}", target.host))?,
             )
         }
         Transport::Cli => {
-            let mut session = SshCliSession::new(&target).accept_new_host_keys(true);
-            if let Some(identity) = identities.first() {
+            let mut session =
+                SshCliSession::new(&target).accept_new_host_keys(!opts.strict_host_keys);
+            if let Some(identity) = opts.identities.first() {
                 session = session.with_identity(identity.to_string_lossy().into_owned());
+            }
+            if let Some(known_hosts) = &opts.known_hosts {
+                session = session.with_known_hosts(known_hosts.to_string_lossy().into_owned());
             }
             Box::new(session)
         }
     };
 
     // Per-target assetname-support: CLI flag wins, else the URL option, else short.
-    let assetname = assetname_override
+    let assetname = opts
+        .assetname_override
         .or_else(|| {
             target
                 .option("assetname-support")
@@ -730,7 +753,7 @@ async fn inventory_remote_host(
         .unwrap_or_else(|_| target.host.clone());
 
     let content = RemoteInventory::new()
-        .with_disabled_categories(disabled)
+        .with_disabled_categories(opts.disabled.clone())
         .with_modes(modes)
         .collect(session.as_mut())
         .await
@@ -871,6 +894,9 @@ mod tests {
             "/var/state",
             "--full-inventory-postpone",
             "5",
+            "--known-hosts",
+            "/etc/glpi/known_hosts",
+            "--strict-host-keys",
         ])
         .unwrap();
         let Command::Remoteinventory(args) = cli.command else {
@@ -890,6 +916,11 @@ mod tests {
         assert_eq!(args.no_category, vec!["software"]);
         assert_eq!(args.statedir, Some(std::path::PathBuf::from("/var/state")));
         assert_eq!(args.full_inventory_postpone, 5);
+        assert_eq!(
+            args.known_hosts,
+            Some(std::path::PathBuf::from("/etc/glpi/known_hosts"))
+        );
+        assert!(args.strict_host_keys);
     }
 
     #[test]

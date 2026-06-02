@@ -7,8 +7,10 @@
 //! the same [`RemoteSession`] seam as the command-line client, so the inventory
 //! orchestrator drives it identically.
 //!
-//! Host keys are accepted Trust-On-First-Use (matching the upstream agent's
-//! default libssh2 policy); persistent `known_hosts` pinning is a follow-up.
+//! With a `known_hosts` file, host keys are verified against it and new hosts
+//! are pinned Trust-On-First-Use (or rejected under a strict policy), matching
+//! the upstream agent's libssh2 behaviour; with no file, keys are accepted
+//! without persistence.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -33,6 +35,11 @@ pub struct RusshOptions {
     pub connect_timeout: Duration,
     /// Private-key files to try for public-key authentication, in order.
     pub identities: Vec<PathBuf>,
+    /// `known_hosts` file used to verify (and, in TOFU mode, pin) host keys.
+    /// With no file set, host keys are accepted without persistence.
+    pub known_hosts: Option<PathBuf>,
+    /// Reject hosts not already present in `known_hosts` (no Trust-On-First-Use).
+    pub strict_host_keys: bool,
 }
 
 impl Default for RusshOptions {
@@ -40,6 +47,8 @@ impl Default for RusshOptions {
         Self {
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             identities: Vec::new(),
+            known_hosts: None,
+            strict_host_keys: false,
         }
     }
 }
@@ -57,20 +66,89 @@ impl RusshOptions {
         self.identities.push(identity.into());
         self
     }
+
+    /// Sets the `known_hosts` file for host-key verification / pinning.
+    #[must_use]
+    pub fn with_known_hosts(mut self, known_hosts: impl Into<PathBuf>) -> Self {
+        self.known_hosts = Some(known_hosts.into());
+        self
+    }
+
+    /// Rejects hosts absent from `known_hosts` (disables Trust-On-First-Use).
+    #[must_use]
+    pub fn strict_host_keys(mut self, strict: bool) -> Self {
+        self.strict_host_keys = strict;
+        self
+    }
 }
 
-/// The client handler — accepts the server key Trust-On-First-Use.
-struct ClientHandler;
+/// What to do with a presented host key after a `known_hosts` lookup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HostKeyDecision {
+    /// Trust it (already known and matching).
+    Accept,
+    /// Unknown host: record it (Trust-On-First-Use), then trust.
+    Learn,
+    /// Reject (key changed, or unknown under a strict policy).
+    Reject,
+}
+
+/// Decides how to handle a host key from its `known_hosts` status. `known` is
+/// the result of the lookup (`Some(true)` matches, `Some(false)` unknown,
+/// `None` lookup error / changed key).
+fn host_key_decision(known: Option<bool>, strict: bool) -> HostKeyDecision {
+    match known {
+        Some(true) => HostKeyDecision::Accept,
+        Some(false) if strict => HostKeyDecision::Reject,
+        Some(false) => HostKeyDecision::Learn,
+        None => HostKeyDecision::Reject,
+    }
+}
+
+/// The client handler — verifies host keys against `known_hosts`, pinning new
+/// ones Trust-On-First-Use unless a strict policy is set. With no `known_hosts`
+/// file it accepts any key without persistence.
+struct ClientHandler {
+    host: String,
+    port: u16,
+    known_hosts: Option<PathBuf>,
+    strict: bool,
+}
 
 impl Handler for ClientHandler {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &russh::keys::ssh_key::PublicKey,
+        server_public_key: &russh::keys::ssh_key::PublicKey,
     ) -> std::result::Result<bool, Self::Error> {
-        // TOFU: accept the presented key (no persistent pinning yet).
-        Ok(true)
+        let Some(path) = &self.known_hosts else {
+            // No known_hosts configured: accept without persistence.
+            return Ok(true);
+        };
+
+        // A missing file means "host unknown"; an existing one is consulted
+        // (a changed key or read error maps to `None` -> reject).
+        let known = if path.exists() {
+            russh::keys::check_known_hosts_path(&self.host, self.port, server_public_key, path).ok()
+        } else {
+            Some(false)
+        };
+
+        match host_key_decision(known, self.strict) {
+            HostKeyDecision::Accept => Ok(true),
+            HostKeyDecision::Reject => Ok(false),
+            HostKeyDecision::Learn => {
+                // Best-effort pin; trust even if the file can't be written.
+                let _ = russh::keys::known_hosts::learn_known_hosts_path(
+                    &self.host,
+                    self.port,
+                    server_public_key,
+                    path,
+                );
+                Ok(true)
+            }
+        }
     }
 }
 
@@ -93,8 +171,14 @@ impl RusshSession {
             ..Config::default()
         });
         let addr = (target.host.clone(), target.port.unwrap_or(22));
+        let handler = ClientHandler {
+            host: target.host.clone(),
+            port: target.port.unwrap_or(22),
+            known_hosts: options.known_hosts.clone(),
+            strict: options.strict_host_keys,
+        };
 
-        let mut handle = client::connect(config, addr, ClientHandler)
+        let mut handle = client::connect(config, addr, handler)
             .await
             .map_err(|e| AgentError::Task(format!("ssh connect to {} failed: {e}", target.host)))?;
 
@@ -190,15 +274,45 @@ fn auth_err(e: russh::Error) -> AgentError {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_user, RusshOptions};
+    use super::{host_key_decision, resolve_user, HostKeyDecision, RusshOptions};
     use crate::target::RemoteTarget;
     use std::path::PathBuf;
 
     #[test]
     fn options_default_and_builder() {
-        let opts = RusshOptions::new().with_identity("/keys/id_ed25519");
+        let opts = RusshOptions::new()
+            .with_identity("/keys/id_ed25519")
+            .with_known_hosts("/etc/glpi/known_hosts")
+            .strict_host_keys(true);
         assert_eq!(opts.identities, vec![PathBuf::from("/keys/id_ed25519")]);
         assert_eq!(opts.connect_timeout, super::DEFAULT_CONNECT_TIMEOUT);
+        assert_eq!(
+            opts.known_hosts,
+            Some(PathBuf::from("/etc/glpi/known_hosts"))
+        );
+        assert!(opts.strict_host_keys);
+    }
+
+    #[test]
+    fn host_key_policy() {
+        // A matching known key is always accepted.
+        assert_eq!(
+            host_key_decision(Some(true), false),
+            HostKeyDecision::Accept
+        );
+        assert_eq!(host_key_decision(Some(true), true), HostKeyDecision::Accept);
+        // Unknown host: learned under TOFU, rejected under a strict policy.
+        assert_eq!(
+            host_key_decision(Some(false), false),
+            HostKeyDecision::Learn
+        );
+        assert_eq!(
+            host_key_decision(Some(false), true),
+            HostKeyDecision::Reject
+        );
+        // Changed key / lookup error is always rejected.
+        assert_eq!(host_key_decision(None, false), HostKeyDecision::Reject);
+        assert_eq!(host_key_decision(None, true), HostKeyDecision::Reject);
     }
 
     #[test]

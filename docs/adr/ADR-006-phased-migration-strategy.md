@@ -79,7 +79,11 @@ We chose **Phased Approach**, because:
   (`full-inventory-postpone`); a shared `submit_inventory` helper wires it into
   both the local `inventory` and the `remoteinventory` CLI commands (per-host,
   keyed by device id) via `--statedir` / `--full-inventory-postpone` — done
-- Still pending: persistent `known_hosts` pinning, WinRM
+- Host-key verification: russh checks the presented key against a `known_hosts`
+  file, pinning new hosts Trust-On-First-Use or rejecting them under a strict
+  policy; exposed on `remoteinventory` via `--known-hosts` / `--strict-host-keys`
+  (also wired to the CLI transport's `UserKnownHostsFile`) — done
+- Still pending: WinRM (Windows transport)
 - `glpi-vsphere`: VMware ESX/vCenter
 - State files and delta diff
 
