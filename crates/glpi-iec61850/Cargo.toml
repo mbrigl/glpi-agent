@@ -10,4 +10,18 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The real on-wire transport binds the libiec61850 C library (via FFI). It is
+# off by default and requires libiec61850 + a C toolchain at build time; the
+# library-independent scan/inventory logic and the `IedProtocol` seam build
+# without it.
+libiec61850 = []
+
 [dependencies]
+glpi-core = { path = "../glpi-core" }
+async-trait.workspace = true
+serde = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+serde_json.workspace = true

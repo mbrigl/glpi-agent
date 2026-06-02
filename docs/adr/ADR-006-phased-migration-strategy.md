@@ -47,10 +47,17 @@ We chose **Phased Approach**, because:
 - Vendor MIBs (69+): networking, printers, storage, PDUs/UPS, telephony, KVM, sensors and servers. Networking incl. Cisco (+Meraki/+UCS board), Juniper, Fortinet, Mikrotik, Nokia/Alcatel, D-Link (+DGS1210), Brocade, Netgear, Aruba, Aerohive, WatchGuard, Telco, FoxGate, Tiesse, Intelbras, Voltaire, TP-Link, Ubiquiti, DefencePro, Radware; printers HP, Brother, Ricoh, Konica/Sindoh, Lexmark, Xerox, Canon, Epson, OKI, Pantum, Kyocera, Toshiba, Zebra; storage EMC, Hitachi Vantara, HP Citizen; PDUs/UPS Eaton, Raritan, Bachmann, RNX, DigiPower, APC/UPS-MIB/Riello, Voltronic; telephony Avaya, Htek, Snom, Multitech; sensors/servers Akcp, Hwg, Meinberg, Siemens, SiemensSicam, CheckPoint, Wyse ThinOS, iDRAC, iLO, Avocent. A few upstream modules that mutate ports/components/SIM/process state remain deferred (CiscoPortSecurity, Force10S, Netgear, Digi, Panasas, LinuxAppliance).
 - NetInventory task
 
-### Phase 4: Platform-Specific Features (⏳ Pending)
-- Windows: COM/WMI worker, Registry config, Certificate store
-- macOS: Keychain, System Profiler
-- IEC 61850: FFI binding
+### Phase 4: Platform-Specific Features (🟡 In Progress)
+- Windows: COM/WMI worker, Registry config, Certificate store (⏳ pending)
+- macOS: Keychain, System Profiler (⏳ pending)
+- IEC 61850 (✅): `glpi-iec61850` ports the upstream
+  `IEC61850::{Protocol,Device}` scan/inventory logic over an `IedProtocol`
+  seam — first logical device → `LPHD<n>` → `PhyNam` attributes → GLPI
+  inventory (INFO/ITEMTYPE/FIRMWARES, GLPI 11+ `IedAsset` itemtype, Siemens
+  `A_Allg` name cleanup), fully unit-tested against an in-memory mock IED. The
+  on-wire MMS transport (libiec61850 FFI, or a pure-Rust MMS client) plugs into
+  `IedProtocol` behind the off-by-default `libiec61850` feature; it is not built
+  by default since libiec61850 + a C toolchain are not assumed present.
 
 ### Phase 5: CLI + Daemon (🟡 Partially Complete)
 - `glpi-agent` binary with subcommands
