@@ -4,9 +4,10 @@
 //! (v2.0.0).
 //!
 //! Subcommands: `inventory` (local), `netdiscovery`, `netinventory`,
-//! `remoteinventory` (SSH, with `--remote-workers` parallelism), `inject` and
-//! `daemon`; `esx` and `wakeup` land in later phases. Logging honours `RUST_LOG`
-//! and is written to stderr so stdout stays clean for the JSON result.
+//! `remoteinventory` (SSH, with `--remote-workers` parallelism), `esx`
+//! (VMware vSphere), `wakeup` (Wake-on-LAN), `inject` and `daemon`. Logging
+//! honours `RUST_LOG` and is written to stderr so stdout stays clean for the
+//! JSON result.
 
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -22,6 +23,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use glpi_core::config::{Loader, Options};
 use glpi_core::protocol::delta;
 use glpi_core::protocol::glpi::InventoryRequest;
+use glpi_core::types::network::MacAddress;
 use glpi_core::types::snmp::SnmpCredentials;
 use glpi_discovery::{Ipv4Range, NetDiscoveryTask, NetInventoryTask};
 use glpi_http::{HttpServer, TrustList, DEFAULT_HTTP_PORT};
@@ -34,6 +36,8 @@ use glpi_scheduler::{
     jitter, read_initial_event, Event, IpcMessage, RunSchedule, TaskWorker, WorkerReporter,
 };
 use glpi_transport::{GlpiClient, Injector};
+use glpi_vsphere::{dump_hosts, hosts_from_dump, EsxOptions, EsxTask};
+use glpi_wakeonlan::WakeOnLanTask;
 use std::collections::BTreeMap;
 use tokio::io::AsyncWrite;
 use tokio::process::Command as ProcessCommand;
@@ -82,6 +86,10 @@ enum Command {
     Netinventory(NetInventoryArgs),
     /// Inventory remote hosts over SSH (RemoteInventory).
     Remoteinventory(RemoteInventoryArgs),
+    /// Inventory a VMware ESXi host or vCenter over the vSphere API (ESX).
+    Esx(EsxArgs),
+    /// Broadcast Wake-on-LAN magic packets to one or more MAC addresses.
+    Wakeup(WakeupArgs),
     /// Send existing inventory files (JSON/XML) to a GLPI server.
     Inject(InjectArgs),
     /// Run continuously: periodic NetDiscovery plus an HTTP control server.
@@ -273,6 +281,69 @@ struct RemoteInventoryArgs {
 }
 
 #[derive(Args)]
+struct EsxArgs {
+    /// The vCenter or ESXi host to inventory (host name, or a full
+    /// `https://host` base URL).
+    #[arg(value_name = "HOST")]
+    host: String,
+
+    /// vSphere user name.
+    #[arg(short = 'u', long)]
+    user: String,
+
+    /// vSphere password.
+    #[arg(short = 'p', long)]
+    password: String,
+
+    /// Disable TLS certificate verification (ESXi hosts commonly use
+    /// self-signed certificates).
+    #[arg(long)]
+    no_ssl_check: bool,
+
+    /// Write the parsed host info to this file as JSON and exit, instead of
+    /// building inventories (the offline-replay dump).
+    #[arg(long, value_name = "FILE")]
+    dump: Option<PathBuf>,
+
+    /// Build inventories from a previously dumped host-info file instead of
+    /// connecting to vSphere (offline replay).
+    #[arg(long, value_name = "FILE", conflicts_with = "dump")]
+    dumpfile: Option<PathBuf>,
+
+    /// GLPI `itemtype` for the submissions (GLPI 11+ genericity).
+    #[arg(long, default_value = "Computer")]
+    itemtype: String,
+
+    /// Target GLPI version; on 10.0.17+ each VM's guest OS and IP are reported.
+    #[arg(long, value_name = "VERSION")]
+    glpi_version: Option<String>,
+
+    /// GLPI server URL to submit each host to (repeatable). If omitted, the
+    /// inventories are printed as JSON.
+    #[arg(short = 's', long = "server", value_name = "URL")]
+    servers: Vec<String>,
+
+    /// HTTP Basic auth user for the GLPI server submission.
+    #[arg(long, value_name = "USER")]
+    server_user: Option<String>,
+
+    /// HTTP Basic auth password for the GLPI server submission.
+    #[arg(long, value_name = "PASSWORD")]
+    server_password: Option<String>,
+}
+
+#[derive(Args)]
+struct WakeupArgs {
+    /// Target MAC addresses to wake (e.g. `de:ad:be:ef:00:01`), repeatable.
+    #[arg(required = true, value_name = "MAC")]
+    macs: Vec<String>,
+
+    /// UDP ports to broadcast to (defaults to 9 and 7).
+    #[arg(long, value_name = "PORT")]
+    port: Vec<u16>,
+}
+
+#[derive(Args)]
 struct InjectArgs {
     /// Inventory files to send (JSON or XML; format inferred from extension).
     #[arg(required = true, value_name = "FILE")]
@@ -362,6 +433,8 @@ async fn main() -> Result<()> {
         Command::Netdiscovery(args) => run_netdiscovery(args).await,
         Command::Netinventory(args) => run_netinventory(args).await,
         Command::Remoteinventory(args) => run_remoteinventory(args, &options).await,
+        Command::Esx(args) => run_esx(args, &options).await,
+        Command::Wakeup(args) => run_wakeup(args),
         Command::Inject(args) => run_inject(args).await,
         Command::Daemon(args) => run_daemon(args, conf_file, conf_dir, options).await,
         Command::TaskWorker => run_task_worker().await,
@@ -865,6 +938,112 @@ fn pseudo_random_fraction() -> f64 {
     f64::from(nanos) / f64::from(u32::MAX)
 }
 
+/// Inventories a VMware vSphere endpoint (ESXi host or vCenter). Each hypervisor
+/// host becomes one inventory carrying its `virtualmachines`. With `--server`,
+/// every host is submitted; otherwise the inventories are printed as JSON.
+///
+/// `--dumpfile` replays a previously captured host-info dump offline (no
+/// connection); `--dump` writes the parsed host info and exits.
+async fn run_esx(args: EsxArgs, options: &Options) -> Result<()> {
+    let no_ssl_check = args.no_ssl_check || options.no_ssl_check;
+    let esx_options = EsxOptions {
+        accept_invalid_certs: no_ssl_check,
+        itemtype: args.itemtype.clone(),
+        glpi_version: args.glpi_version.clone(),
+    };
+    let task = EsxTask::new(
+        args.host.clone(),
+        args.user.clone(),
+        args.password.clone(),
+        esx_options,
+    );
+
+    // Source the hosts: an offline dump file, or a live vSphere connection.
+    let hosts = if let Some(path) = &args.dumpfile {
+        let json = std::fs::read_to_string(path)
+            .with_context(|| format!("reading dump file {}", path.display()))?;
+        hosts_from_dump(&json).with_context(|| format!("parsing dump file {}", path.display()))?
+    } else {
+        task.collect_hosts()
+            .await
+            .with_context(|| format!("collecting from vSphere host {}", args.host))?
+    };
+
+    // --dump: write the parsed host info and exit without building inventories.
+    if let Some(path) = &args.dump {
+        let json = dump_hosts(&hosts)?;
+        std::fs::write(path, json)
+            .with_context(|| format!("writing dump file {}", path.display()))?;
+        tracing::info!(file = %path.display(), hosts = hosts.len(), "wrote host-info dump");
+        return Ok(());
+    }
+
+    let inventories = task.inventories(&hosts);
+
+    let servers = if args.servers.is_empty() {
+        options.server.clone()
+    } else {
+        args.servers.clone()
+    };
+
+    if servers.is_empty() {
+        let json: Vec<_> = inventories
+            .iter()
+            .map(|inv| {
+                serde_json::json!({
+                    "deviceid": inv.deviceid,
+                    "itemtype": inv.itemtype,
+                    "content": inv.content,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&json)?);
+        return Ok(());
+    }
+
+    // Submit each host inventory to every server.
+    let server_http = HttpClientArgs {
+        user: args.server_user.clone(),
+        password: args.server_password.clone(),
+        oauth_token: None,
+        ca_cert_file: None,
+        no_ssl_check,
+    };
+    for inv in &inventories {
+        let request =
+            InventoryRequest::new(inv.deviceid.clone(), &inv.content).with_itemtype(&inv.itemtype);
+        for server in &servers {
+            let client = build_client(server, &server_http, no_ssl_check)?;
+            client
+                .submit_inventory(&request)
+                .await
+                .with_context(|| format!("submitting {} to {server}", inv.deviceid))?;
+            tracing::info!(server, deviceid = %inv.deviceid, "ESX inventory submitted");
+        }
+    }
+    Ok(())
+}
+
+/// Broadcasts Wake-on-LAN magic packets to the given MAC addresses.
+fn run_wakeup(args: WakeupArgs) -> Result<()> {
+    let macs = args
+        .macs
+        .iter()
+        .map(|m| {
+            m.parse::<MacAddress>()
+                .map_err(|e| anyhow::anyhow!("invalid MAC {m:?}: {e}"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let mut task = WakeOnLanTask::new(macs);
+    if !args.port.is_empty() {
+        task = task.with_ports(args.port.clone());
+    }
+    let sent = task.wake().context("broadcasting wake-on-lan packets")?;
+    tracing::info!(packets = sent, "wake-on-lan complete");
+    Ok(())
+}
+
 /// Sends the given inventory files to a GLPI server.
 async fn run_inject(args: InjectArgs) -> Result<()> {
     let client = build_client(&args.server, &args.http, args.http.no_ssl_check)?;
@@ -1293,6 +1472,83 @@ mod tests {
     #[test]
     fn netinventory_rejects_an_invalid_target() {
         assert!(Cli::try_parse_from(["glpi-agent", "netinventory", "not-an-ip"]).is_err());
+    }
+
+    #[test]
+    fn parses_esx_with_options() {
+        let cli = Cli::try_parse_from([
+            "glpi-agent",
+            "esx",
+            "vcenter.lab",
+            "-u",
+            "administrator@vsphere.local",
+            "-p",
+            "secret",
+            "--no-ssl-check",
+            "--glpi-version",
+            "10.0.17",
+            "--server",
+            "https://glpi/front/inventory.php",
+        ])
+        .unwrap();
+        let Command::Esx(args) = cli.command else {
+            panic!("expected esx");
+        };
+        assert_eq!(args.host, "vcenter.lab");
+        assert_eq!(args.user, "administrator@vsphere.local");
+        assert_eq!(args.password, "secret");
+        assert!(args.no_ssl_check);
+        assert_eq!(args.glpi_version.as_deref(), Some("10.0.17"));
+        assert_eq!(args.servers, vec!["https://glpi/front/inventory.php"]);
+        assert_eq!(args.itemtype, "Computer");
+    }
+
+    #[test]
+    fn esx_requires_host_user_password() {
+        assert!(Cli::try_parse_from(["glpi-agent", "esx", "host"]).is_err());
+        assert!(Cli::try_parse_from(["glpi-agent", "esx", "host", "-u", "root"]).is_err());
+        assert!(Cli::try_parse_from(["glpi-agent", "esx", "-u", "root", "-p", "pw"]).is_err());
+    }
+
+    #[test]
+    fn esx_dump_and_dumpfile_conflict() {
+        assert!(Cli::try_parse_from([
+            "glpi-agent",
+            "esx",
+            "h",
+            "-u",
+            "u",
+            "-p",
+            "p",
+            "--dump",
+            "a.json",
+            "--dumpfile",
+            "b.json",
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn parses_wakeup_with_macs_and_ports() {
+        let cli = Cli::try_parse_from([
+            "glpi-agent",
+            "wakeup",
+            "de:ad:be:ef:00:01",
+            "01:02:03:04:05:06",
+            "--port",
+            "9",
+        ])
+        .unwrap();
+        let Command::Wakeup(args) = cli.command else {
+            panic!("expected wakeup");
+        };
+        assert_eq!(args.macs, vec!["de:ad:be:ef:00:01", "01:02:03:04:05:06"]);
+        assert_eq!(args.port, vec![9]);
+    }
+
+    #[test]
+    fn wakeup_requires_a_mac() {
+        assert!(Cli::try_parse_from(["glpi-agent", "wakeup"]).is_err());
     }
 
     #[test]

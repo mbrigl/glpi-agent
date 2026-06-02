@@ -22,6 +22,8 @@ glpi-inventory-remote = { path = "../glpi-inventory-remote" }
 glpi-transport = { path = "../glpi-transport" }
 glpi-scheduler = { path = "../glpi-scheduler" }
 glpi-http = { path = "../glpi-http" }
+glpi-vsphere = { path = "../glpi-vsphere" }
+glpi-wakeonlan = { path = "../glpi-wakeonlan" }
 chrono.workspace = true
 clap.workspace = true
 tokio.workspace = true

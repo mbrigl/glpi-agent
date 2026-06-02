@@ -11,3 +11,6 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+glpi-core = { path = "../glpi-core" }
+
+tracing = { workspace = true }

@@ -104,8 +104,8 @@ crates/
 │   │       │       └── ...
 │   │       └── walk.rs      # WalkSession for fixture replay
 │   │
-│   └── glpi-inventory-remote/ # Remote inventory (Phase 7 ⏳)
-│       └── glpi-vsphere/     # VMware ESX/vCenter (Phase 7 ⏳)
+│   └── glpi-inventory-remote/ # Remote inventory (Phase 7 🟡)
+│       └── glpi-vsphere/     # VMware ESX/vCenter (Phase 8 ✅)
 │
 ├── LOCAL INVENTORY (Phase 6 🟡)
 │   └── glpi-inventory-local/
@@ -130,12 +130,12 @@ crates/
 │
 └── DAEMON & CLI (Phase 5 🟡)
     ├── glpi-cli/          # CLI binary (published as glpi-agent)
-    │   └── src/main.rs    # Subcommands: inventory, netdiscovery, netinventory, inject, daemon
+    │   └── src/main.rs    # Subcommands: inventory, netdiscovery, netinventory, remoteinventory, esx, wakeup, inject, daemon
     ├── glpi-scheduler/    # Daemon scheduling
     ├── glpi-http/         # Embedded HTTP server (ToolBox)
-    ├── glpi-collect/      # Collect task v3.0
-    ├── glpi-deploy/       # Deploy task v3.5
-    ├── glpi-wakeonlan/    # WakeOnLan task
+    ├── glpi-collect/      # Collect task v3.0 (Phase 9 ✅)
+    ├── glpi-deploy/       # Deploy task v3.5 (Phase 9 ✅)
+    ├── glpi-wakeonlan/    # WakeOnLan task (Phase 9 ✅)
     └── glpi-plugins/      # Plugin system (HTTP, Proxy, SSL)
 ```
 

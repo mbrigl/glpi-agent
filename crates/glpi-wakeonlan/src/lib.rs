@@ -1,22 +1,25 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//! `glpi-wakeonlan` — WakeOnLan task.
+//! `glpi-wakeonlan` — the Wake-on-LAN task (Phase 9).
 //!
 //! Part of the GLPI Agent Rust workspace (v2.0.0).
-//! Placeholder crate; implementation lands in a later phase.
+//!
+//! Builds the 102-byte Wake-on-LAN magic packet ([`MagicPacket`]) and broadcasts
+//! it for one or more target MAC addresses ([`WakeOnLanTask`]) over UDP.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use glpi_core::types::network::MacAddress;
+//! use glpi_wakeonlan::WakeOnLanTask;
+//!
+//! let mac: MacAddress = "de:ad:be:ef:00:01".parse().unwrap();
+//! let sent = WakeOnLanTask::new(vec![mac]).wake().unwrap();
+//! assert!(sent > 0);
+//! ```
 
-/// Returns this crate's package name (placeholder smoke-test symbol).
-#[must_use]
-pub fn crate_name() -> &'static str {
-    env!("CARGO_PKG_NAME")
-}
+pub mod magic_packet;
+pub mod task;
 
-#[cfg(test)]
-mod tests {
-    use super::crate_name;
-
-    #[test]
-    fn crate_name_matches_package() {
-        assert_eq!(crate_name(), env!("CARGO_PKG_NAME"));
-    }
-}
+pub use magic_packet::{MagicPacket, MAGIC_PACKET_LEN};
+pub use task::{WakeOnLanTask, DEFAULT_PORTS};

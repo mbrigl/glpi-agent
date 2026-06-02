@@ -11,3 +11,15 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+glpi-core = { path = "../glpi-core" }
+glpi-inventory-local = { path = "../glpi-inventory-local" }
+
+async-trait = { workspace = true }
+quick-xml = { workspace = true }
+reqwest = { workspace = true, features = ["cookies"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
