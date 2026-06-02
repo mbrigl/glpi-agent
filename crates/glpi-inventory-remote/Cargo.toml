@@ -11,10 +11,12 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-default = ["russh"]
+default = ["russh", "winrm"]
 # SSH mode 2: pure-Rust transport (libssh2 replacement). Uses the `ring`
 # crypto backend to avoid the aws-lc-rs C/cmake build dependency.
 russh = ["dep:russh"]
+# WinRM transport (WS-Management over HTTP(S), WinRS shell).
+winrm = ["dep:reqwest", "dep:base64", "dep:quick-xml", "dep:uuid"]
 
 [dependencies]
 glpi-core = { path = "../glpi-core" }
@@ -22,6 +24,10 @@ glpi-inventory-local = { path = "../glpi-inventory-local" }
 async-trait.workspace = true
 tokio.workspace = true
 russh = { version = "0.61", default-features = false, features = ["ring", "flate2"], optional = true }
+reqwest = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+quick-xml = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true

@@ -64,7 +64,7 @@ We chose **Phased Approach**, because:
 - macOS: All categories
 - Other platforms: Solaris, HP-UX, AIX, FreeBSD
 
-### Phase 7: Remote Inventory (🟡 In Progress)
+### Phase 7: Remote Inventory (✅ Complete)
 - `glpi-inventory-remote`: target model (`ssh://`/`winrm://`), `RemoteSession`
   seam (reuses the local parsers verbatim), **SSH mode 1** (command-line `ssh`),
   **SSH mode 2** (pure-Rust `russh` transport, `ring` backend, behind the default
@@ -83,7 +83,14 @@ We chose **Phased Approach**, because:
   file, pinning new hosts Trust-On-First-Use or rejecting them under a strict
   policy; exposed on `remoteinventory` via `--known-hosts` / `--strict-host-keys`
   (also wired to the CLI transport's `UserKnownHostsFile`) — done
-- Still pending: WinRM (Windows transport)
+- WinRM (Windows transport): `WinRmSession` speaks WS-Management + the WinRS
+  shell (Create → Command → Receive loop → Signal → Delete) over HTTP(S) with
+  HTTP Basic auth, behind the default `winrm` feature; the SOAP envelope
+  builders and response parsers are pure/unit-tested. Selected by
+  `remoteinventory --transport winrm` — done
+- Follow-ups (outside Phase 7): WinRM NTLM/Negotiate/Kerberos auth, and the
+  Windows-specific collection command set (Phase 6b) that lets a WinRM host
+  produce a full inventory rather than just transport-level command execution
 - `glpi-vsphere`: VMware ESX/vCenter
 - State files and delta diff
 

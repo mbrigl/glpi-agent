@@ -16,8 +16,9 @@
 //! [`RusshSession`], behind the default `russh` feature), the
 //! [`AssetnameSupport`] option, **mode 3 (`perl`)** — remote `perl` one-liners
 //! gated on a capability probe ([`RemoteModes`], richer `Net::CUPS` printers,
-//! `Net::Domain` FQDN fallback) — and the Linux command orchestration below.
-//! Still to come: WinRM, `remote-workers` parallelism and delta state files.
+//! `Net::Domain` FQDN fallback), **WinRM** (WS-Management + WinRS shell,
+//! [`WinRmSession`], behind the default `winrm` feature) and the Linux command
+//! orchestration below.
 
 pub mod assetname;
 pub mod mode;
@@ -26,6 +27,8 @@ pub mod russh;
 pub mod session;
 pub mod ssh;
 pub mod target;
+#[cfg(feature = "winrm")]
+pub mod winrm;
 
 pub use assetname::AssetnameSupport;
 pub use mode::RemoteModes;
@@ -34,6 +37,8 @@ pub use russh::{RusshOptions, RusshSession};
 pub use session::{MockSession, RemoteSession};
 pub use ssh::SshCliSession;
 pub use target::{RemoteScheme, RemoteTarget};
+#[cfg(feature = "winrm")]
+pub use winrm::{WinRmOptions, WinRmSession};
 
 use std::collections::HashSet;
 

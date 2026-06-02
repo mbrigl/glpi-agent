@@ -28,7 +28,7 @@ use glpi_http::{HttpServer, TrustList, DEFAULT_HTTP_PORT};
 use glpi_inventory_local::Content;
 use glpi_inventory_remote::{
     AssetnameSupport, RemoteInventory, RemoteModes, RemoteSession, RemoteTarget, RusshOptions,
-    RusshSession, SshCliSession,
+    RusshSession, SshCliSession, WinRmOptions, WinRmSession,
 };
 use glpi_scheduler::{jitter, RunSchedule};
 use glpi_transport::{GlpiClient, Injector};
@@ -168,13 +168,15 @@ struct NetInventoryArgs {
     snmp_retries: u32,
 }
 
-/// SSH transport for remote inventory.
+/// Transport for remote inventory.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum Transport {
     /// Pure-Rust `russh` transport (no system `ssh` needed). SSH mode 2.
     Russh,
     /// The system `ssh` command-line client. SSH mode 1.
     Cli,
+    /// WinRM (WS-Management) for Windows hosts.
+    Winrm,
 }
 
 #[derive(Args)]
@@ -616,6 +618,7 @@ async fn run_remoteinventory(args: RemoteInventoryArgs, options: &Options) -> Re
         timeout: Duration::from_secs(args.timeout_secs),
         known_hosts: args.known_hosts.clone(),
         strict_host_keys: args.strict_host_keys,
+        accept_invalid_certs: args.http.no_ssl_check || options.no_ssl_check,
         assetname_override,
         disabled,
     };
@@ -699,6 +702,8 @@ struct RemoteRunOptions {
     timeout: Duration,
     known_hosts: Option<PathBuf>,
     strict_host_keys: bool,
+    /// Accept invalid TLS certs for the WinRM (HTTPS) endpoint.
+    accept_invalid_certs: bool,
     assetname_override: Option<AssetnameSupport>,
     disabled: Vec<String>,
 }
@@ -735,6 +740,17 @@ async fn inventory_remote_host(
                 session = session.with_known_hosts(known_hosts.to_string_lossy().into_owned());
             }
             Box::new(session)
+        }
+        Transport::Winrm => {
+            let winrm = WinRmOptions {
+                accept_invalid_certs: opts.accept_invalid_certs,
+                ..WinRmOptions::default()
+            };
+            Box::new(
+                WinRmSession::connect(&target, &winrm)
+                    .await
+                    .with_context(|| format!("connecting to {}", target.host))?,
+            )
         }
     };
 
