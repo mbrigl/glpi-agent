@@ -110,11 +110,137 @@ pub fn collect() -> Vec<NetworkInterface> {
     interfaces
 }
 
-/// Collects the live interfaces (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects the live interfaces (macOS) by parsing `ifconfig`.
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> Vec<NetworkInterface> {
+    crate::sys::output("ifconfig", &[])
+        .map(|text| parse_ifconfig(&text))
+        .unwrap_or_default()
+}
+
+/// Collects the live interfaces (Windows) from `Win32_NetworkAdapterConfiguration`.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> Vec<NetworkInterface> {
+    crate::sys::powershell(
+        "Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object {$_.MACAddress} | \
+         Select-Object Description,MACAddress,IPAddress | ConvertTo-Json -Compress",
+    )
+    .map(|json| parse_win_network(&json))
+    .unwrap_or_default()
+}
+
+/// Collects the live interfaces (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<NetworkInterface> {
     Vec::new()
+}
+
+/// Parses BSD `ifconfig` output (macOS) into network interfaces.
+///
+/// Each interface block starts at column 0 (`name: flags=… mtu N`); the
+/// indented lines carry `ether`, `inet`, `inet6` and `status`.
+#[must_use]
+pub fn parse_ifconfig(text: &str) -> Vec<NetworkInterface> {
+    let mut interfaces = Vec::new();
+    let mut current: Option<NetworkInterface> = None;
+    for line in text.lines() {
+        let is_header = !line.starts_with(char::is_whitespace) && line.contains(": flags=");
+        if is_header {
+            if let Some(iface) = current.take() {
+                interfaces.push(iface);
+            }
+            let name = line.split(':').next().unwrap_or_default().trim().to_owned();
+            let mtu = token_after(&line.split_whitespace().collect::<Vec<_>>(), "mtu")
+                .and_then(|v| v.parse().ok());
+            current = Some(NetworkInterface {
+                name,
+                mtu,
+                ..NetworkInterface::default()
+            });
+            continue;
+        }
+        let Some(iface) = current.as_mut() else {
+            continue;
+        };
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("ether ") {
+            iface.mac = rest
+                .split_whitespace()
+                .next()
+                .and_then(|m| m.parse::<MacAddress>().ok())
+                .filter(|m| m.octets() != [0u8; 6]);
+        } else if let Some(rest) = trimmed.strip_prefix("inet6 ") {
+            // Strip the "%zone" scope suffix from link-local addresses.
+            if let Some(addr) = rest.split_whitespace().next() {
+                let addr = addr.split('%').next().unwrap_or(addr);
+                if let Ok(ip) = addr.parse::<IpAddr>() {
+                    iface.ips.push(ip);
+                }
+            }
+        } else if let Some(rest) = trimmed.strip_prefix("inet ") {
+            if let Some(addr) = rest.split_whitespace().next() {
+                if let Ok(ip) = addr.parse::<IpAddr>() {
+                    iface.ips.push(ip);
+                }
+            }
+        } else if let Some(rest) = trimmed.strip_prefix("status: ") {
+            iface.status = Some(
+                if rest.trim() == "active" {
+                    "up"
+                } else {
+                    "down"
+                }
+                .to_owned(),
+            );
+        }
+    }
+    if let Some(iface) = current {
+        interfaces.push(iface);
+    }
+    interfaces
+}
+
+/// Parses a `Win32_NetworkAdapterConfiguration` `ConvertTo-Json` result into
+/// the configured interfaces.
+#[must_use]
+pub fn parse_win_network(json: &str) -> Vec<NetworkInterface> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    crate::jsonutil::array(value)
+        .iter()
+        .filter_map(|item| {
+            let name = crate::jsonutil::str_field(item, "Description")?;
+            let mac = crate::jsonutil::str_field(item, "MACAddress")
+                .and_then(|m| m.parse::<MacAddress>().ok())
+                .filter(|m| m.octets() != [0u8; 6]);
+            Some(NetworkInterface {
+                name,
+                mac,
+                ips: json_ips(item.get("IPAddress")),
+                ..NetworkInterface::default()
+            })
+        })
+        .collect()
+}
+
+/// Reads an `IPAddress` JSON field into parsed addresses. PowerShell renders a
+/// single-element string array as a bare string, so both shapes are accepted;
+/// IPv6 scope (`%zone`) suffixes are stripped.
+fn json_ips(value: Option<&serde_json::Value>) -> Vec<IpAddr> {
+    let parse = |s: &str| s.split('%').next().unwrap_or(s).parse::<IpAddr>().ok();
+    match value {
+        Some(serde_json::Value::Array(items)) => items
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .filter_map(parse)
+            .collect(),
+        Some(serde_json::Value::String(s)) => parse(s).into_iter().collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// Runs `ip <args>`, returning stdout on success.
@@ -237,5 +363,58 @@ mod tests {
     #[test]
     fn empty_input_yields_no_interfaces() {
         assert!(parse_interfaces("", "").is_empty());
+    }
+
+    #[test]
+    fn parses_macos_ifconfig() {
+        use super::parse_ifconfig;
+        let text = "\
+lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
+\tinet 127.0.0.1 netmask 0xff000000
+\tinet6 ::1 prefixlen 128
+en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+\tether a4:83:e7:00:11:22
+\tinet6 fe80::1cae:1abc:def0:1234%en0 prefixlen 64 secured scopeid 0xc
+\tinet 10.0.0.42 netmask 0xffffff00 broadcast 10.0.0.255
+\tstatus: active
+";
+        let ifaces = parse_ifconfig(text);
+        assert_eq!(ifaces.len(), 2);
+
+        let en0 = ifaces.iter().find(|i| i.name == "en0").unwrap();
+        assert_eq!(
+            en0.mac,
+            Some(MacAddress::new([0xa4, 0x83, 0xe7, 0x00, 0x11, 0x22]))
+        );
+        assert_eq!(en0.mtu, Some(1500));
+        assert_eq!(en0.status.as_deref(), Some("up"));
+        assert_eq!(en0.ips.len(), 2); // the %en0 scope is stripped from the v6 addr
+        assert!(en0
+            .ips
+            .contains(&"10.0.0.42".parse::<std::net::IpAddr>().unwrap()));
+    }
+
+    #[test]
+    fn parses_windows_adapter_config_json() {
+        use super::parse_win_network;
+        // First adapter has an IPAddress array; the second a single string
+        // (PowerShell unwraps one-element arrays).
+        let json = r#"[{"Description":"Intel Ethernet","MACAddress":"A4:83:E7:00:11:22",
+            "IPAddress":["10.0.0.42","fe80::1cae%12"]},
+            {"Description":"Wi-Fi","MACAddress":"00:11:22:33:44:55","IPAddress":"192.168.1.7"}]"#;
+        let ifaces = parse_win_network(json);
+        assert_eq!(ifaces.len(), 2);
+        assert_eq!(ifaces[0].name, "Intel Ethernet");
+        assert_eq!(
+            ifaces[0].mac,
+            Some(MacAddress::new([0xa4, 0x83, 0xe7, 0x00, 0x11, 0x22]))
+        );
+        assert_eq!(ifaces[0].ips.len(), 2);
+        // Single-string IPAddress is handled.
+        assert_eq!(
+            ifaces[1].ips,
+            vec!["192.168.1.7".parse::<std::net::IpAddr>().unwrap()]
+        );
+        assert!(parse_win_network("bad").is_empty());
     }
 }

@@ -61,11 +61,80 @@ pub fn collect() -> Vec<Software> {
     Vec::new()
 }
 
-/// Collects installed packages (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects installed applications (macOS) from `system_profiler`.
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> Vec<Software> {
+    crate::sys::output("system_profiler", &["-json", "SPApplicationsDataType"])
+        .map(|json| parse_macos_software(&json))
+        .unwrap_or_default()
+}
+
+/// Collects installed programs (Windows) from the registry uninstall keys
+/// (per-machine 64- and 32-bit, plus per-user).
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> Vec<Software> {
+    let script = "$paths=@(\
+        'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',\
+        'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',\
+        'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'); \
+        Get-ItemProperty $paths -ErrorAction SilentlyContinue | \
+        Where-Object {$_.DisplayName} | \
+        Select-Object DisplayName,DisplayVersion,Publisher | ConvertTo-Json -Compress";
+    crate::sys::powershell(script)
+        .map(|json| parse_win_software(&json))
+        .unwrap_or_default()
+}
+
+/// Collects installed packages (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<Software> {
     Vec::new()
+}
+
+/// Parses the Windows registry uninstall entries (`ConvertTo-Json`) into the
+/// installed software; entries without a `DisplayName` are skipped.
+#[must_use]
+pub fn parse_win_software(json: &str) -> Vec<Software> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    crate::jsonutil::array(value)
+        .iter()
+        .filter_map(|item| {
+            Some(Software {
+                name: crate::jsonutil::str_field(item, "DisplayName")?,
+                version: crate::jsonutil::str_field(item, "DisplayVersion"),
+                arch: None,
+            })
+        })
+        .collect()
+}
+
+/// Parses `system_profiler -json SPApplicationsDataType` (macOS) into the
+/// installed applications.
+#[must_use]
+pub fn parse_macos_software(json: &str) -> Vec<Software> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    value
+        .get("SPApplicationsDataType")
+        .and_then(serde_json::Value::as_array)
+        .map(|apps| {
+            apps.iter()
+                .filter_map(|item| {
+                    Some(Software {
+                        name: crate::jsonutil::str_field(item, "_name")?,
+                        version: crate::jsonutil::str_field(item, "version"),
+                        arch: None,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Runs `command args`, returning its stdout on success.
@@ -119,5 +188,32 @@ mod tests {
     #[test]
     fn empty_input_yields_no_packages() {
         assert!(parse_packages("").is_empty());
+    }
+
+    #[test]
+    fn parses_windows_uninstall_json() {
+        use super::parse_win_software;
+        // The entry without a DisplayName (an orphan version) is skipped.
+        let json = r#"[{"DisplayName":"7-Zip 23.01","DisplayVersion":"23.01","Publisher":"Igor"},
+            {"DisplayVersion":"1.0"},
+            {"DisplayName":"Mozilla Firefox","DisplayVersion":"123.0"}]"#;
+        let apps = parse_win_software(json);
+        assert_eq!(apps.len(), 2);
+        assert_eq!(apps[0].name, "7-Zip 23.01");
+        assert_eq!(apps[0].version.as_deref(), Some("23.01"));
+        assert_eq!(apps[1].name, "Mozilla Firefox");
+        assert!(parse_win_software("bad").is_empty());
+    }
+
+    #[test]
+    fn parses_macos_applications_json() {
+        use super::parse_macos_software;
+        let json = r#"{"SPApplicationsDataType":[{"_name":"Safari","version":"17.0"},
+            {"_name":"Xcode","version":"15.3"},{"version":"1.0"}]}"#;
+        let apps = parse_macos_software(json);
+        // The entry without a name is skipped.
+        assert_eq!(apps.len(), 2);
+        assert_eq!(apps[0].name, "Safari");
+        assert_eq!(apps[1].version.as_deref(), Some("15.3"));
     }
 }

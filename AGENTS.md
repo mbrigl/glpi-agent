@@ -618,16 +618,19 @@ unit-tested on Linux and the collectors are compile-checked for both targets
 `parse_win_*` / `parse_macos_*` / `build_macos_*` function → the category struct,
 with `crate::jsonutil` for the JSON fields.
 
-**Still stubbed on Windows/macOS** (return empty off Linux): software, network,
-process, pci/controller, usb, user, battery, video, sound, printer, monitor,
+Software (Windows registry uninstall keys / macOS `SPApplicationsDataType`) and
+network (Windows `Win32_NetworkAdapterConfiguration` / macOS `ifconfig`) now work
+on both platforms too.
+
+**Still stubbed on Windows/macOS** (return empty off Linux): processes,
+pci/controller, usb, users, batteries, video, sound, printers, monitors,
 antivirus. These are the remaining Phase 6 work.
 
-- **Windows**: software via the registry uninstall keys (or `Get-Package`);
-  network via `Win32_NetworkAdapter[Configuration]`; the richer paths
-  (WMI on a dedicated COM worker thread, registry wildcards, cert store) per the
-  plan. **Windows COM code must run on a dedicated worker thread (not `Send`).**
-- **macOS**: software via `system_profiler SPApplicationsDataType`; network via
-  `ifconfig`/`networksetup`; IOKit / Keychain for the deeper data.
+- **Windows**: the richer paths per the plan — WMI on a dedicated COM worker
+  thread, registry wildcards, the certificate store. **Windows COM code must run
+  on a dedicated worker thread (not `Send`).**
+- **macOS**: the peripheral categories via `system_profiler`, plus IOKit /
+  Keychain for the deeper data.
 - **Exotic Unix** (base inventory): Solaris/OmniOS, HP-UX, AIX, FreeBSD.
 
 **Note**: gate each collector with `#[cfg(target_os = "…")]` and keep the parser

@@ -48,8 +48,8 @@ Legend: ✅ migrated · 🟡 partial (platform/feature gap tracked) · ⬜ pendi
 | ----------- | ----------- | ------ | ----- |
 | `t/tasks/inventory/generic/**` | `glpi-inventory-local` category tests + `tests/fixtures.rs` | ✅ | dmidecode, EDID, CUPS printers, … |
 | `t/tasks/inventory/linux/**` | `glpi-inventory-local` `categories::*` tests | ✅ | networks, storage, distro, packages. |
-| `t/tasks/inventory/win32/**` | `…/categories/{os,cpu,memory,hardware,storage}` (Windows path) | 🟡 | Core identity via `Get-CimInstance … \| ConvertTo-Json` (parsers tested on Linux); software/network/peripherals pending. |
-| `t/tasks/inventory/macos/**` | `…/categories/{os,cpu,memory,hardware,storage}` (macOS path) | 🟡 | Core identity via `sw_vers`/`sysctl`/`system_profiler -json`; software/network/peripherals pending. |
+| `t/tasks/inventory/win32/**` | `…/categories/{os,cpu,memory,hardware,storage,software,network}` (Windows path) | 🟡 | Via `Get-CimInstance … \| ConvertTo-Json` + registry uninstall keys (parsers tested on Linux); peripherals pending. |
+| `t/tasks/inventory/macos/**` | `…/categories/{os,cpu,memory,hardware,storage,software,network}` (macOS path) | 🟡 | Via `sw_vers`/`sysctl`/`system_profiler -json`/`ifconfig`; peripherals pending. |
 | `t/tasks/inventory/{hpux,aix,solaris}/**` | exotic-platform collectors | ⬜ | Phase 6c. |
 | `t/tasks/inventory/virtualization/**` | virtualization detection | ⬜ | Phase 6 (medium). |
 
