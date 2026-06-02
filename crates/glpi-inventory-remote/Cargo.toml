@@ -11,3 +11,10 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+glpi-core = { path = "../glpi-core" }
+glpi-inventory-local = { path = "../glpi-inventory-local" }
+async-trait.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

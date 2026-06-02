@@ -64,8 +64,12 @@ We chose **Phased Approach**, because:
 - macOS: All categories
 - Other platforms: Solaris, HP-UX, AIX, FreeBSD
 
-### Phase 7: Remote Inventory (⏳ Pending)
-- `glpi-inventory-remote`: SSH, WinRM
+### Phase 7: Remote Inventory (🟡 In Progress)
+- `glpi-inventory-remote`: target model (`ssh://`/`winrm://`), `RemoteSession`
+  seam (reuses the local parsers verbatim), **SSH mode 1** (command-line `ssh`),
+  `assetname-support`, and the Linux command orchestration — done
+- Still pending: russh (SSH mode 2), Perl-on-remote (mode 3), WinRM,
+  `remote-workers` parallelism, delta state files
 - `glpi-vsphere`: VMware ESX/vCenter
 - State files and delta diff
 
