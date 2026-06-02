@@ -1,0 +1,168 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Builds the `glpi-agent` installer for all three platforms:
+#   - Linux  : .deb + .rpm        (x86_64, aarch64)
+#   - Windows: .msi (WiX)         (x86_64, aarch64)
+#   - macOS  : .pkg               (x86_64, aarch64)
+#
+# Runs on a `v*` tag (attaching the installers to a GitHub Release) and on
+# manual dispatch (artifacts only). The default build is pure Rust — the
+# off-by-default `libiec61850` feature is not enabled, so no C library is needed.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp into package names (no leading v)"
+        required: false
+        default: "2.0.0"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  BIN_NAME: glpi-agent
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            kind: linux
+          - name: linux-aarch64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            kind: linux
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            kind: windows
+          - name: windows-aarch64
+            os: windows-latest
+            target: aarch64-pc-windows-msvc
+            kind: windows
+          - name: macos-x86_64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            kind: macos
+          - name: macos-aarch64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            kind: macos
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            v="${GITHUB_REF_NAME#v}"
+          else
+            v="${{ github.event.inputs.version }}"
+          fi
+          echo "version=${v:-2.0.0}" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        shell: bash
+        run: cargo build --release -p glpi-cli --target ${{ matrix.target }}
+
+      # ---------- Linux: .deb + .rpm ----------
+      - name: Package Linux (deb + rpm)
+        if: matrix.kind == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-deb cargo-generate-rpm --locked
+          mkdir -p dist
+          # cargo-deb rewrites target/release -> target/<triple>/release for --target.
+          cargo deb -p glpi-cli --target ${{ matrix.target }} --no-build
+          cp target/${{ matrix.target }}/debian/*.deb dist/
+          cargo generate-rpm -p crates/glpi-cli --target ${{ matrix.target }}
+          cp target/${{ matrix.target }}/generate-rpm/*.rpm dist/
+          # A portable tarball alongside the native packages.
+          tar -C target/${{ matrix.target }}/release -czf \
+            "dist/${BIN_NAME}-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz" "${BIN_NAME}"
+
+      # ---------- Windows: .msi ----------
+      - name: Install WiX toolset
+        if: matrix.kind == 'windows'
+        shell: pwsh
+        run: choco install wixtoolset --version=3.14.1 --no-progress -y
+
+      - name: Package Windows (msi)
+        if: matrix.kind == 'windows'
+        shell: pwsh
+        run: |
+          cargo install cargo-wix --locked
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          cargo wix -p glpi-cli `
+            --target ${{ matrix.target }} `
+            --no-build --nocapture `
+            --output "dist/${env:BIN_NAME}-${{ steps.version.outputs.version }}-${{ matrix.target }}.msi"
+
+      # ---------- macOS: .pkg ----------
+      - name: Package macOS (pkg)
+        if: matrix.kind == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist staging/usr/local/bin
+          cp "target/${{ matrix.target }}/release/${BIN_NAME}" staging/usr/local/bin/
+          pkgbuild \
+            --root staging \
+            --identifier org.glpi.agent \
+            --version "${{ steps.version.outputs.version }}" \
+            --install-location / \
+            "dist/${BIN_NAME}-${{ steps.version.outputs.version }}-${{ matrix.target }}.pkg"
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: installers-*
+          merge-multiple: true
+
+      - name: Generate SHA-256 checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+
+      - name: Create / update the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

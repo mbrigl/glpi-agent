@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="windows-1252"?>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<!--
+  WiX (v3) installer definition for the `glpi-agent` Windows MSI, built by
+  cargo-wix from .github/workflows/release.yml. cargo-wix supplies the
+  `Version` and `CargoTargetBinDir` preprocessor variables; the per-arch
+  package is selected with candle's `-arch` flag.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product
+        Id="*"
+        Name="GLPI Agent"
+        UpgradeCode="9F4C2E1A-3B6D-4F2A-9E7C-1D5A8B0C3E62"
+        Manufacturer="GLPI Agent Rust contributors"
+        Language="1033"
+        Codepage="1252"
+        Version="$(var.Version)">
+
+        <Package Id="*"
+            Keywords="Installer"
+            Description="GLPI inventory agent (Rust rewrite)"
+            Manufacturer="GLPI Agent Rust contributors"
+            InstallerVersion="450"
+            Languages="1033"
+            Compressed="yes"
+            InstallScope="perMachine"
+            SummaryCodepage="1252"/>
+
+        <MajorUpgrade
+            Schedule="afterInstallInitialize"
+            DowngradeErrorMessage="A newer version of GLPI Agent is already installed. Setup will now exit."/>
+
+        <Media Id="1" Cabinet="media1.cab" EmbedCab="yes" DiskPrompt="CD-ROM #1"/>
+        <Property Id="DiskPrompt" Value="GLPI Agent Installation"/>
+
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFiles64Folder" Name="PFiles">
+                <Directory Id="APPLICATIONFOLDER" Name="GLPI Agent">
+                    <!-- Add the install dir to the system PATH. -->
+                    <Component Id="Path"
+                        Guid="C2A7E6B4-5D1F-4A3C-8B9E-2F0D7A6C4B13"
+                        KeyPath="yes">
+                        <Environment Id="PATH"
+                            Name="PATH"
+                            Value="[APPLICATIONFOLDER]"
+                            Permanent="no"
+                            Part="last"
+                            Action="set"
+                            System="yes"/>
+                    </Component>
+                    <Component Id="binary0" Guid="*">
+                        <File Id="exe0"
+                            Name="glpi-agent.exe"
+                            DiskId="1"
+                            Source="$(var.CargoTargetBinDir)\glpi-agent.exe"
+                            KeyPath="yes"/>
+                    </Component>
+                </Directory>
+            </Directory>
+        </Directory>
+
+        <Feature Id="Binaries"
+            Title="Application"
+            Description="Installs the glpi-agent executable and adds it to PATH."
+            Level="1"
+            ConfigurableDirectory="APPLICATIONFOLDER"
+            AllowAdvertise="no"
+            Display="expand"
+            Absent="disallow">
+            <ComponentRef Id="binary0"/>
+            <ComponentRef Id="Path"/>
+        </Feature>
+
+        <Property Id="ARPHELPLINK" Value="https://github.com/glpi-project/glpi-agent-rust"/>
+        <Property Id="ARPURLINFOABOUT" Value="https://github.com/glpi-project/glpi-agent-rust"/>
+        <Property Id="WIXUI_INSTALLDIR" Value="APPLICATIONFOLDER"/>
+
+        <UIRef Id="WixUI_FeatureTree"/>
+    </Product>
+</Wix>

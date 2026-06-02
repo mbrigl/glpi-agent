@@ -6,6 +6,12 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+description = "GLPI inventory agent (Rust rewrite): local/network/remote/vSphere inventory, collect, deploy and wake-on-LAN."
+homepage = "https://github.com/glpi-project/glpi-agent-rust"
+documentation = "https://github.com/glpi-project/glpi-agent-rust"
+readme = "../../README.md"
+keywords = ["glpi", "inventory", "snmp", "agent", "asset-management"]
+categories = ["command-line-utilities"]
 
 [lints]
 workspace = true
@@ -13,6 +19,41 @@ workspace = true
 [[bin]]
 name = "glpi-agent"
 path = "src/main.rs"
+
+# --- Packaging metadata (release installers built by .github/workflows/release.yml) ---
+
+# Debian/Ubuntu package (cargo-deb).
+[package.metadata.deb]
+name = "glpi-agent"
+maintainer = "GLPI Agent Rust contributors"
+copyright = "GLPI Agent Rust contributors, GPL-2.0-only"
+license-file = ["../../LICENSE", "0"]
+extended-description = """\
+A Rust rewrite of the GLPI inventory agent. Collects local, network (SNMP), \
+remote (SSH/WinRM) and VMware vSphere inventory and reports it to a GLPI \
+server, and runs the collect, deploy and wake-on-LAN tasks."""
+section = "admin"
+priority = "optional"
+assets = [
+    ["target/release/glpi-agent", "usr/bin/", "755"],
+    ["../../README.md", "usr/share/doc/glpi-agent/README.md", "644"],
+]
+
+# RPM package (cargo-generate-rpm).
+[package.metadata.generate-rpm]
+name = "glpi-agent"
+license = "GPL-2.0-only"
+summary = "GLPI inventory agent (Rust rewrite)"
+assets = [
+    { source = "target/release/glpi-agent", dest = "/usr/bin/glpi-agent", mode = "755" },
+    { source = "../../README.md", dest = "/usr/share/doc/glpi-agent/README.md", mode = "644" },
+]
+
+# Windows MSI (cargo-wix); installer layout lives in wix/main.wxs.
+[package.metadata.wix]
+name = "glpi-agent"
+upgrade-guid = "9F4C2E1A-3B6D-4F2A-9E7C-1D5A8B0C3E62"
+path-guid = "C2A7E6B4-5D1F-4A3C-8B9E-2F0D7A6C4B13"
 
 [dependencies]
 glpi-core = { path = "../glpi-core" }
