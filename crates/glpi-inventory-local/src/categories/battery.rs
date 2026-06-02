@@ -66,11 +66,60 @@ pub fn collect() -> Vec<Battery> {
         .collect()
 }
 
-/// Collects the live batteries (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects the live batteries (Windows) from `Win32_Battery`.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> Vec<Battery> {
+    crate::sys::powershell(
+        "Get-CimInstance Win32_Battery | \
+         Select-Object Name,DesignVoltage,DesignCapacity,Chemistry | ConvertTo-Json -Compress",
+    )
+    .map(|json| parse_win_batteries(&json))
+    .unwrap_or_default()
+}
+
+/// Collects the live batteries (other platforms: not yet implemented).
+///
+/// macOS battery detail lives in `system_profiler SPPowerDataType`, whose deeply
+/// nested, version-dependent shape is left for a follow-up.
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<Battery> {
     Vec::new()
+}
+
+/// Parses a `Win32_Battery` `ConvertTo-Json` result into the batteries.
+#[must_use]
+pub fn parse_win_batteries(json: &str) -> Vec<Battery> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    crate::jsonutil::array(value)
+        .iter()
+        .map(|item| Battery {
+            name: crate::jsonutil::str_field(item, "Name"),
+            manufacturer: None,
+            serial: None,
+            chemistry: crate::jsonutil::u64_field(item, "Chemistry").and_then(battery_chemistry),
+            voltage: crate::jsonutil::u64_field(item, "DesignVoltage"),
+            capacity: crate::jsonutil::u64_field(item, "DesignCapacity"),
+        })
+        .filter(|b| b != &Battery::default())
+        .collect()
+}
+
+/// Maps a `Win32_Battery.Chemistry` code to a name.
+fn battery_chemistry(code: u64) -> Option<String> {
+    let name = match code {
+        3 => "Lead Acid",
+        4 => "Nickel Cadmium",
+        5 => "Nickel Metal Hydride",
+        6 => "Lithium-ion",
+        7 => "Zinc air",
+        8 => "Lithium Polymer",
+        _ => return None,
+    };
+    Some(name.to_owned())
 }
 
 /// Parses `KEY=VALUE` uevent lines into a map (empty values dropped).
@@ -118,5 +167,19 @@ POWER_SUPPLY_ENERGY_FULL_DESIGN=60000000
     #[test]
     fn ignores_mains_adapters() {
         assert_eq!(parse_power_supply_uevent(MAINS), None);
+    }
+
+    #[test]
+    fn parses_windows_battery_json() {
+        use super::parse_win_batteries;
+        let json = r#"[{"Name":"DELL ABC123","DesignVoltage":11400,"DesignCapacity":60000,"Chemistry":6}]"#;
+        let batteries = parse_win_batteries(json);
+        assert_eq!(batteries.len(), 1);
+        let b = &batteries[0];
+        assert_eq!(b.name.as_deref(), Some("DELL ABC123"));
+        assert_eq!(b.voltage, Some(11_400));
+        assert_eq!(b.capacity, Some(60_000));
+        assert_eq!(b.chemistry.as_deref(), Some("Lithium-ion"));
+        assert!(parse_win_batteries("bad").is_empty());
     }
 }

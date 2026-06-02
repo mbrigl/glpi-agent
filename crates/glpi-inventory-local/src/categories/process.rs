@@ -74,11 +74,57 @@ pub fn collect() -> Vec<Process> {
     }
 }
 
-/// Collects the live process list (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects the live process list via `ps aux` (macOS; same columns as Linux).
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> Vec<Process> {
+    crate::sys::output("ps", &["aux"])
+        .map(|text| parse_ps(&text))
+        .unwrap_or_default()
+}
+
+/// Collects the live process list (Windows) from `Win32_Process`.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> Vec<Process> {
+    crate::sys::powershell(
+        "Get-CimInstance Win32_Process | \
+         Select-Object ProcessId,Name,CommandLine,VirtualSize | ConvertTo-Json -Compress",
+    )
+    .map(|json| parse_win_processes(&json))
+    .unwrap_or_default()
+}
+
+/// Collects the live process list (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<Process> {
     Vec::new()
+}
+
+/// Parses a `Win32_Process` `ConvertTo-Json` result into the process list.
+#[must_use]
+pub fn parse_win_processes(json: &str) -> Vec<Process> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    crate::jsonutil::array(value)
+        .iter()
+        .filter_map(|item| {
+            let pid = u32::try_from(crate::jsonutil::u64_field(item, "ProcessId")?).ok()?;
+            Some(Process {
+                user: None,
+                pid,
+                cpu_usage: None,
+                mem: None,
+                // VirtualSize is in bytes; the GLPI field is KB.
+                virtual_memory: crate::jsonutil::u64_field(item, "VirtualSize").map(|b| b / 1024),
+                tty: None,
+                cmd: crate::jsonutil::str_field(item, "CommandLine")
+                    .or_else(|| crate::jsonutil::str_field(item, "Name")),
+            })
+        })
+        .collect()
 }
 
 fn non_empty(value: &str) -> Option<String> {
@@ -119,5 +165,19 @@ www-data     123  1.5  0.3 200000 30000 pts/0    S    10:05   0:10 nginx: worker
         assert!(parse_ps("").is_empty());
         // Header only.
         assert!(parse_ps("USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND").is_empty());
+    }
+
+    #[test]
+    fn parses_windows_process_json() {
+        use super::parse_win_processes;
+        let json = r#"[{"ProcessId":4,"Name":"System","VirtualSize":"2203320320"},
+            {"ProcessId":1234,"Name":"notepad.exe","CommandLine":"\"C:\\Windows\\notepad.exe\""}]"#;
+        let procs = parse_win_processes(json);
+        assert_eq!(procs.len(), 2);
+        assert_eq!(procs[0].pid, 4);
+        assert_eq!(procs[0].virtual_memory, Some(2_203_320_320 / 1024));
+        assert_eq!(procs[0].cmd.as_deref(), Some("System")); // falls back to Name
+        assert_eq!(procs[1].pid, 1234);
+        assert!(procs[1].cmd.as_deref().unwrap().contains("notepad.exe"));
     }
 }

@@ -145,11 +145,53 @@ fn run_lpstat(args: &[&str]) -> String {
     }
 }
 
-/// Collects the live printers (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects the live printers via CUPS `lpstat` (macOS; same CUPS as Linux).
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> Vec<Printer> {
+    let status = crate::sys::output("lpstat", &["-l", "-p"]).unwrap_or_default();
+    let devices = crate::sys::output("lpstat", &["-v"]).unwrap_or_default();
+    parse_printers(&status, &devices)
+}
+
+/// Collects the live printers (Windows) from `Win32_Printer`.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> Vec<Printer> {
+    crate::sys::powershell(
+        "Get-CimInstance Win32_Printer | \
+         Select-Object Name,DriverName,PortName,Comment | ConvertTo-Json -Compress",
+    )
+    .map(|json| parse_win_printers(&json))
+    .unwrap_or_default()
+}
+
+/// Collects the live printers (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<Printer> {
     Vec::new()
+}
+
+/// Parses a `Win32_Printer` `ConvertTo-Json` result into the printers.
+#[must_use]
+pub fn parse_win_printers(json: &str) -> Vec<Printer> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    crate::jsonutil::array(value)
+        .iter()
+        .filter_map(|item| {
+            Some(Printer {
+                name: crate::jsonutil::str_field(item, "Name")?,
+                status: None,
+                description: crate::jsonutil::str_field(item, "Comment"),
+                driver: crate::jsonutil::str_field(item, "DriverName"),
+                port: crate::jsonutil::str_field(item, "PortName"),
+                serial: None,
+            })
+        })
+        .collect()
 }
 
 /// Derives a coarse status from an `lpstat -p` line.
@@ -239,5 +281,19 @@ device for Warehouse: socket://10.0.0.7
             Some("SN9")
         );
         assert_eq!(super::serial_from_device_uri("socket://10.0.0.7"), None);
+    }
+
+    #[test]
+    fn parses_windows_printer_json() {
+        use super::parse_win_printers;
+        let json = r#"[{"Name":"HP LaserJet","DriverName":"HP Universal","PortName":"USB001",
+            "Comment":"Front desk"},{"DriverName":"orphan"}]"#;
+        let printers = parse_win_printers(json);
+        // The entry without a Name is skipped.
+        assert_eq!(printers.len(), 1);
+        assert_eq!(printers[0].name, "HP LaserJet");
+        assert_eq!(printers[0].driver.as_deref(), Some("HP Universal"));
+        assert_eq!(printers[0].port.as_deref(), Some("USB001"));
+        assert_eq!(printers[0].description.as_deref(), Some("Front desk"));
     }
 }

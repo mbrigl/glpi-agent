@@ -48,8 +48,8 @@ Legend: ✅ migrated · 🟡 partial (platform/feature gap tracked) · ⬜ pendi
 | ----------- | ----------- | ------ | ----- |
 | `t/tasks/inventory/generic/**` | `glpi-inventory-local` category tests + `tests/fixtures.rs` | ✅ | dmidecode, EDID, CUPS printers, … |
 | `t/tasks/inventory/linux/**` | `glpi-inventory-local` `categories::*` tests | ✅ | networks, storage, distro, packages. |
-| `t/tasks/inventory/win32/**` | `…/categories/{os,cpu,memory,hardware,storage,software,network}` (Windows path) | 🟡 | Via `Get-CimInstance … \| ConvertTo-Json` + registry uninstall keys (parsers tested on Linux); peripherals pending. |
-| `t/tasks/inventory/macos/**` | `…/categories/{os,cpu,memory,hardware,storage,software,network}` (macOS path) | 🟡 | Via `sw_vers`/`sysctl`/`system_profiler -json`/`ifconfig`; peripherals pending. |
+| `t/tasks/inventory/win32/**` | most `…/categories/*` (Windows path) | 🟡 | Via `Get-CimInstance … \| ConvertTo-Json`, registry uninstall keys, `Win32_PnPEntity` (parsers tested on Linux); monitors (EDID) pending. |
+| `t/tasks/inventory/macos/**` | most `…/categories/*` (macOS path) | 🟡 | Via `sw_vers`/`sysctl`/`system_profiler -json`/`ifconfig`/`ps`/`who`/CUPS; monitors + battery/PCI/AV pending. |
 | `t/tasks/inventory/{hpux,aix,solaris}/**` | exotic-platform collectors | ⬜ | Phase 6c. |
 | `t/tasks/inventory/virtualization/**` | virtualization detection | ⬜ | Phase 6 (medium). |
 

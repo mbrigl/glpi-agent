@@ -56,16 +56,97 @@ pub fn collect() -> Vec<Video> {
     }
 }
 
-/// Collects the live video controllers (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects the live video controllers (macOS) from `SPDisplaysDataType`.
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> Vec<Video> {
+    crate::sys::output("system_profiler", &["-json", "SPDisplaysDataType"])
+        .map(|json| parse_macos_video(&json))
+        .unwrap_or_default()
+}
+
+/// Collects the live video controllers (Windows) from `Win32_VideoController`.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> Vec<Video> {
+    crate::sys::powershell(
+        "Get-CimInstance Win32_VideoController | \
+         Select-Object Name,AdapterCompatibility | ConvertTo-Json -Compress",
+    )
+    .map(|json| parse_win_video(&json))
+    .unwrap_or_default()
+}
+
+/// Collects the live video controllers (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<Video> {
     Vec::new()
 }
 
+/// Parses a `Win32_VideoController` `ConvertTo-Json` result into the GPUs.
+#[must_use]
+pub fn parse_win_video(json: &str) -> Vec<Video> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    crate::jsonutil::array(value)
+        .iter()
+        .filter_map(|item| {
+            Some(Video {
+                name: crate::jsonutil::str_field(item, "Name")?,
+                manufacturer: crate::jsonutil::str_field(item, "AdapterCompatibility"),
+            })
+        })
+        .collect()
+}
+
+/// Parses `system_profiler -json SPDisplaysDataType` (macOS) into the GPUs.
+#[must_use]
+pub fn parse_macos_video(json: &str) -> Vec<Video> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    value
+        .get("SPDisplaysDataType")
+        .and_then(serde_json::Value::as_array)
+        .map(|gpus| {
+            gpus.iter()
+                .filter_map(|item| {
+                    Some(Video {
+                        name: crate::jsonutil::str_field(item, "_name")?,
+                        manufacturer: crate::jsonutil::str_field(item, "spdisplays_vendor"),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::parse_lspci_video;
+
+    #[test]
+    fn parses_windows_video_json() {
+        use super::parse_win_video;
+        let json =
+            r#"[{"Name":"Intel UHD Graphics 630","AdapterCompatibility":"Intel Corporation"}]"#;
+        let videos = parse_win_video(json);
+        assert_eq!(videos.len(), 1);
+        assert_eq!(videos[0].name, "Intel UHD Graphics 630");
+        assert_eq!(videos[0].manufacturer.as_deref(), Some("Intel Corporation"));
+    }
+
+    #[test]
+    fn parses_macos_video_json() {
+        use super::parse_macos_video;
+        let json =
+            r#"{"SPDisplaysDataType":[{"_name":"Apple M1 Pro","spdisplays_vendor":"Apple"}]}"#;
+        let videos = parse_macos_video(json);
+        assert_eq!(videos.len(), 1);
+        assert_eq!(videos[0].name, "Apple M1 Pro");
+    }
 
     const LSPCI: &str = r#"00:00.0 "Host bridge" "Intel Corporation" "Device 3e34"
 00:02.0 "VGA compatible controller" "Intel Corporation" "UHD Graphics 630"

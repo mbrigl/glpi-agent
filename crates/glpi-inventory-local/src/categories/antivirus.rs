@@ -55,11 +55,44 @@ pub fn collect() -> Vec<Antivirus> {
     detect_present(|path| std::path::Path::new(path).exists())
 }
 
-/// Detects installed antivirus products (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Detects installed antivirus products (Windows) from the Security Center.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> Vec<Antivirus> {
+    crate::sys::powershell(
+        "Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct | \
+         Select-Object displayName | ConvertTo-Json -Compress",
+    )
+    .map(|json| parse_win_antivirus(&json))
+    .unwrap_or_default()
+}
+
+/// Detects installed antivirus products (other platforms: not yet implemented).
+///
+/// macOS has no common security-center API; endpoint products would need the
+/// per-vendor marker approach, left for a follow-up.
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<Antivirus> {
     Vec::new()
+}
+
+/// Parses a `SecurityCenter2 AntiVirusProduct` `ConvertTo-Json` result into the
+/// registered products (presence implies enabled, as on Linux).
+#[must_use]
+pub fn parse_win_antivirus(json: &str) -> Vec<Antivirus> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    crate::jsonutil::array(value)
+        .iter()
+        .filter_map(|item| {
+            Some(Antivirus {
+                name: crate::jsonutil::str_field(item, "displayName")?,
+                enabled: true,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -81,5 +114,16 @@ mod tests {
     #[test]
     fn nothing_installed_yields_empty() {
         assert!(detect_present(|_| false).is_empty());
+    }
+
+    #[test]
+    fn parses_windows_securitycenter_json() {
+        use super::parse_win_antivirus;
+        let json = r#"[{"displayName":"Microsoft Defender"},{"displayName":"Acme AV"}]"#;
+        let products = parse_win_antivirus(json);
+        assert_eq!(products.len(), 2);
+        assert_eq!(products[0].name, "Microsoft Defender");
+        assert!(products.iter().all(|a| a.enabled));
+        assert!(parse_win_antivirus("bad").is_empty());
     }
 }

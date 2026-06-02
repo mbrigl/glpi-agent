@@ -63,11 +63,44 @@ pub fn collect() -> Vec<Controller> {
     }
 }
 
-/// Collects the live PCI controllers (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects the live PCI controllers (Windows) from `Win32_PnPEntity`.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> Vec<Controller> {
+    crate::sys::powershell(
+        "Get-CimInstance Win32_PnPEntity | Where-Object {$_.PNPDeviceID -like 'PCI\\*'} | \
+         Select-Object Name,Manufacturer,PNPClass | ConvertTo-Json -Compress",
+    )
+    .map(|json| parse_win_controllers(&json))
+    .unwrap_or_default()
+}
+
+/// Collects the live PCI controllers (other platforms: not yet implemented).
+///
+/// macOS exposes PCI devices via `system_profiler SPPCIDataType`, which is empty
+/// on most modern (Apple Silicon) machines; left for a follow-up.
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<Controller> {
     Vec::new()
+}
+
+/// Parses a `Win32_PnPEntity` (PCI) `ConvertTo-Json` result into controllers.
+#[must_use]
+pub fn parse_win_controllers(json: &str) -> Vec<Controller> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    crate::jsonutil::array(value)
+        .iter()
+        .map(|item| Controller {
+            name: crate::jsonutil::str_field(item, "Name"),
+            manufacturer: crate::jsonutil::str_field(item, "Manufacturer"),
+            controller_type: crate::jsonutil::str_field(item, "PNPClass"),
+            slot: None,
+        })
+        .filter(|c| c != &Controller::default())
+        .collect()
 }
 
 fn non_empty(value: Option<&str>) -> Option<String> {
@@ -108,5 +141,19 @@ mod tests {
     #[test]
     fn empty_input_yields_no_controllers() {
         assert!(parse_lspci("").is_empty());
+    }
+
+    #[test]
+    fn parses_windows_pnp_controllers_json() {
+        use super::parse_win_controllers;
+        let json = r#"[{"Name":"Intel Ethernet I219-LM","Manufacturer":"Intel","PNPClass":"Net"}]"#;
+        let controllers = parse_win_controllers(json);
+        assert_eq!(controllers.len(), 1);
+        assert_eq!(
+            controllers[0].name.as_deref(),
+            Some("Intel Ethernet I219-LM")
+        );
+        assert_eq!(controllers[0].manufacturer.as_deref(), Some("Intel"));
+        assert_eq!(controllers[0].controller_type.as_deref(), Some("Net"));
     }
 }

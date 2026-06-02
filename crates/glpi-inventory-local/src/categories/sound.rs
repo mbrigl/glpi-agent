@@ -55,16 +55,102 @@ pub fn collect() -> Vec<Sound> {
     }
 }
 
-/// Collects the live sound cards (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects the live sound cards (macOS) from `SPAudioDataType`.
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> Vec<Sound> {
+    crate::sys::output("system_profiler", &["-json", "SPAudioDataType"])
+        .map(|json| parse_macos_sound(&json))
+        .unwrap_or_default()
+}
+
+/// Collects the live sound cards (Windows) from `Win32_SoundDevice`.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> Vec<Sound> {
+    crate::sys::powershell(
+        "Get-CimInstance Win32_SoundDevice | \
+         Select-Object Name,Manufacturer | ConvertTo-Json -Compress",
+    )
+    .map(|json| parse_win_sound(&json))
+    .unwrap_or_default()
+}
+
+/// Collects the live sound cards (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<Sound> {
     Vec::new()
 }
 
+/// Parses a `Win32_SoundDevice` `ConvertTo-Json` result into the sound cards.
+#[must_use]
+pub fn parse_win_sound(json: &str) -> Vec<Sound> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    crate::jsonutil::array(value)
+        .iter()
+        .filter_map(|item| {
+            Some(Sound {
+                name: crate::jsonutil::str_field(item, "Name")?,
+                manufacturer: crate::jsonutil::str_field(item, "Manufacturer"),
+            })
+        })
+        .collect()
+}
+
+/// Parses `system_profiler -json SPAudioDataType` (macOS) into the audio
+/// devices, walking each provider's `_items`.
+#[must_use]
+pub fn parse_macos_sound(json: &str) -> Vec<Sound> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    let mut sounds = Vec::new();
+    let providers = value
+        .get("SPAudioDataType")
+        .and_then(serde_json::Value::as_array);
+    for provider in providers.into_iter().flatten() {
+        let items = provider
+            .get("_items")
+            .and_then(serde_json::Value::as_array)
+            .map_or_else(|| std::slice::from_ref(provider), Vec::as_slice);
+        for item in items {
+            if let Some(name) = crate::jsonutil::str_field(item, "_name") {
+                sounds.push(Sound {
+                    name,
+                    manufacturer: None,
+                });
+            }
+        }
+    }
+    sounds
+}
+
 #[cfg(test)]
 mod tests {
     use super::parse_lspci_sound;
+
+    #[test]
+    fn parses_windows_sound_json() {
+        use super::parse_win_sound;
+        let json = r#"[{"Name":"Realtek High Definition Audio","Manufacturer":"Realtek"}]"#;
+        let sounds = parse_win_sound(json);
+        assert_eq!(sounds.len(), 1);
+        assert_eq!(sounds[0].name, "Realtek High Definition Audio");
+        assert_eq!(sounds[0].manufacturer.as_deref(), Some("Realtek"));
+    }
+
+    #[test]
+    fn parses_macos_sound_json() {
+        use super::parse_macos_sound;
+        let json = r#"{"SPAudioDataType":[{"_name":"Devices","_items":[
+            {"_name":"MacBook Pro Speakers"},{"_name":"MacBook Pro Microphone"}]}]}"#;
+        let sounds = parse_macos_sound(json);
+        assert_eq!(sounds.len(), 2);
+        assert_eq!(sounds[0].name, "MacBook Pro Speakers");
+    }
 
     const LSPCI: &str = r#"00:02.0 "VGA compatible controller" "Intel Corporation" "UHD Graphics 630"
 00:1f.3 "Audio device" "Intel Corporation" "Sunrise Point-LP HD Audio"

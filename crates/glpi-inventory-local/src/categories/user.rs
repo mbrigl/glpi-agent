@@ -40,16 +40,54 @@ pub fn collect() -> Vec<User> {
     }
 }
 
-/// Collects the live logged-in users (non-Linux stub).
-#[cfg(not(target_os = "linux"))]
+/// Collects the live logged-in users via `who` (macOS; same format as Linux).
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn collect() -> Vec<User> {
+    crate::sys::output("who", &[])
+        .map(|text| parse_who(&text))
+        .unwrap_or_default()
+}
+
+/// Collects the live logged-in user (Windows) from `Win32_ComputerSystem`.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn collect() -> Vec<User> {
+    crate::sys::powershell("(Get-CimInstance Win32_ComputerSystem).UserName")
+        .map(|text| parse_win_username(&text))
+        .unwrap_or_default()
+}
+
+/// Collects the live logged-in users (unsupported-platform stub).
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 #[must_use]
 pub fn collect() -> Vec<User> {
     Vec::new()
 }
 
+/// Parses the Windows `ComputerSystem.UserName` (`DOMAIN\user`, or empty when
+/// no interactive user) into the logged-in user, dropping the domain prefix.
+#[must_use]
+pub fn parse_win_username(text: &str) -> Vec<User> {
+    let raw = text.trim();
+    if raw.is_empty() {
+        return Vec::new();
+    }
+    let login = raw.rsplit('\\').next().unwrap_or(raw).to_owned();
+    vec![User { login }]
+}
+
 #[cfg(test)]
 mod tests {
     use super::parse_who;
+
+    #[test]
+    fn parses_windows_username() {
+        use super::parse_win_username;
+        assert_eq!(parse_win_username("ACME\\alice")[0].login, "alice");
+        assert_eq!(parse_win_username("bob")[0].login, "bob");
+        assert!(parse_win_username("  ").is_empty());
+    }
 
     #[test]
     fn parses_distinct_logins() {

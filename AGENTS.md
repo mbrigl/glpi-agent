@@ -618,20 +618,23 @@ unit-tested on Linux and the collectors are compile-checked for both targets
 `parse_win_*` / `parse_macos_*` / `build_macos_*` function → the category struct,
 with `crate::jsonutil` for the JSON fields.
 
-Software (Windows registry uninstall keys / macOS `SPApplicationsDataType`) and
-network (Windows `Win32_NetworkAdapterConfiguration` / macOS `ifconfig`) now work
-on both platforms too.
+Most categories now work on Windows and macOS: OS, CPU, memory, hardware/BIOS,
+storage, software, network, processes, users, printers, video, sound, USB —
+plus batteries, PCI controllers and antivirus on Windows.
 
-**Still stubbed on Windows/macOS** (return empty off Linux): processes,
-pci/controller, usb, users, batteries, video, sound, printers, monitors,
-antivirus. These are the remaining Phase 6 work.
+**Still stubbed** (return empty):
+- **monitors** on Windows + macOS — needs EDID, which is awkward to obtain
+  cross-platform (Windows registry `Device Parameters\EDID`; macOS has no easy
+  path). `parse_edid` already exists to parse the raw bytes.
+- **batteries, PCI controllers, antivirus** on **macOS** — `SPPowerDataType` is
+  deeply nested; `SPPCIDataType` is empty on Apple Silicon; macOS has no common
+  AV API.
 
-- **Windows**: the richer paths per the plan — WMI on a dedicated COM worker
-  thread, registry wildcards, the certificate store. **Windows COM code must run
-  on a dedicated worker thread (not `Send`).**
-- **macOS**: the peripheral categories via `system_profiler`, plus IOKit /
-  Keychain for the deeper data.
-- **Exotic Unix** (base inventory): Solaris/OmniOS, HP-UX, AIX, FreeBSD.
+**Remaining richer paths** (per the plan): Windows WMI on a dedicated COM worker
+thread, registry wildcards, the certificate store (**COM code must run on a
+dedicated worker thread, not `Send`**); macOS IOKit / Keychain.
+
+**Exotic Unix** (base inventory): Solaris/OmniOS, HP-UX, AIX, FreeBSD.
 
 **Note**: gate each collector with `#[cfg(target_os = "…")]` and keep the parser
 pure (so it is tested on Linux); add a final
