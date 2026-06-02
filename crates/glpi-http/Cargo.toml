@@ -13,10 +13,22 @@ workspace = true
 [dependencies]
 glpi-core = { path = "../glpi-core" }
 glpi-scheduler = { path = "../glpi-scheduler" }
+glpi-plugins = { path = "../glpi-plugins" }
+glpi-transport = { path = "../glpi-transport" }
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true
 tracing.workspace = true
+async-trait.workspace = true
+# HTTPS listener for the SSL server plugin (rustls, matching reqwest's stack).
+rustls = "0.23"
+base64.workspace = true
+tokio-rustls = "0.26"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tower-service = "0.3"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+tempfile = "3"
+reqwest = { workspace = true }

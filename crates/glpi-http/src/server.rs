@@ -28,7 +28,9 @@ use serde::Deserialize;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
+use crate::proxy::{InventoryForwarder, ProxyState, TransportForwarder};
 use crate::trust::TrustList;
+use glpi_plugins::proxy::ProxyConfig;
 
 /// Default port of the embedded HTTP server.
 pub const DEFAULT_HTTP_PORT: u16 = 62354;
@@ -90,6 +92,7 @@ pub struct HttpServer {
     ip: IpAddr,
     port: u16,
     state: ServerState,
+    proxy: Option<ProxyState>,
 }
 
 impl HttpServer {
@@ -109,17 +112,55 @@ impl HttpServer {
             triggers,
             status_line: status_line.into(),
         };
-        (Self { ip, port, state }, rx)
+        (
+            Self {
+                ip,
+                port,
+                state,
+                proxy: None,
+            },
+            rx,
+        )
+    }
+
+    /// Mounts the Proxy server plugin on `config.url_path`, relaying received
+    /// inventories to `servers` (and/or a local store) via the production
+    /// `glpi-transport` forwarder. The proxy applies its own trust policy.
+    #[must_use]
+    pub fn with_proxy(self, config: ProxyConfig, servers: Vec<String>) -> Self {
+        self.with_proxy_forwarder(config, servers, Arc::new(TransportForwarder))
+    }
+
+    /// Like [`with_proxy`](Self::with_proxy) but with a caller-supplied
+    /// forwarder (used by tests to record forwards without a network).
+    #[must_use]
+    pub fn with_proxy_forwarder(
+        mut self,
+        config: ProxyConfig,
+        servers: Vec<String>,
+        forwarder: Arc<dyn InventoryForwarder>,
+    ) -> Self {
+        self.proxy = Some(ProxyState::new(
+            config,
+            servers,
+            self.state.trust.clone(),
+            forwarder,
+        ));
+        self
     }
 
     /// Builds the router (exposed for testing).
     pub fn router(&self) -> Router {
-        Router::new()
+        let mut app = Router::new()
             .route("/status", get(status))
             .route("/now", get(now).post(now))
             .route("/", get(index))
             .layer(from_fn_with_state(self.state.clone(), enforce_trust))
-            .with_state(self.state.clone())
+            .with_state(self.state.clone());
+        if let Some(proxy) = &self.proxy {
+            app = app.merge(crate::proxy::router(proxy.clone()));
+        }
+        app
     }
 
     /// Binds the socket and serves until the process ends.

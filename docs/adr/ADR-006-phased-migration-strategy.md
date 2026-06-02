@@ -77,14 +77,21 @@ We chose **Phased Approach**, because:
   arbitrarily long messages; child-process spawn is the remaining integration
 - HTTP-server plugins (`glpi-plugins`): the Proxy plugin (config + store/forward
   + pass-through loop guard) and the SSL plugin (HTTPS-listener config +
-  validation); request routing / TLS listener wiring into `glpi-http` remain
+  validation)
+- Plugins mounted in `glpi-http`: the Proxy route (`HttpServer::with_proxy`)
+  receives a POSTed inventory on the plugin's `url_path`, applies the plugin's
+  `plan` (loop-guard / trust refusal, local store keyed by device id, forward to
+  the configured GLPI servers through an `InventoryForwarder` →
+  `TransportForwarder`); the SSL plugin's HTTPS listener (`tls::server_config`
+  builds a rustls config from the PEM cert/key, `tls::serve_tls` TLS-terminates
+  and serves the control router with the peer address injected so the trust
+  middleware still applies) — done, including an end-to-end HTTPS handshake test
 - Event wiring: the embedded server maps each `/now` request (`partial`, `full`,
   `task`, `category`, `delay`) to a typed `Event` and delivers it to the daemon
   over the trigger channel; the daemon logs the event kind/task and honours its
   `delay` and task target — done
-- Still pending: ToolBox UI pages, the daemon lifecycle (fork/detach,
-  conf-reload, task-fork child spawn), and mounting the plugins (proxy route /
-  TLS listener) in the embedded server
+- Still pending: ToolBox UI pages, and the daemon lifecycle (fork/detach,
+  conf-reload, task-fork child spawn)
 
 ### Phase 6: Local Inventory (🟡 Linux Complete)
 - Linux: All 20+ categories
