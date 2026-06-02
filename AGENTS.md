@@ -104,6 +104,8 @@ crates/
 │   │       │       └── ...
 │   │       └── walk.rs      # WalkSession for fixture replay
 │   │
+│   ├── glpi-iec61850/        # IEC 61850 / MMS IED inventory (Phase 4 ✅)
+│   │                         #   scan + SNMP merge; libiec61850 FFI behind feature
 │   └── glpi-inventory-remote/ # Remote inventory (Phase 7 🟡)
 │       └── glpi-vsphere/     # VMware ESX/vCenter (Phase 8 ✅)
 │

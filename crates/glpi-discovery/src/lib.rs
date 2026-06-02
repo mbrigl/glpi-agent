@@ -30,6 +30,7 @@ pub mod traits;
 
 pub use ip_range::{Ipv4Range, Ipv4RangeIter};
 pub use methods::arp::{ArpMethod, ArpTable};
+pub use methods::iec61850::{Iec61850Method, MMS_PORT};
 pub use methods::netbios::{NetBiosMethod, NetBiosName};
 pub use methods::ping::{EchoRequest, PingMethod};
 pub use methods::snmp::SnmpMethod;
@@ -41,5 +42,5 @@ pub use snmp::{
     SnmpValue, Supply, SysObjectEntry, SysObjectIds, SystemMib, WalkSession, SNMP_PORT,
 };
 pub use tasks::net_discovery::{DiscoveredDevice, NetDiscoveryTask, SnmpDevice};
-pub use tasks::net_inventory::NetInventoryTask;
+pub use tasks::net_inventory::{merge_ied_identity, NetInventoryTask};
 pub use traits::{DiscoveredHost, DiscoveryMethod, Probe};

@@ -23,10 +23,14 @@
 //! anywhere; only the transport plug-in is environment-dependent.
 
 pub mod device;
+#[cfg(feature = "libiec61850")]
+pub mod ffi;
 pub mod mock;
 pub mod protocol;
 
 pub use device::{IedFirmware, IedIdentity, IedInfo, IedInventory, IedIps};
+#[cfg(feature = "libiec61850")]
+pub use ffi::LibIec61850Protocol;
 pub use mock::MockProtocol;
 pub use protocol::{FunctionalConstraint, IedProtocol};
 

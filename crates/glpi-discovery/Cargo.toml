@@ -10,8 +10,15 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Forward to glpi-iec61850's libiec61850 FFI backend (links the C library).
+# Off by default: the IED scan/merge logic and the discovery method build
+# without it; only the on-wire MMS transport needs the library.
+libiec61850 = ["glpi-iec61850/libiec61850"]
+
 [dependencies]
 glpi-core = { path = "../glpi-core" }
+glpi-iec61850 = { path = "../glpi-iec61850" }
 tokio.workspace = true
 async-trait.workspace = true
 tracing.workspace = true
@@ -21,3 +28,4 @@ serde.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true
+serde_json.workspace = true

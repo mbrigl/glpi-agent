@@ -105,41 +105,9 @@ impl IedIdentity {
         mac: Option<String>,
         ip: Option<String>,
     ) -> IedInventory {
-        let model_label = self.model.clone();
         let manufacturer = self.manufacturer.clone();
-
-        // Firmware (always) and hardware (when present) entries.
-        let device_label = |kind: &str| {
-            format!(
-                "{} {kind}",
-                model_label.as_deref().unwrap_or("Electronic device")
-            )
-        };
-        let mut firmwares = Vec::new();
-        if self.firmware.is_some() {
-            firmwares.push(IedFirmware {
-                name: device_label("firmware"),
-                description: "Electronic device firmware".to_owned(),
-                r#type: "ied".to_owned(),
-                version: self.firmware.clone(),
-                manufacturer: manufacturer.clone(),
-            });
-        }
-        if let Some(hardware) = &self.hardware {
-            firmwares.push(IedFirmware {
-                name: device_label("hardware"),
-                description: "Electronic device hardware".to_owned(),
-                r#type: "ied".to_owned(),
-                version: Some(hardware.clone()),
-                manufacturer: manufacturer.clone(),
-            });
-        }
-
-        // The IED name loses manufacturer-specific suffixes (e.g. Siemens
-        // logical-device names carry a trailing `A_Allg`).
-        let name = self
-            .ied_name
-            .map(|name| name.strip_suffix("A_Allg").unwrap_or(&name).to_owned());
+        let firmwares = self.firmware_entries();
+        let name = self.cleaned_name();
 
         let info = IedInfo {
             r#type: "NETWORKING".to_owned(),
@@ -159,6 +127,55 @@ impl IedIdentity {
             info,
             firmwares,
         }
+    }
+
+    /// `true` if no nameplate attribute was collected (a bare identity).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// The IED name with manufacturer-specific suffixes stripped (e.g. Siemens
+    /// logical-device names carry a trailing `A_Allg`).
+    #[must_use]
+    pub fn cleaned_name(&self) -> Option<String> {
+        self.ied_name
+            .as_deref()
+            .map(|name| name.strip_suffix("A_Allg").unwrap_or(name).to_owned())
+    }
+
+    /// The GLPI `FIRMWARES` entries for this IED: a firmware entry when a
+    /// software revision is known, plus a hardware entry when a hardware
+    /// revision is. Shared by the standalone inventory and the NetInventory
+    /// merge.
+    #[must_use]
+    pub fn firmware_entries(&self) -> Vec<IedFirmware> {
+        let label = |kind: &str| {
+            format!(
+                "{} {kind}",
+                self.model.as_deref().unwrap_or("Electronic device")
+            )
+        };
+        let mut firmwares = Vec::new();
+        if let Some(firmware) = &self.firmware {
+            firmwares.push(IedFirmware {
+                name: label("firmware"),
+                description: "Electronic device firmware".to_owned(),
+                r#type: "ied".to_owned(),
+                version: Some(firmware.clone()),
+                manufacturer: self.manufacturer.clone(),
+            });
+        }
+        if let Some(hardware) = &self.hardware {
+            firmwares.push(IedFirmware {
+                name: label("hardware"),
+                description: "Electronic device hardware".to_owned(),
+                r#type: "ied".to_owned(),
+                version: Some(hardware.clone()),
+                manufacturer: self.manufacturer.clone(),
+            });
+        }
+        firmwares
     }
 }
 
