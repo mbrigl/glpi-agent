@@ -106,9 +106,14 @@ We chose **Phased Approach**, because:
   `--conf-reload-interval` that reloads the layered config on a timer and logs
   the changed fields (`conf-reload-interval` falls back to the config value) —
   done
+- Logging backends (`glpi-cli::logging`): `--logger stderr|file|syslog` with
+  `--logfile` / `--logfacility`, so a detached daemon stays observable. stderr
+  and file use tracing-subscriber's built-in `MakeWriter`s; syslog is a
+  self-contained `MakeWriter` that emits one RFC 3164 datagram per event to the
+  local `/dev/log` socket (no extra crates) — done
 - Still pending: ToolBox UI pages, applying more reloaded settings live (only
-  logged today), syslog/logfile output for a detached daemon, and wiring the
-  remaining real tasks (inventory, …) into the `__task-worker` entry point
+  logged today), propagating the logger choice to forked `__task-worker`
+  children, and wiring the remaining real tasks (inventory, …) into that worker
 
 ### Phase 6: Local Inventory (🟡 Linux Complete)
 - Linux: All 20+ categories

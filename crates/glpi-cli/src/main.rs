@@ -39,7 +39,9 @@ use tokio::io::AsyncWrite;
 use tokio::process::Command as ProcessCommand;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
-use tracing_subscriber::EnvFilter;
+
+mod logging;
+use logging::LoggerKind;
 
 /// The GLPI Agent command-line interface.
 #[derive(Parser)]
@@ -52,6 +54,19 @@ struct Cli {
     /// Directory of `*.cfg` configuration drop-ins (`conf.d`).
     #[arg(long, global = true, value_name = "PATH")]
     conf_dir: Option<PathBuf>,
+
+    /// Logging backend: `stderr` (default), `file` or `syslog`. A detached
+    /// daemon must use `file` or `syslog`.
+    #[arg(long, global = true, value_enum, default_value_t = LoggerKind::Stderr)]
+    logger: LoggerKind,
+
+    /// Log file path (required when `--logger file`).
+    #[arg(long, global = true, value_name = "PATH")]
+    logfile: Option<PathBuf>,
+
+    /// Syslog facility for `--logger syslog` (e.g. `user`, `daemon`, `local0`).
+    #[arg(long, global = true, default_value = "daemon")]
+    logfacility: String,
 
     #[command(subcommand)]
     command: Command,
@@ -332,14 +347,13 @@ struct DaemonArgs {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .with_writer(std::io::stderr)
-        .init();
-
     let cli = Cli::parse();
+
+    // Reject a bad logger combination before doing any work, then install the
+    // chosen backend (stderr / logfile / syslog).
+    logging::validate(cli.logger, cli.logfile.as_ref())?;
+    logging::init(cli.logger, cli.logfile.as_deref(), &cli.logfacility)?;
+
     let conf_file = cli.conf_file.clone();
     let conf_dir = cli.conf_dir.clone();
     let options = load_options(conf_file.as_deref(), conf_dir.as_deref())?;
