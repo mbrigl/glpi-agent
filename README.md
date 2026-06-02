@@ -98,6 +98,16 @@ wake-on-LAN), the daemon/server crates (scheduler, HTTP, plugins), and the `glpi
 (published as `glpi-agent`). Full details, dependencies, and risk areas are in
 [glpi-agent-crates-summary.md](glpi-agent-crates-summary.md).
 
+## AI Agent Support
+
+This project is optimized for **any AI coding agent** (Claude Code, GitHub Copilot, Cursor, Devstral, etc.):
+
+- **Universal guidelines**: [AGENTS.md](AGENTS.md)
+- **Human developer guidelines**: [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Agent-specific configurations**: [.agents/](.agents/)
+
+Each agent has its own configuration file in the `.agents/` directory with tool-specific instructions.
+
 ## License
 
 Licensed under the **GNU General Public License v2.0** — see [LICENSE](LICENSE), matching the upstream

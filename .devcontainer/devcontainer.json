@@ -25,7 +25,9 @@
     "vscode": {
       "extensions": [
         "anthropic.claude-code",
-        "ms-azuretools.vscode-docker" // Docker extension for managing images & containers
+        "mistralai.mistral-vibe-code",
+        "ms-azuretools.vscode-docker",
+        "ms-vscode-remote.remote-containers"
       ],
       "settings": {
         // Point the Docker extension at the host socket
