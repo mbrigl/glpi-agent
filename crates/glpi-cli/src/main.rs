@@ -20,6 +20,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use glpi_core::config::{Loader, Options};
+use glpi_core::protocol::delta;
 use glpi_core::protocol::glpi::InventoryRequest;
 use glpi_core::types::snmp::SnmpCredentials;
 use glpi_discovery::{Ipv4Range, NetDiscoveryTask, NetInventoryTask};
@@ -86,6 +87,16 @@ struct InventoryArgs {
     /// Override the agent device id (defaults to the hostname).
     #[arg(long, value_name = "ID")]
     deviceid: Option<String>,
+
+    /// Directory holding per-device delta state. When set, unchanged sections
+    /// are skipped and only a `partial` inventory is submitted.
+    #[arg(long, value_name = "DIR")]
+    statedir: Option<PathBuf>,
+
+    /// Send at most this many consecutive partial inventories before forcing a
+    /// full one (`0` disables partials). Requires `--statedir`.
+    #[arg(long, default_value_t = 0)]
+    full_inventory_postpone: u32,
 
     #[command(flatten)]
     http: HttpClientArgs,
@@ -328,16 +339,42 @@ async fn run_inventory(args: InventoryArgs, options: &Options) -> Result<()> {
         .clone()
         .or_else(|| content.hardware.as_ref().and_then(|h| h.name.clone()))
         .unwrap_or_else(|| "glpi-agent".to_owned());
-    let request = InventoryRequest::new(deviceid, &content).with_itemtype(&args.itemtype);
     let no_ssl_check = args.http.no_ssl_check || options.no_ssl_check;
 
-    for server in &servers {
-        let client = build_client(server, &args.http, no_ssl_check)?;
-        client
-            .submit_inventory(&request)
-            .await
-            .with_context(|| format!("submitting inventory to {server}"))?;
-        tracing::info!(server, itemtype = %request.itemtype, "inventory submitted");
+    // With a state directory, submit a delta (partial) inventory; otherwise the
+    // full content.
+    if let Some(statedir) = &args.statedir {
+        let previous = delta::load_state(statedir, &deviceid)
+            .with_context(|| format!("loading delta state for {deviceid}"))?;
+        let plan = delta::plan(&content, previous.as_ref(), args.full_inventory_postpone)
+            .context("planning delta inventory")?;
+        let request =
+            InventoryRequest::new(deviceid.clone(), &plan.content).with_itemtype(&args.itemtype);
+        for server in &servers {
+            let client = build_client(server, &args.http, no_ssl_check)?;
+            client
+                .submit_inventory(&request)
+                .await
+                .with_context(|| format!("submitting inventory to {server}"))?;
+            tracing::info!(
+                server,
+                mode = ?plan.mode,
+                sections = plan.changed_sections.len(),
+                "inventory submitted"
+            );
+        }
+        delta::save_state(statedir, &deviceid, &plan.state)
+            .with_context(|| format!("saving delta state for {deviceid}"))?;
+    } else {
+        let request = InventoryRequest::new(deviceid, &content).with_itemtype(&args.itemtype);
+        for server in &servers {
+            let client = build_client(server, &args.http, no_ssl_check)?;
+            client
+                .submit_inventory(&request)
+                .await
+                .with_context(|| format!("submitting inventory to {server}"))?;
+            tracing::info!(server, itemtype = %request.itemtype, "inventory submitted");
+        }
     }
     Ok(())
 }
@@ -896,6 +933,27 @@ mod tests {
         assert_eq!(args.itemtype, "Computer");
         assert_eq!(args.deviceid.as_deref(), Some("host-1"));
         assert!(args.http.no_ssl_check);
+    }
+
+    #[test]
+    fn parses_inventory_delta_options() {
+        let cli = Cli::try_parse_from([
+            "glpi-agent",
+            "inventory",
+            "--statedir",
+            "/var/lib/glpi-agent/state",
+            "--full-inventory-postpone",
+            "7",
+        ])
+        .unwrap();
+        let Command::Inventory(args) = cli.command else {
+            panic!("expected inventory");
+        };
+        assert_eq!(
+            args.statedir,
+            Some(std::path::PathBuf::from("/var/lib/glpi-agent/state"))
+        );
+        assert_eq!(args.full_inventory_postpone, 7);
     }
 
     #[test]

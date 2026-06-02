@@ -74,7 +74,12 @@ We chose **Phased Approach**, because:
   `RemoteModes` from `?mode=`), the Linux command orchestration, and the
   `remoteinventory` CLI subcommand with `--remote-workers` parallelism
   (Semaphore-bounded, optional per-host server submission) — done
-- Still pending: persistent `known_hosts` pinning, WinRM, delta state files
+- Delta / partial inventory: `glpi-core::protocol::delta` keeps per-device
+  section checksums in a state file and plans a full-vs-partial submission
+  (`full-inventory-postpone`); wired into the `inventory` CLI via `--statedir`
+  / `--full-inventory-postpone` — done
+- Still pending: persistent `known_hosts` pinning, WinRM, delta state files for
+  the remote/`netinventory` paths
 - `glpi-vsphere`: VMware ESX/vCenter
 - State files and delta diff
 
