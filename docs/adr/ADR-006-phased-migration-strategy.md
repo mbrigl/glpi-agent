@@ -64,6 +64,16 @@ We chose **Phased Approach**, because:
 - Configuration loading
 - Category filtering
 - `glpi-scheduler` and `glpi-http`
+- Event system (`glpi-scheduler::event`): the typed `Event` (init / runnow /
+  taskrun / partial / maintenance / job) with `from_params` and serde
+- Task-fork IPC (`glpi-scheduler::ipc`): length-prefixed `IpcMessage` frames
+  (Event / Log / Progress / Result / Done) over any async stream, handling
+  arbitrarily long messages; child-process spawn is the remaining integration
+- HTTP-server plugins (`glpi-plugins`): the Proxy plugin (config + store/forward
+  + pass-through loop guard) and the SSL plugin (HTTPS-listener config +
+  validation); request routing / TLS listener wiring into `glpi-http` remain
+- Still pending: ToolBox UI pages, the daemon lifecycle wiring (fork/detach,
+  conf-reload), and connecting the plugins/events into the embedded server
 
 ### Phase 6: Local Inventory (🟡 Linux Complete)
 - Linux: All 20+ categories
