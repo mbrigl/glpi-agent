@@ -36,8 +36,8 @@ pub mod vendor;
 pub use bridge_mib::BridgeMib;
 pub use cdp_mib::CdpMib;
 pub use device::{
-    Component, DeviceInfo, Firmware, Neighbor, NeighborProtocol, NetworkDevice, PageCounters, Port,
-    Printer, Supply,
+    pdu_type, Component, DeviceInfo, Firmware, Neighbor, NeighborProtocol, NetworkDevice,
+    PageCounters, Pdu, Plug, Port, Printer, Supply,
 };
 pub use entity_mib::EntityMib;
 pub use if_mib::IfMib;
@@ -79,6 +79,8 @@ pub trait MibSupport: Send + Sync {
 #[derive(Clone, Default)]
 pub struct MibRegistry {
     modules: Vec<Arc<dyn MibSupport>>,
+    /// Target GLPI version, passed to modules as a format-feature hint.
+    glpi_version: Option<String>,
 }
 
 impl MibRegistry {
@@ -86,6 +88,14 @@ impl MibRegistry {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Sets the target GLPI version (enables version-dependent output such as
+    /// the `PDU` device type).
+    #[must_use]
+    pub fn with_glpi_version(mut self, glpi_version: impl Into<String>) -> Self {
+        self.glpi_version = Some(glpi_version.into());
+        self
     }
 
     /// Creates a registry with all standard MIB modules implemented so far.
@@ -142,7 +152,10 @@ impl MibRegistry {
         session: &mut dyn SnmpQuery,
         sysobjects: &SysObjectIds,
     ) -> Result<NetworkDevice> {
-        let mut device = NetworkDevice::default();
+        let mut device = NetworkDevice {
+            glpi_version: self.glpi_version.clone(),
+            ..NetworkDevice::default()
+        };
         for module in &self.modules {
             if module.applies_to(&device.info) {
                 module.run(session, &mut device).await?;

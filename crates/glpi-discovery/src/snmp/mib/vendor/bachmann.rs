@@ -5,15 +5,16 @@
 //! Applies to Bachmann power-distribution units (`NETTRACK-E3METER-SNMP-MIB`
 //! `public`, `1.3.6.1.4.1.21695.1`). Fills the manufacturer and serial, decodes
 //! the packed firmware revision (`major*256 + minor`) and records the hardware
-//! revision as a firmware entry. The device type is reported as `NETWORKING`
-//! (the upstream `PDU` type needs GLPI 12, which is not modelled here). Ported
-//! from the upstream `GLPI::Agent::SNMP::MibSupport::Bachmann`.
+//! revision as a firmware entry. The device type is `PDU` on GLPI 12+, else
+//! `NETWORKING`. Ported from the upstream
+//! `GLPI::Agent::SNMP::MibSupport::Bachmann`.
 
 use async_trait::async_trait;
 use glpi_core::error::Result;
 
 use crate::snmp::mib::{
-    get_number, get_string, sysobjectid_matches, DeviceInfo, Firmware, MibSupport, NetworkDevice,
+    get_number, get_string, pdu_type, sysobjectid_matches, DeviceInfo, Firmware, MibSupport,
+    NetworkDevice,
 };
 use crate::snmp::query::SnmpQuery;
 
@@ -42,7 +43,7 @@ impl MibSupport for BachmannMib {
 
     async fn run(&self, session: &mut dyn SnmpQuery, device: &mut NetworkDevice) -> Result<()> {
         if device.info.r#type.is_none() {
-            device.info.r#type = Some("NETWORKING".to_owned());
+            device.info.r#type = Some(pdu_type(device.glpi_version.as_deref()).to_owned());
         }
         if device.info.manufacturer.is_none() {
             device.info.manufacturer = Some("Bachmann".to_owned());
@@ -104,5 +105,17 @@ mod tests {
         assert_eq!(device.info.firmware.as_deref(), Some("1.3"));
         assert_eq!(device.firmwares.len(), 1);
         assert_eq!(device.firmwares[0].version.as_deref(), Some("2"));
+    }
+
+    #[tokio::test]
+    async fn typed_pdu_on_glpi_12() {
+        let mut session =
+            WalkSession::parse(".1.3.6.1.4.1.21695.1.10.7.1.1 = STRING: \"BM1\"\n").unwrap();
+        let mut device = NetworkDevice {
+            glpi_version: Some("12.0.0".to_owned()),
+            ..NetworkDevice::default()
+        };
+        BachmannMib.run(&mut session, &mut device).await.unwrap();
+        assert_eq!(device.info.r#type.as_deref(), Some("PDU"));
     }
 }

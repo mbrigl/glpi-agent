@@ -57,6 +57,14 @@ impl NetInventoryTask {
         self
     }
 
+    /// Sets the target GLPI version, enabling version-dependent output such as
+    /// the `PDU` device type for power-distribution units.
+    #[must_use]
+    pub fn with_glpi_version(mut self, glpi_version: impl Into<String>) -> Self {
+        self.registry = self.registry.with_glpi_version(glpi_version);
+        self
+    }
+
     /// Sets the `sysobject.ids` classification database.
     #[must_use]
     pub fn with_sysobjects(mut self, sysobjects: SysObjectIds) -> Self {

@@ -166,6 +166,11 @@ struct NetInventoryArgs {
     /// Number of SNMP retries per request.
     #[arg(long, default_value_t = 0)]
     snmp_retries: u32,
+
+    /// Target GLPI version, enabling version-dependent output (e.g. the `PDU`
+    /// device type and outlet plugs on GLPI 12+).
+    #[arg(long, value_name = "VERSION")]
+    glpi_version: Option<String>,
 }
 
 /// Transport for remote inventory.
@@ -567,9 +572,12 @@ async fn run_inject(args: InjectArgs) -> Result<()> {
 
 /// Inventories a single device and prints the result as JSON to stdout.
 async fn run_netinventory(args: NetInventoryArgs) -> Result<()> {
-    let task = NetInventoryTask::new(v2c_credentials(&args.communities))
+    let mut task = NetInventoryTask::new(v2c_credentials(&args.communities))
         .with_timeout(Duration::from_millis(args.timeout_ms))
         .with_snmp_retries(args.snmp_retries);
+    if let Some(version) = &args.glpi_version {
+        task = task.with_glpi_version(version.clone());
+    }
 
     tracing::info!(target = %args.target, "starting NetInventory");
     match task.inventory(args.target).await? {

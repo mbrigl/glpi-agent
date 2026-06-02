@@ -46,6 +46,10 @@ We chose **Phased Approach**, because:
 - Standard MIBs (8): system, if, entity, printer, bridge, lldp, cdp, ip
 - Vendor MIBs (69+): networking, printers, storage, PDUs/UPS, telephony, KVM, sensors and servers. Networking incl. Cisco (+Meraki/+UCS board), Juniper, Fortinet, Mikrotik, Nokia/Alcatel, D-Link (+DGS1210), Brocade, Netgear, Aruba, Aerohive, WatchGuard, Telco, FoxGate, Tiesse, Intelbras, Voltaire, TP-Link, Ubiquiti, DefencePro, Radware; printers HP, Brother, Ricoh, Konica/Sindoh, Lexmark, Xerox, Canon, Epson, OKI, Pantum, Kyocera, Toshiba, Zebra; storage EMC, Hitachi Vantara, HP Citizen; PDUs/UPS Eaton, Raritan, Bachmann, RNX, DigiPower, APC/UPS-MIB/Riello, Voltronic; telephony Avaya, Htek, Snom, Multitech; sensors/servers Akcp, Hwg, Meinberg, Siemens, SiemensSicam, CheckPoint, Wyse ThinOS, iDRAC, iLO, Avocent. A few upstream modules that mutate ports/components/SIM/process state remain deferred (CiscoPortSecurity, Force10S, Netgear, Digi, Panasas, LinuxAppliance).
 - NetInventory task
+- PDU support (GLPI 12+): the `PDU` device type and `PDU.PLUGS` outlet
+  inventory (number / name / connector type) on a glpi-version hint threaded
+  through `MibRegistry`/`NetInventoryTask` (`netinventory --glpi-version`);
+  RNX reads the outlet table, Bachmann / DigiPower switch type by version
 
 ### Phase 4: Platform-Specific Features (🟡 In Progress)
 - Windows: COM/WMI worker, Registry config, Certificate store (⏳ pending)

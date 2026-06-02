@@ -274,6 +274,38 @@ pub struct Firmware {
 
 /// A full network-device inventory result.
 ///
+/// A power-distribution-unit outlet (GLPI `PDU.PLUGS`), reported by PDU vendor
+/// MIBs on GLPI 12+.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Plug {
+    /// Outlet number (table index).
+    pub number: u32,
+    /// Outlet name (custom name, else the system name).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Connector type (`C13`, `C19`, …, or `unknown`).
+    pub r#type: String,
+}
+
+/// Power-distribution-unit details (GLPI `PDU`), reported by PDU vendor MIBs.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Pdu {
+    /// PDU type / part number (`PDU.TYPE`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Outlets, ordered by number.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub plugs: Vec<Plug>,
+}
+
+impl Pdu {
+    /// `true` if no PDU detail was populated.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.model.is_none() && self.plugs.is_empty()
+    }
+}
+
 /// `Default` yields an empty device that MIB modules progressively fill in.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct NetworkDevice {
@@ -285,8 +317,15 @@ pub struct NetworkDevice {
     pub components: Vec<Component>,
     /// Printer details, when the device exposes the `Printer-MIB`.
     pub printer: Option<Printer>,
+    /// PDU details, when a PDU vendor MIB reports them (GLPI 12+).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pdu: Option<Pdu>,
     /// Firmware / software entries reported by vendor MIBs.
     pub firmwares: Vec<Firmware>,
+    /// Target GLPI server version, an input hint for version-dependent format
+    /// features (e.g. the `PDU` device type). Not part of the result.
+    #[serde(skip)]
+    pub glpi_version: Option<String>,
 }
 
 impl NetworkDevice {
@@ -297,8 +336,27 @@ impl NetworkDevice {
         self.printer.get_or_insert_with(Printer::default)
     }
 
+    /// Returns the PDU record, creating an empty one if absent.
+    pub fn pdu_mut(&mut self) -> &mut Pdu {
+        self.pdu.get_or_insert_with(Pdu::default)
+    }
+
     /// Appends a firmware entry.
     pub fn add_firmware(&mut self, firmware: Firmware) {
         self.firmwares.push(firmware);
+    }
+}
+
+/// The device type for a PDU given the target GLPI version: `PDU` on GLPI 12+
+/// (which has a dedicated asset type), else `NETWORKING`.
+#[must_use]
+pub fn pdu_type(glpi_version: Option<&str>) -> &'static str {
+    let major = glpi_version
+        .and_then(|v| v.split('.').next())
+        .and_then(|major| major.parse::<u32>().ok());
+    if major.is_some_and(|major| major >= 12) {
+        "PDU"
+    } else {
+        "NETWORKING"
     }
 }

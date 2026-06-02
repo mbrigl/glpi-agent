@@ -3,15 +3,17 @@
 //! DigiPower PDU vendor MIB support.
 //!
 //! Applies to DigiPower devices (`DigiPower-PDU-MIB`, `1.3.6.1.4.1.17420`) and
-//! fills the `NETWORKING` type, firmware (`devVersion`) and model
-//! (`pdu01ModelNo`). The device-level MAC reported by the upstream module is
-//! not modelled here. Ported from the upstream
+//! fills the type (`PDU` on GLPI 12+, else `NETWORKING`), firmware
+//! (`devVersion`) and model (`pdu01ModelNo`). The device-level MAC reported by
+//! the upstream module is not modelled here. Ported from the upstream
 //! `GLPI::Agent::SNMP::MibSupport::DigiPower`.
 
 use async_trait::async_trait;
 use glpi_core::error::Result;
 
-use crate::snmp::mib::{get_string, sysobjectid_matches, DeviceInfo, MibSupport, NetworkDevice};
+use crate::snmp::mib::{
+    get_string, pdu_type, sysobjectid_matches, DeviceInfo, MibSupport, NetworkDevice,
+};
 use crate::snmp::query::SnmpQuery;
 
 /// DigiPower enterprise OID.
@@ -37,7 +39,7 @@ impl MibSupport for DigiPowerMib {
 
     async fn run(&self, session: &mut dyn SnmpQuery, device: &mut NetworkDevice) -> Result<()> {
         if device.info.r#type.is_none() {
-            device.info.r#type = Some("NETWORKING".to_owned());
+            device.info.r#type = Some(pdu_type(device.glpi_version.as_deref()).to_owned());
         }
         if device.info.firmware.is_none() {
             device.info.firmware = get_string(session, &DEV_VERSION).await?;
