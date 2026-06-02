@@ -1,4 +1,8 @@
-# glpi-agent
+[![Status](https://img.shields.io/github/actions/workflow/status/mbrigl/glpi-agent/ci.yml?label=Build)](https://github.com/mbrigl/glpi-agent/actions/workflows/ci.yml)
+[![GitHub License](https://img.shields.io/github/license/mbrigl/glpi-agent?label=License)](https://opensource.org/license/gpl-2.0)
+
+
+# GLPI Agent in Rust
 
 A **Rust rewrite** of the [GLPI inventory agent](https://github.com/glpi-project/glpi-agent). The
 upstream agent is written in Perl; this project re-implements it as a Cargo workspace of focused

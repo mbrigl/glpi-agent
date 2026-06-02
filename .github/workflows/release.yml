@@ -33,6 +33,9 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    # `experimental` legs (Windows arm64, whose MSI tooling runs WiX under x86
+    # emulation) may fail without blocking the release of the other installers.
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
@@ -41,26 +44,32 @@ jobs:
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             kind: linux
+            experimental: false
           - name: linux-aarch64
             os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             kind: linux
+            experimental: false
           - name: windows-x86_64
             os: windows-latest
             target: x86_64-pc-windows-msvc
             kind: windows
+            experimental: false
           - name: windows-aarch64
             os: windows-11-arm
             target: aarch64-pc-windows-msvc
             kind: windows
+            experimental: true
           - name: macos-x86_64
             os: macos-15-intel
             target: x86_64-apple-darwin
             kind: macos
+            experimental: false
           - name: macos-aarch64
             os: macos-latest
             target: aarch64-apple-darwin
             kind: macos
+            experimental: false
     steps:
       - uses: actions/checkout@v4
 
@@ -150,19 +159,37 @@ jobs:
             "dist/${BIN_NAME}-${{ steps.version.outputs.version }}-${arch}.AppImage"
 
       # ---------- Windows: .msi ----------
-      - name: Install WiX toolset
-        if: matrix.kind == 'windows'
-        shell: pwsh
-        run: choco install wixtoolset --version=3.14.1 --no-progress -y
-
       - name: Package Windows (msi)
         if: matrix.kind == 'windows'
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           cargo install cargo-wix --locked
+
+          # Locate the WiX 3 toolset's bin (candle/light). It ships on the hosted
+          # images but is not always on PATH / exposed via the WIX env var, so we
+          # find it and pass it to cargo-wix with --bin-path; install it if absent.
+          function Find-WiXBin {
+            $roots = @(${env:ProgramFiles(x86)}, $env:ProgramFiles) | Where-Object { $_ }
+            foreach ($r in $roots) {
+              $dir = Get-ChildItem -Path $r -Filter 'WiX Toolset*' -Directory -ErrorAction SilentlyContinue |
+                     Sort-Object Name -Descending | Select-Object -First 1
+              if ($dir) {
+                $bin = Join-Path $dir.FullName 'bin'
+                if (Test-Path (Join-Path $bin 'candle.exe')) { return $bin }
+              }
+            }
+            return $null
+          }
+          $bin = Find-WiXBin
+          if (-not $bin) { choco install wixtoolset --no-progress -y; $bin = Find-WiXBin }
+          if (-not $bin) { throw 'WiX candle.exe not found' }
+          Write-Host "Using WiX bin: $bin"
+
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           cargo wix -p glpi-cli `
             --target ${{ matrix.target }} `
+            --bin-path "$bin" `
             --no-build --nocapture `
             --output "dist/${env:BIN_NAME}-${{ steps.version.outputs.version }}-${{ matrix.target }}.msi"
 

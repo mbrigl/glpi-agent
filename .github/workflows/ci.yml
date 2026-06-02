@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 name: CI
 
 on:
@@ -5,15 +6,41 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  check:
+  lint:
+    name: Lint (fmt + clippy)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
+      # --all-features also type-checks the libiec61850 FFI backend; clippy does
+      # not link, so the C library is not required here.
       - run: cargo clippy --all-targets --all-features -- -D warnings
-      - run: cargo build --all-targets
-      - run: cargo test --all
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+      # Build and test on every platform. Platform-specific code and tests are
+      # gated with #[cfg(...)] (e.g. the Unix syslog backend, the per-OS
+      # inventory collectors), so each runner compiles and runs only the tests
+      # that apply to it. The libiec61850 feature stays off — its FFI links a C
+      # library not installed on the hosted runners.
+      - run: cargo build --workspace --all-targets
+      - run: cargo test --workspace
