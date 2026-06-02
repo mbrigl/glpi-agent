@@ -57,7 +57,9 @@ pub use monitor::{parse_edid, Monitor};
 pub use network::{parse_interfaces, NetworkInterface};
 pub use os::{parse_os_release, parse_timezone_name, OperatingSystem, Timezone};
 pub use pci::{parse_lspci, Controller};
-pub use printer::{parse_lpstat, Printer};
+pub use printer::{
+    parse_lpstat, parse_lpstat_devices, parse_printers, serial_from_device_uri, Printer,
+};
 pub use process::{parse_ps, Process};
 pub use software::{parse_packages, Software};
 pub use sound::{parse_lspci_sound, Sound};

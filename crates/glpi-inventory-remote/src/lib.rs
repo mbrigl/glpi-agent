@@ -199,8 +199,9 @@ impl RemoteInventory {
             }
         }
         if self.enabled("printer") {
-            // In perl mode, prefer the richer Net::CUPS enumeration (URI,
-            // driver, serial); otherwise fall back to `lpstat -p`.
+            // In perl mode, prefer the Net::CUPS enumeration (it also yields the
+            // make-and-model); otherwise the perl-free `lpstat -l -p` + `lpstat
+            // -v` path still provides URI, serial and description.
             let from_perl = if self.modes.perl() {
                 try_run(session, CUPS_PRINTERS_COMMAND)
                     .await
@@ -211,10 +212,11 @@ impl RemoteInventory {
             };
             content.printers = match from_perl {
                 Some(printers) => printers,
-                None => try_run(session, "lpstat -p")
-                    .await
-                    .map(|text| local::parse_lpstat(&text))
-                    .unwrap_or_default(),
+                None => {
+                    let status = try_run(session, "lpstat -l -p").await.unwrap_or_default();
+                    let devices = try_run(session, "lpstat -v").await.unwrap_or_default();
+                    local::parse_printers(&status, &devices)
+                }
             };
         }
 
@@ -262,7 +264,7 @@ fn parse_cups_printers(text: &str) -> Vec<Printer> {
             "description" => current.description = Some(value.to_owned()),
             "driver" => current.driver = Some(value.to_owned()),
             "uri" => {
-                current.serial = serial_from_uri(value);
+                current.serial = local::serial_from_device_uri(value);
                 current.port = Some(value.to_owned());
             }
             _ => {}
@@ -272,19 +274,6 @@ fn parse_cups_printers(text: &str) -> Vec<Printer> {
         printers.push(current);
     }
     printers
-}
-
-/// Extracts a `serial=`/`uuid=` value from a CUPS device URI's query string.
-fn serial_from_uri(uri: &str) -> Option<String> {
-    let query = uri.split_once('?')?.1;
-    query
-        .split('&')
-        .find_map(|param| {
-            param
-                .strip_prefix("serial=")
-                .or_else(|| param.strip_prefix("uuid="))
-        })
-        .map(str::to_owned)
 }
 
 #[cfg(test)]
