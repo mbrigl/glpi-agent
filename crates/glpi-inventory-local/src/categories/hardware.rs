@@ -53,6 +53,29 @@ impl Bios {
     pub fn is_empty(&self) -> bool {
         *self == Bios::default()
     }
+
+    /// Fills any field still unset from `fallback`.
+    ///
+    /// Used to back-fill the `/sys/class/dmi/id/` values behind `dmidecode`:
+    /// `dmidecode` wins where it produced a value, sysfs covers the rest.
+    fn fill_from(&mut self, fallback: Bios) {
+        self.bios_date = self.bios_date.take().or(fallback.bios_date);
+        self.bios_manufacturer = self.bios_manufacturer.take().or(fallback.bios_manufacturer);
+        self.bios_version = self.bios_version.take().or(fallback.bios_version);
+        self.system_manufacturer = self
+            .system_manufacturer
+            .take()
+            .or(fallback.system_manufacturer);
+        self.system_model = self.system_model.take().or(fallback.system_model);
+        self.system_serial = self.system_serial.take().or(fallback.system_serial);
+        self.board_manufacturer = self
+            .board_manufacturer
+            .take()
+            .or(fallback.board_manufacturer);
+        self.board_model = self.board_model.take().or(fallback.board_model);
+        self.board_serial = self.board_serial.take().or(fallback.board_serial);
+        self.asset_tag = self.asset_tag.take().or(fallback.asset_tag);
+    }
 }
 
 /// The GLPI `hardware` section: device-level identity.
@@ -110,10 +133,47 @@ pub fn parse_dmidecode_hardware(text: &str) -> (Bios, Hardware) {
     (bios, hardware)
 }
 
+/// Builds the BIOS and hardware identity from `/sys/class/dmi/id/` entries.
+///
+/// This is the fallback for when `dmidecode` is unavailable — it is not
+/// installed everywhere, and reading SMBIOS via `/dev/mem` requires root.
+/// `read` returns the trimmed contents of the named DMI id file (e.g.
+/// `"product_name"`). Most entries are world-readable, but the serial-number
+/// and UUID files (`product_serial`, `board_serial`, `product_uuid`) are
+/// root-only, so those stay `None` for an unprivileged agent. Values pass
+/// through [`clean`] to drop the SMBIOS placeholders.
+#[must_use]
+pub fn parse_dmi_sysfs<F>(read: F) -> (Bios, Hardware)
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let field = |name: &str| clean(read(name).as_deref());
+    let bios = Bios {
+        bios_date: field("bios_date"),
+        bios_manufacturer: field("bios_vendor"),
+        bios_version: field("bios_version"),
+        system_manufacturer: field("sys_vendor"),
+        system_model: field("product_name"),
+        system_serial: field("product_serial"),
+        board_manufacturer: field("board_vendor"),
+        board_model: field("board_name"),
+        board_serial: field("board_serial"),
+        asset_tag: field("chassis_asset_tag"),
+    };
+    let hardware = Hardware {
+        name: None,
+        uuid: field("product_uuid"),
+        vm_system: None,
+    };
+    (bios, hardware)
+}
+
 /// Collects the live BIOS and hardware identity (Linux).
 ///
-/// `dmidecode` requires root, so the BIOS/system fields may be empty in an
-/// unprivileged environment; the hostname is always set when available.
+/// `dmidecode` is queried first; any field it leaves empty (it is not always
+/// installed, and reading SMBIOS needs root) is back-filled from
+/// `/sys/class/dmi/id/`. The hostname is always set when available; the
+/// serial-number and UUID fields still require root on either path.
 #[cfg(target_os = "linux")]
 #[must_use]
 pub fn collect() -> (Option<Bios>, Option<Hardware>) {
@@ -123,7 +183,13 @@ pub fn collect() -> (Option<Bios>, Option<Hardware>) {
         }
         _ => String::new(),
     };
-    let (bios, mut hardware) = parse_dmidecode_hardware(&text);
+    let (mut bios, mut hardware) = parse_dmidecode_hardware(&text);
+
+    // Back-fill from sysfs whatever dmidecode could not supply.
+    let (sysfs_bios, sysfs_hardware) = parse_dmi_sysfs(read_dmi_id);
+    bios.fill_from(sysfs_bios);
+    hardware.uuid = hardware.uuid.take().or(sysfs_hardware.uuid);
+
     hardware.name = std::fs::read_to_string("/proc/sys/kernel/hostname")
         .ok()
         .map(|s| s.trim().to_owned())
@@ -133,6 +199,15 @@ pub fn collect() -> (Option<Bios>, Option<Hardware>) {
     let bios = (!bios.is_empty()).then_some(bios);
     let hardware = (!hardware.is_empty()).then_some(hardware);
     (bios, hardware)
+}
+
+/// Reads a `/sys/class/dmi/id/` entry, trimmed, or `None` if absent/unreadable.
+#[cfg(target_os = "linux")]
+fn read_dmi_id(name: &str) -> Option<String> {
+    std::fs::read_to_string(format!("/sys/class/dmi/id/{name}"))
+        .ok()
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
 }
 
 /// Collects the live BIOS and hardware identity (non-Linux stub).
@@ -182,7 +257,50 @@ fn capitalize(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_dmidecode_hardware;
+    use super::{parse_dmi_sysfs, parse_dmidecode_hardware};
+
+    #[test]
+    fn reads_identity_from_sysfs() {
+        // Models an unprivileged read: world-readable files resolve, the
+        // root-only serial/UUID files return None.
+        let (bios, hardware) = parse_dmi_sysfs(|name| match name {
+            "sys_vendor" => Some("Dell Inc.".to_owned()),
+            "product_name" => Some("Precision 3460".to_owned()),
+            "board_vendor" => Some("Dell Inc.".to_owned()),
+            "board_name" => Some("08PFGW".to_owned()),
+            "bios_vendor" => Some("Dell Inc.".to_owned()),
+            "bios_version" => Some("3.23.1".to_owned()),
+            "chassis_asset_tag" => Some("To Be Filled By O.E.M.".to_owned()),
+            // Root-only files unreadable for an unprivileged agent.
+            "product_serial" | "board_serial" | "product_uuid" => None,
+            _ => None,
+        });
+        assert_eq!(bios.system_manufacturer.as_deref(), Some("Dell Inc."));
+        assert_eq!(bios.system_model.as_deref(), Some("Precision 3460"));
+        assert_eq!(bios.board_model.as_deref(), Some("08PFGW"));
+        assert_eq!(bios.bios_version.as_deref(), Some("3.23.1"));
+        // Placeholder asset tag dropped, root-only fields stay empty.
+        assert_eq!(bios.asset_tag, None);
+        assert_eq!(bios.system_serial, None);
+        assert_eq!(hardware.uuid, None);
+    }
+
+    #[test]
+    fn dmidecode_values_win_over_sysfs_backfill() {
+        let mut bios = super::Bios {
+            system_model: Some("From dmidecode".to_owned()),
+            ..super::Bios::default()
+        };
+        let (sysfs, _) = parse_dmi_sysfs(|name| match name {
+            "product_name" => Some("From sysfs".to_owned()),
+            "sys_vendor" => Some("ACME".to_owned()),
+            _ => None,
+        });
+        bios.fill_from(sysfs);
+        // dmidecode's value is kept; the unset manufacturer is back-filled.
+        assert_eq!(bios.system_model.as_deref(), Some("From dmidecode"));
+        assert_eq!(bios.system_manufacturer.as_deref(), Some("ACME"));
+    }
 
     const DMIDECODE: &str = "\
 Handle 0x0000, DMI type 0, 26 bytes

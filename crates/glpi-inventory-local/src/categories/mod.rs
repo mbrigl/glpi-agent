@@ -51,7 +51,7 @@ pub use antivirus::{detect_present as detect_antivirus, Antivirus};
 pub use battery::{parse_power_supply_uevent, Battery};
 pub use cpu::{parse_cpuinfo, Cpu};
 pub use environment::{from_vars as env_from_vars, EnvVar};
-pub use hardware::{parse_dmidecode_hardware, Bios, Hardware};
+pub use hardware::{parse_dmi_sysfs, parse_dmidecode_hardware, Bios, Hardware};
 pub use memory::{parse_dmidecode_memory, MemoryModule};
 pub use monitor::{parse_edid, Monitor};
 pub use network::{parse_interfaces, NetworkInterface};
