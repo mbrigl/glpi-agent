@@ -50,7 +50,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             kind: windows
           - name: windows-aarch64
-            os: windows-latest
+            os: windows-11-arm
             target: aarch64-pc-windows-msvc
             kind: windows
           - name: macos-x86_64
@@ -82,6 +82,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+
+      # Belt-and-suspenders: guarantee the std for this target is present
+      # (idempotent — a no-op for a native target).
+      - name: Ensure Rust target
+        shell: bash
+        run: rustup target add ${{ matrix.target }}
 
       - name: Build release binary
         shell: bash
