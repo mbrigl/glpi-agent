@@ -700,6 +700,8 @@ All major architectural decisions are documented in [docs/adr/](docs/adr/):
 | [ADR-006](docs/adr/ADR-006-phased-migration-strategy.md) | Migration Strategy | Phased approach, 7 phases |
 | [ADR-007](docs/adr/ADR-007-golden-file-testing.md) | Testing | Golden-file testing with fixtures |
 | [ADR-008](docs/adr/ADR-008-protocol-priority.md) | Protocol | JSON first, XML as fallback |
+| [ADR-009](docs/adr/ADR-009-cross-platform-inventory-collection.md) | Cross-platform inventory | System tools + pure parsers; native WMI-COM deferred |
+| [ADR-010](docs/adr/ADR-010-release-pipeline-and-packaging.md) | Release pipeline | Installers for all 3 platforms; native arch runners |
 
 **Always read the relevant ADRs before making architectural changes!**
 

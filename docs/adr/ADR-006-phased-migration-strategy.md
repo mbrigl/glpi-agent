@@ -30,6 +30,16 @@ We chose **Phased Approach**, because:
 
 ## Phase Definition
 
+> **Progress (as of 2026-06-03):** Phases 1, 2, 4, 5, 7, 8 and 9 are complete;
+> Phase 3 (NetInventory) is complete at the core with the vendor-MIB tail still
+> growing; Phase 6 (local inventory) is complete on Linux, Windows and macOS
+> (see [ADR-009](ADR-009-cross-platform-inventory-collection.md)); Phase 10
+> (stabilization + packaging) is well advanced (parity tests + installers — see
+> [ADR-010](ADR-010-release-pipeline-and-packaging.md)). Remaining: exotic-Unix
+> inventory, the ToolBox HTTP UI pages, and the Phase 10 audit/docs tail. The
+> plan ultimately spans **ten** phases (see the migration plan §6), not the
+> original seven.
+
 ### Phase 1: Foundation (✅ Complete)
 - **`glpi-core`**: Types, protocol, configuration, auth, logging
 - **`glpi-transport`**: HTTP client, glpi-injector
@@ -41,7 +51,7 @@ We chose **Phased Approach**, because:
 - Discovery methods: Ping, ARP, NetBIOS, SNMP
 - SNMP client with async support
 
-### Phase 3: NetInventory + MIBs (🟡 In Progress)
+### Phase 3: NetInventory + MIBs (✅ Core complete; vendor MIBs grow)
 - MIB framework
 - Standard MIBs (8): system, if, entity, printer, bridge, lldp, cdp, ip
 - Vendor MIBs (69+): networking, printers, storage, PDUs/UPS, telephony, KVM, sensors and servers. Networking incl. Cisco (+Meraki/+UCS board), Juniper, Fortinet, Mikrotik, Nokia/Alcatel, D-Link (+DGS1210), Brocade, Netgear, Aruba, Aerohive, WatchGuard, Telco, FoxGate, Tiesse, Intelbras, Voltaire, TP-Link, Ubiquiti, DefencePro, Radware; printers HP, Brother, Ricoh, Konica/Sindoh, Lexmark, Xerox, Canon, Epson, OKI, Pantum, Kyocera, Toshiba, Zebra; storage EMC, Hitachi Vantara, HP Citizen; PDUs/UPS Eaton, Raritan, Bachmann, RNX, DigiPower, APC/UPS-MIB/Riello, Voltronic; telephony Avaya, Htek, Snom, Multitech; sensors/servers Akcp, Hwg, Meinberg, Siemens, SiemensSicam, CheckPoint, Wyse ThinOS, iDRAC, iLO, Avocent. A few upstream modules that mutate ports/components/SIM/process state remain deferred (CiscoPortSecurity, Force10S, Netgear, Digi, Panasas, LinuxAppliance).
@@ -53,9 +63,11 @@ We chose **Phased Approach**, because:
   switch type by version. (Upstream Eaton has no outlet/PDU-type logic — it is
   classified via `sysobject.ids` — so it is intentionally unchanged.)
 
-### Phase 4: Platform-Specific Features (🟡 In Progress)
-- Windows: COM/WMI worker, Registry config, Certificate store (⏳ pending)
-- macOS: Keychain, System Profiler (⏳ pending)
+### Phase 4: IEC 61850 (✅ Complete)
+- Windows/macOS platform-specific *inventory* collection is delivered in
+  Phase 6 (system tools + pure parsers, see
+  [ADR-009](ADR-009-cross-platform-inventory-collection.md)); native
+  WMI-on-COM / IOKit and certificate stores are deliberately deferred there.
 - IEC 61850 (✅): `glpi-iec61850` ports the upstream
   `IEC61850::{Protocol,Device}` scan/inventory logic over an `IedProtocol`
   seam — first logical device → `LPHD<n>` → `PhyNam` attributes → GLPI
@@ -65,7 +77,7 @@ We chose **Phased Approach**, because:
   `IedProtocol` behind the off-by-default `libiec61850` feature; it is not built
   by default since libiec61850 + a C toolchain are not assumed present.
 
-### Phase 5: CLI + Daemon (🟡 Partially Complete)
+### Phase 5: CLI + Daemon (✅ Complete; ToolBox UI pages pending)
 - `glpi-agent` binary with subcommands
 - Configuration loading
 - Category filtering
@@ -115,11 +127,14 @@ We chose **Phased Approach**, because:
   logged today), propagating the logger choice to forked `__task-worker`
   children, and wiring the remaining real tasks (inventory, …) into that worker
 
-### Phase 6: Local Inventory (🟡 Linux Complete)
-- Linux: All 20+ categories
-- Windows: All categories (WMI-based)
-- macOS: All categories
-- Other platforms: Solaris, HP-UX, AIX, FreeBSD
+### Phase 6: Local Inventory (✅ Linux, Windows & macOS)
+- Linux: all 20+ categories
+- Windows: all categories — PowerShell `Get-CimInstance`, registry (software,
+  EDID) and Security Center (antivirus), feeding shared `parse_win_*` parsers
+  (see [ADR-009](ADR-009-cross-platform-inventory-collection.md))
+- macOS: all categories — `system_profiler`/`sysctl`/`ioreg`/`sw_vers`/`ifconfig`,
+  reusing the Linux parsers for `ps`/`who`/CUPS
+- Other platforms (⏳ pending): Solaris, HP-UX, AIX, FreeBSD
 
 ### Phase 7: Remote Inventory (✅ Complete)
 - `glpi-inventory-remote`: target model (`ssh://`/`winrm://`), `RemoteSession`
@@ -145,11 +160,32 @@ We chose **Phased Approach**, because:
   HTTP Basic auth, behind the default `winrm` feature; the SOAP envelope
   builders and response parsers are pure/unit-tested. Selected by
   `remoteinventory --transport winrm` — done
-- Follow-ups (outside Phase 7): WinRM NTLM/Negotiate/Kerberos auth, and the
-  Windows-specific collection command set (Phase 6b) that lets a WinRM host
-  produce a full inventory rather than just transport-level command execution
-- `glpi-vsphere`: VMware ESX/vCenter
-- State files and delta diff
+- Windows remote inventory (✅): `RemoteInventory::collect_windows` runs the
+  PowerShell/WMI queries over the WinRM session and reuses the local
+  `parse_win_*` parsers, so a `winrm://` host produces a full inventory (not just
+  command execution); selected automatically for WinRM targets
+- State-file maintenance (✅): `delta::prune_stale` removes delta state files
+  older than 30 days, run by `remoteinventory --statedir`
+- Follow-ups (outside Phase 7): WinRM NTLM/Negotiate/Kerberos auth, the WinRM
+  remote-registry / SessionID refinements, HP-UX / UnixWare timezone support
+
+### Phase 8: vSphere / ESX (✅ Complete)
+- `glpi-vsphere`: VMware ESXi / vCenter inventory over the SOAP `vim25` API
+  behind a transport seam (live HTTPS + offline mock), host + VM inventory, BIOS
+  filter, total-RAM memory estimate, `--dump`/`--dumpfile`; `glpi-agent esx`
+
+### Phase 9: Collect + Deploy + WakeOnLan (✅ Complete)
+- `glpi-collect` (findFile/registry/WMI/runCommand), `glpi-deploy`
+  (CheckProcessor incl. SHA-512, multipart download/assembly, command executor,
+  P2P peer enumeration) and `glpi-wakeonlan` (magic packet, `glpi-agent wakeup`)
+
+### Phase 10: Stabilization + Packaging (🟡 In Progress)
+- Done: cross-crate integration + JSON schema-parity tests (`glpi-agent-tests`),
+  the test-parity audit map (`tests/PARITY.md`), and the release pipeline that
+  builds installers for all three platforms (see
+  [ADR-010](ADR-010-release-pipeline-and-packaging.md))
+- Pending: live SNMPv3 round-trip + RFC crypto vectors, static libiec61850 per
+  platform, security/CVE audit, man pages + migration guide, coverage gate
 
 ## Test Migration
 

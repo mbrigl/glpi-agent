@@ -128,3 +128,8 @@ Each agent has its own configuration file in the `.agents/` directory with tool-
 
 Licensed under the **GNU General Public License v2.0** — see [LICENSE](LICENSE), matching the upstream
 GLPI agent this project ports. Every source file carries an SPDX header.
+
+---
+
+_Last updated: 2026-06-03 — see [AGENTS.md](AGENTS.md) for the per-crate status and
+[docs/adr/](docs/adr/) for the architecture decisions._

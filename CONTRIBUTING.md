@@ -89,7 +89,8 @@ glpi-agent/
 │   ├── glpi-collect/             # Collect task
 │   ├── glpi-deploy/              # Deploy task
 │   ├── glpi-wakeonlan/           # WakeOnLan task
-│   └── glpi-plugins/             # Plugin system
+│   ├── glpi-plugins/             # Plugin system
+│   └── glpi-agent-tests/         # Cross-crate integration & parity tests
 │
 ├── docs/
 │   └── adr/                      # Architecture Decision Records
@@ -181,14 +182,21 @@ The project follows a **phased migration strategy** (see [ADR-006](docs/adr/ADR-
 | Phase | Status | Focus Areas |
 |-------|--------|-------------|
 | Phase 1 | ✅ Complete | Foundation (glpi-core, glpi-transport) |
-| Phase 2 | ✅ Complete | NetDiscovery Core |
-| Phase 3 | 🟡 In Progress | NetInventory + MIBs |
-| Phase 4 | ⏳ Pending | Platform-Specific Features |
-| Phase 5 | 🟡 Partially Complete | CLI + Daemon |
-| Phase 6 | 🟡 Linux Complete | Local Inventory |
-| Phase 7 | ⏳ Pending | Remote Inventory |
+| Phase 2 | ✅ Complete | NetDiscovery core + SNMP stack |
+| Phase 3 | ✅ Core complete | NetInventory + MIBs (vendor-MIB tail grows) |
+| Phase 4 | ✅ Complete | IEC 61850 (libiec61850 FFI behind a feature) |
+| Phase 5 | ✅ Complete | CLI + daemon + HTTP (ToolBox UI pages pending) |
+| Phase 6 | ✅ Linux/Windows/macOS | Local inventory (exotic Unix pending) |
+| Phase 7 | ✅ Near complete | Remote inventory (SSH 1–3, WinRM incl. Windows WMI) |
+| Phase 8 | ✅ Complete | vSphere / ESX |
+| Phase 9 | ✅ Complete | Collect, Deploy, WakeOnLan |
+| Phase 10 | 🟡 In Progress | Stabilization + packaging (installers shipped) |
 
-**Priority**: Contributions to **Phase 3 (MIBs)** and **Phase 6 (Windows/macOS inventory)** are currently most valuable.
+**Priority**: the most valuable open work is the **ToolBox HTTP UI pages**
+(Phase 5 tail, incl. the IEC 61850 config page), **exotic-Unix inventory**
+(Solaris/HP-UX/AIX/FreeBSD, Phase 6), more **vendor MIBs** (Phase 3), and the
+**Phase 10 audit/docs tail** (live SNMPv3 round-trip, security audit, man pages,
+coverage gate). See [AGENTS.md](AGENTS.md) for the current per-crate breakdown.
 
 ## Common Contribution Areas
 
@@ -203,22 +211,28 @@ Help port vendor-specific MIBs from the Perl agent:
 
 **High-priority vendors**: HP, Brother, Lexmark, Dell Networking, Aruba, Palo Alto
 
-### 2. Windows Inventory Categories
-Implement Windows-specific inventory categories:
+### 2. Inventory Collectors (the seam)
 
-1. Read the Perl implementation in `Task/Inventory/`
-2. Create file in `crates/glpi-inventory-local/src/categories/`
-3. Use `#[cfg(windows)]` and WMI/COM via the `windows` crate
-4. Follow the pattern from existing categories
+Linux, Windows and macOS collectors already exist for every category. New work
+follows the seam in [ADR-009](docs/adr/ADR-009-cross-platform-inventory-collection.md):
+a `#[cfg(target_os = "…")]` `collect()` runs a system tool and feeds a **pure
+`parse_*` function** that is unit-tested on Linux against captured fixtures.
 
-**Note**: Windows code must run on a dedicated COM worker thread (not `Send`).
+1. Add a `parse_win_*` / `parse_macos_*` function (pure, with a fixture test).
+2. Add the platform-gated `collect()` that runs the tool
+   (Windows: `crate::sys::powershell("… | ConvertTo-Json")`; macOS:
+   `crate::sys::output("system_profiler"/"sysctl"/"ioreg", …)`).
+3. Compile-check both targets:
+   `cargo clippy --target x86_64-pc-windows-gnu` and `… x86_64-apple-darwin`.
 
-### 3. macOS Inventory Categories
-Similar to Windows, but using macOS-specific APIs:
-- System Profiler
-- IOKit
-- Keychain
-- CoreFoundation
+Open areas: **exotic Unix** (Solaris/HP-UX/AIX/FreeBSD) base inventory, and —
+should the PowerShell dependency need removing — native WMI on a COM worker
+thread (COM is not `Send`) and macOS IOKit, behind the same parser seam.
+
+### 3. Certificate / OT and other tasks
+- Certificate inventory (Windows CNG store / macOS Keychain) — SSL/transport.
+- IEC 61850: extend `glpi-iec61850` or wire a real MMS transport behind the
+  `IedProtocol` seam (`libiec61850` feature).
 
 ### 4. Testing Improvements
 - Add more golden-file tests
