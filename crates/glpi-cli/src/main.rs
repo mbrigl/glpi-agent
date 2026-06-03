@@ -1206,6 +1206,18 @@ async fn run_remoteinventory(args: RemoteInventoryArgs, options: &Options) -> Re
     if servers.is_empty() {
         println!("{}", serde_json::to_string_pretty(&json)?);
     }
+
+    // Maintenance: drop delta state files for devices not seen in 30 days.
+    if let Some(statedir) = args.statedir.as_deref() {
+        match delta::prune_stale(statedir, delta::DEFAULT_STATE_MAX_AGE) {
+            Ok(removed) if removed > 0 => {
+                tracing::info!(removed, dir = %statedir.display(), "pruned stale delta state files");
+            }
+            Ok(_) => {}
+            Err(err) => tracing::warn!(error = %err, "pruning stale state files failed"),
+        }
+    }
+
     if failures > 0 {
         anyhow::bail!("{failures} of {count} remote host(s) failed");
     }
@@ -1286,12 +1298,17 @@ async fn inventory_remote_host(
         .await
         .unwrap_or_else(|_| target.host.clone());
 
-    let content = RemoteInventory::new()
+    // WinRM targets are Windows hosts: run the PowerShell/WMI collectors;
+    // SSH targets run the Linux command set.
+    let inventory = RemoteInventory::new()
         .with_disabled_categories(opts.disabled.clone())
-        .with_modes(modes)
-        .collect(session.as_mut())
-        .await
-        .with_context(|| format!("collecting inventory from {}", target.host))?;
+        .with_modes(modes);
+    let content = if opts.transport == Transport::Winrm {
+        inventory.collect_windows(session.as_mut()).await
+    } else {
+        inventory.collect(session.as_mut()).await
+    }
+    .with_context(|| format!("collecting inventory from {}", target.host))?;
     Ok((deviceid, content))
 }
 

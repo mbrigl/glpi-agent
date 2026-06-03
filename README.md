@@ -22,7 +22,7 @@ separate it from the Perl 1.x line.
 > | 4 | IEC 61850 (scan + SNMP merge; libiec61850 FFI behind a feature) | ✅ complete |
 > | 5 | CLI + daemon + HTTP control server + plugins | ✅ complete |
 > | 6 | Local inventory | ✅ all categories on Linux, Windows and macOS (some macOS detail fields are best-effort) |
-> | 7 | Remote inventory (SSH modes 1–3, WinRM) | 🟡 substantial |
+> | 7 | Remote inventory (SSH modes 1–3, WinRM incl. Windows WMI; delta + 30-day cleanup) | ✅ near complete |
 > | 8 | vSphere / ESX (`glpi-agent esx`, dump/dumpfile) | ✅ complete |
 > | 9 | Collect, Deploy, WakeOnLan (`glpi-agent wakeup`) | ✅ complete |
 > | 10 | Stabilization + packaging | 🟡 integration / parity tests done; release installers for all 3 platforms (see below) |

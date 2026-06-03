@@ -232,6 +232,142 @@ impl RemoteInventory {
 
         Ok(content)
     }
+
+    /// Collects a Windows host's inventory over a [`RemoteSession`] (typically
+    /// WinRM), running the same PowerShell `Get-CimInstance … | ConvertTo-Json`
+    /// queries the local Windows collectors use and feeding their outputs to the
+    /// shared `parse_win_*` parsers.
+    ///
+    /// Best-effort per section, like [`collect`](Self::collect): a query that
+    /// returns nothing simply leaves its section out.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Result`] for symmetry with [`collect`](Self::collect); failures
+    /// are currently swallowed per-section.
+    pub async fn collect_windows(&self, session: &mut dyn RemoteSession) -> Result<Content> {
+        use local::categories as cat;
+
+        let mut content = Content {
+            version_client: Some(local::content::VERSION_CLIENT.to_owned()),
+            ..Content::default()
+        };
+
+        if self.enabled("os") {
+            if let Some(json) = ps(session, "Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture | ConvertTo-Json -Compress").await {
+                content.operating_system = cat::os::parse_win_os(&json);
+            }
+        }
+        if self.enabled("cpu") {
+            if let Some(json) = ps(session, "Get-CimInstance Win32_Processor | Select-Object Name,Manufacturer,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed | ConvertTo-Json -Compress").await {
+                content.cpus = cat::cpu::parse_win_cpus(&json);
+            }
+        }
+        if self.enabled("memory") {
+            if let Some(json) = ps(session, "Get-CimInstance Win32_PhysicalMemory | Select-Object Capacity,Speed,Manufacturer,PartNumber,SerialNumber,DeviceLocator,SMBIOSMemoryType | ConvertTo-Json -Compress").await {
+                content.memories = cat::memory::parse_win_memory(&json);
+            }
+        }
+        if self.enabled("bios") || self.enabled("hardware") {
+            let script = "$b=Get-CimInstance Win32_BIOS; $c=Get-CimInstance Win32_ComputerSystem; $p=Get-CimInstance Win32_ComputerSystemProduct; $m=Get-CimInstance Win32_BaseBoard; [pscustomobject]@{BiosManufacturer=$b.Manufacturer;BiosVersion=$b.SMBIOSBIOSVersion;BiosDate=$b.ReleaseDate;SystemSerial=$b.SerialNumber;SystemManufacturer=$c.Manufacturer;SystemModel=$c.Model;Name=$c.Name;UUID=$p.UUID;BoardManufacturer=$m.Manufacturer;BoardModel=$m.Product;BoardSerial=$m.SerialNumber} | ConvertTo-Json -Compress";
+            if let Some(json) = ps(session, script).await {
+                let (bios, hardware) = cat::hardware::parse_win_hardware(&json);
+                if self.enabled("bios") && bios != local::Bios::default() {
+                    content.bios = Some(bios);
+                }
+                if self.enabled("hardware") && hardware != local::Hardware::default() {
+                    content.hardware = Some(hardware);
+                }
+            }
+        }
+        if self.enabled("storage") {
+            if let Some(json) = ps(session, "Get-CimInstance Win32_DiskDrive | Select-Object Model,Size,SerialNumber,MediaType,FirmwareRevision,Manufacturer | ConvertTo-Json -Compress").await {
+                content.storages = cat::storage::parse_win_storage(&json);
+            }
+        }
+        if self.enabled("software") {
+            let script = "$paths=@('HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'); Get-ItemProperty $paths -ErrorAction SilentlyContinue | Where-Object {$_.DisplayName} | Select-Object DisplayName,DisplayVersion,Publisher | ConvertTo-Json -Compress";
+            if let Some(json) = ps(session, script).await {
+                content.softwares = cat::software::parse_win_software(&json);
+            }
+            if let Some(json) = ps(
+                session,
+                "Get-AppxPackage | Select-Object Name,Version | ConvertTo-Json -Compress",
+            )
+            .await
+            {
+                content
+                    .softwares
+                    .extend(cat::software::parse_win_appx(&json));
+            }
+        }
+        if self.enabled("network") {
+            if let Some(json) = ps(session, "Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object {$_.MACAddress} | Select-Object Description,MACAddress,IPAddress | ConvertTo-Json -Compress").await {
+                content.networks = cat::network::parse_win_network(&json);
+            }
+        }
+        if self.enabled("process") {
+            if let Some(json) = ps(session, "Get-CimInstance Win32_Process | Select-Object ProcessId,Name,CommandLine,VirtualSize | ConvertTo-Json -Compress").await {
+                content.processes = cat::process::parse_win_processes(&json);
+            }
+        }
+        if self.enabled("user") {
+            if let Some(text) = ps(session, "(Get-CimInstance Win32_ComputerSystem).UserName").await
+            {
+                content.users = cat::user::parse_win_username(&text);
+            }
+        }
+        if self.enabled("printer") {
+            if let Some(json) = ps(session, "Get-CimInstance Win32_Printer | Select-Object Name,DriverName,PortName,Comment | ConvertTo-Json -Compress").await {
+                content.printers = cat::printer::parse_win_printers(&json);
+            }
+        }
+        if self.enabled("video") {
+            if let Some(json) = ps(session, "Get-CimInstance Win32_VideoController | Select-Object Name,AdapterCompatibility | ConvertTo-Json -Compress").await {
+                content.videos = cat::video::parse_win_video(&json);
+            }
+        }
+        if self.enabled("sound") {
+            if let Some(json) = ps(session, "Get-CimInstance Win32_SoundDevice | Select-Object Name,Manufacturer | ConvertTo-Json -Compress").await {
+                content.sounds = cat::sound::parse_win_sound(&json);
+            }
+        }
+        if self.enabled("usb") {
+            if let Some(json) = ps(session, "Get-CimInstance Win32_PnPEntity | Where-Object {$_.PNPDeviceID -like 'USB\\VID_*'} | Select-Object Name,PNPDeviceID | ConvertTo-Json -Compress").await {
+                content.usb_devices = cat::usb::parse_win_usb(&json);
+            }
+        }
+        if self.enabled("battery") {
+            if let Some(json) = ps(session, "Get-CimInstance Win32_Battery | Select-Object Name,DesignVoltage,DesignCapacity,Chemistry | ConvertTo-Json -Compress").await {
+                content.batteries = cat::battery::parse_win_batteries(&json);
+            }
+        }
+        if self.enabled("controller") {
+            if let Some(json) = ps(session, "Get-CimInstance Win32_PnPEntity | Where-Object {$_.PNPDeviceID -like 'PCI\\*'} | Select-Object Name,Manufacturer,PNPClass | ConvertTo-Json -Compress").await {
+                content.controllers = cat::pci::parse_win_controllers(&json);
+            }
+        }
+        if self.enabled("monitor") {
+            let script = "Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Enum\\DISPLAY' -Recurse -ErrorAction SilentlyContinue | Where-Object {$_.Property -contains 'EDID'} | ForEach-Object {[pscustomobject]@{EDID=(Get-ItemProperty -Path $_.PSPath -Name EDID).EDID}} | ConvertTo-Json -Compress -Depth 4";
+            if let Some(json) = ps(session, script).await {
+                content.monitors = cat::monitor::parse_win_monitors(&json);
+            }
+        }
+        if self.enabled("antivirus") {
+            if let Some(json) = ps(session, "Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct | Select-Object displayName | ConvertTo-Json -Compress").await {
+                content.antivirus = cat::antivirus::parse_win_antivirus(&json);
+            }
+        }
+
+        Ok(content)
+    }
+}
+
+/// Runs a PowerShell `script` over the session (wrapping it for the remote
+/// shell) and returns its non-empty output.
+async fn ps(session: &mut dyn RemoteSession, script: &str) -> Option<String> {
+    let command = format!("powershell -NoProfile -NonInteractive -Command \"{script}\"");
+    try_run(session, &command).await
 }
 
 /// Runs `command`, returning its non-empty stdout or `None` on any failure.
@@ -404,5 +540,58 @@ mod tests {
         let content = RemoteInventory::new().collect(&mut session).await.unwrap();
         assert_eq!(content.softwares.len(), 1);
         assert_eq!(content.softwares[0].name, "glibc");
+    }
+
+    /// Wraps a PowerShell script the way [`super::ps`] does, for the mock map.
+    fn win(script: &str) -> String {
+        format!("powershell -NoProfile -NonInteractive -Command \"{script}\"")
+    }
+
+    #[tokio::test]
+    async fn collects_windows_sections_via_session() {
+        let mut session = MockSession::new()
+            .with_command(
+                &win("Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture | ConvertTo-Json -Compress"),
+                r#"{"Caption":"Microsoft Windows 11 Pro","Version":"10.0.22631","OSArchitecture":"64-bit"}"#,
+            )
+            .with_command(
+                &win("Get-CimInstance Win32_Processor | Select-Object Name,Manufacturer,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed | ConvertTo-Json -Compress"),
+                r#"{"Name":"Intel(R) Core(TM) i7","NumberOfCores":6,"NumberOfLogicalProcessors":12,"MaxClockSpeed":2600}"#,
+            )
+            .with_command(
+                &win("Get-AppxPackage | Select-Object Name,Version | ConvertTo-Json -Compress"),
+                r#"[{"Name":"Microsoft.WindowsCalculator","Version":"11.0"}]"#,
+            );
+
+        let content = RemoteInventory::new()
+            .collect_windows(&mut session)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            content.operating_system.as_ref().unwrap().name.as_deref(),
+            Some("Microsoft Windows 11 Pro")
+        );
+        assert_eq!(content.cpus.len(), 1);
+        assert_eq!(content.cpus[0].cores, Some(6));
+        // The registry query is unmapped (empty); the Store package still lands.
+        assert_eq!(content.softwares.len(), 1);
+        assert_eq!(content.softwares[0].name, "Microsoft.WindowsCalculator");
+        // Unmapped sections stay empty.
+        assert!(content.networks.is_empty());
+    }
+
+    #[tokio::test]
+    async fn windows_honours_disabled_categories() {
+        let mut session = MockSession::new().with_command(
+            &win("Get-CimInstance Win32_Processor | Select-Object Name,Manufacturer,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed | ConvertTo-Json -Compress"),
+            r#"{"Name":"x","NumberOfCores":4}"#,
+        );
+        let content = RemoteInventory::new()
+            .with_disabled_categories(["cpu"])
+            .collect_windows(&mut session)
+            .await
+            .unwrap();
+        assert!(content.cpus.is_empty());
     }
 }

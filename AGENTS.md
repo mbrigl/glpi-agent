@@ -647,10 +647,16 @@ pure (so it is tested on Linux); add a final
 `#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]`
 stub.
 
-### Medium Priority (Phase 7: finish Remote inventory)
+### Phase 7 (Remote inventory) — near complete
 
-- Delta-inventory state files / checksums and maintenance cleanup
-- `assetname-support` edge cases; WinRM remote registry refinements
+Done: SSH modes 1–3, WinRM, `assetname-support`, delta state files **and** the
+30-day state-file maintenance cleanup (`delta::prune_stale`, wired into
+`remoteinventory --statedir`), and **Windows remote inventory over WinRM**
+(`RemoteInventory::collect_windows` runs the PowerShell/WMI queries and reuses
+the local `parse_win_*` parsers; the CLI selects it for `winrm://` targets).
+
+Remaining: WinRM remote-registry / SessionID WsMan refinements, and HP-UX /
+UnixWare timezone support (exotic).
 
 ### Medium Priority (Phase 3: more vendor MIBs)
 

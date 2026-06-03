@@ -18,11 +18,16 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::error::{AgentError, Result};
+
+/// Default maximum age before a delta state file is considered stale and
+/// removed by [`prune_stale`] — 30 days, matching the upstream agent.
+pub const DEFAULT_STATE_MAX_AGE: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 
 /// The content key that identifies the agent; always kept in a partial.
 const VERSION_CLIENT: &str = "versionclient";
@@ -193,6 +198,43 @@ pub fn save_state(dir: &Path, deviceid: &str, state: &InventoryState) -> Result<
     std::fs::write(state_path(dir, deviceid), json).map_err(AgentError::Io)
 }
 
+/// Removes delta state files under `dir` that have not been modified within
+/// `max_age` (the remote-inventory "clean up state files > 30 days"
+/// maintenance). Returns the number of files removed.
+///
+/// Only `*.json` files are considered, and a file that cannot be stat-ed or
+/// removed is skipped rather than aborting the sweep. A missing `dir` is not an
+/// error (nothing to prune).
+///
+/// # Errors
+///
+/// Returns [`AgentError::Io`] only if `dir` exists but cannot be read.
+pub fn prune_stale(dir: &Path, max_age: Duration) -> Result<usize> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(AgentError::Io(e)),
+    };
+    let now = SystemTime::now();
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let stale = entry
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .is_some_and(|age| age > max_age);
+        if stale && std::fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
 /// Maps a device id to a safe single-path-component file stem.
 fn sanitize(deviceid: &str) -> String {
     deviceid
@@ -210,9 +252,11 @@ fn sanitize(deviceid: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        load_state, plan, save_state, section_checksums, state_path, InventoryMode, InventoryState,
+        load_state, plan, prune_stale, save_state, section_checksums, state_path, InventoryMode,
+        InventoryState,
     };
     use serde_json::json;
+    use std::time::Duration;
 
     fn content(cpu_speed: u64, software: &str) -> serde_json::Value {
         json!({
@@ -296,6 +340,32 @@ mod tests {
         assert_eq!(loaded, state);
         // Unknown device → None.
         assert!(load_state(&dir, "never-seen").unwrap().is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn prune_removes_stale_state_files() {
+        let dir = std::env::temp_dir().join(format!("glpi-prune-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        save_state(&dir, "host-a", &InventoryState::default()).unwrap();
+        save_state(&dir, "host-b", &InventoryState::default()).unwrap();
+        std::fs::write(dir.join("notes.txt"), b"x").unwrap();
+
+        // A generous max-age leaves everything in place.
+        assert_eq!(prune_stale(&dir, Duration::from_secs(3600)).unwrap(), 0);
+        assert!(state_path(&dir, "host-a").exists());
+
+        // A zero max-age makes both .json state files stale; the .txt is left.
+        assert_eq!(prune_stale(&dir, Duration::ZERO).unwrap(), 2);
+        assert!(!state_path(&dir, "host-a").exists());
+        assert!(dir.join("notes.txt").exists());
+
+        // A missing directory is not an error.
+        assert_eq!(
+            prune_stale(&dir.join("missing"), Duration::ZERO).unwrap(),
+            0
+        );
+
         std::fs::remove_dir_all(&dir).ok();
     }
 }

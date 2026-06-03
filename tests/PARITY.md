@@ -57,7 +57,7 @@ Legend: ✅ migrated · 🟡 partial (platform/feature gap tracked) · ⬜ pendi
 
 | Perl source | Rust target | Status | Notes |
 | ----------- | ----------- | ------ | ----- |
-| `t/tasks/remoteinventory.t` | `glpi-inventory-remote` tests (`MockSession`) | 🟡 | SSH modes 1–3 + WinRM covered; delta state-file logic pending. |
+| `t/tasks/remoteinventory.t` | `glpi-inventory-remote` tests (`MockSession`) | ✅ | SSH modes 1–3, WinRM (incl. Windows WMI via PowerShell), delta state files + 30-day cleanup. |
 | ESX `*-hostfullinfo.dump` cases | `glpi-vsphere` tests + `glpi-agent-tests` | ✅ | `--dumpfile` offline replay; mock SOAP flow; golden JSON. Uses a typed dump (no Perl `Data::Dumper` fixtures available). |
 
 ## Collect / Deploy / WakeOnLan
