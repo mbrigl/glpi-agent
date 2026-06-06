@@ -51,7 +51,7 @@ func subcommands() []subcommand {
 		{"netdiscovery", "scan networks for devices (bin/glpi-netdiscovery)", notImplemented("netdiscovery")},
 		{"netinventory", "SNMP inventory of network devices (bin/glpi-netinventory)", notImplemented("netinventory")},
 		{"esx", "inventory VMware ESX/vCenter (bin/glpi-esx)", runESX},
-		{"remote", "remote inventory over SSH/WinRM (bin/glpi-remote)", notImplemented("remote")},
+		{"remote", "remote inventory over SSH/WinRM (bin/glpi-remote)", runRemote},
 	}
 }
 
