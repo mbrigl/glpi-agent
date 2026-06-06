@@ -55,7 +55,7 @@ dependencies** (`govmomi`, `x/crypto`); native binary ~15 MB.
 | 1 | Build & packaging effort | **Go favourable.** All six targets cross-compile from one Linux host, cgo-free (`CGO_ENABLED=0`), no per-triple toolchain; CI runs the whole matrix on a single runner ([go.yml](../../.github/workflows/go.yml)). Rust installs a `rustup target` + linker per triple. OS packages (deb/rpm/msi/pkg, snap/flatpak) are **not yet** done on the Go side. |
 | 2 | Binary size / idle RAM | Go binary ~15 MB (dominated by `govmomi`); Rust release binary is smaller after LTO+strip. **Idle-daemon RAM not yet measured** (Go daemon is Phase 5). |
 | 3 | Implementation velocity | The decisive slice landed in 9 commits / ~2.6k LOC with 2 deps. govmomi/x-crypto mapped cleanly onto the Perl shapes (see #4). |
-| 4 | Library friction | **Go favourable, the headline result.** `govmomi` exposes the same vSphere managed objects as the Perl SOAP hashes, so `Host.pm` accessors mapped field-for-field and compiled first try; **`vcsim`** gives a real end-to-end vCenter in tests with no external infra. `x/crypto/ssh` gave clean connect/auth/exec and is fully testable against an in-process SSH server. Both removed exactly the pain the Rust side hit (hand-rolled SOAP; `russh` rc.* churn). |
+| 4 | Library friction | **Go favourable, the headline result.** `govmomi` exposes the same vSphere managed objects as the Perl SOAP hashes, so `Host.pm` accessors mapped field-for-field and compiled first try; **`vcsim`** gives a real end-to-end vCenter in tests with no external infra. `x/crypto/ssh` gave clean connect/auth/exec and is fully testable against an in-process SSH server. **`gosnmp`** (Phase 2 NetDiscovery, now started) sat cleanly behind an interface seam — the system-MIB probe is testable with a fake responder. All three removed exactly the pain the Rust side hit (hand-rolled SOAP; `russh` rc.* churn; the snmp2 stack). |
 | 5 | Contributor onboarding | Subjective; smaller stdlib-first surface and two deps so far. Not independently assessed. |
 | 6 | Conformance | Go emits the same GLPI Agent Protocol JSON (validated via unit tests and the vcsim E2E). The Perl `t/` + `resources/**` fixtures remain the reference truth; a normalized Go↔Rust diff guard is planned, **not yet wired**. |
 
@@ -71,6 +71,11 @@ Suggested path: **Defer the final verdict (option 4)** and extend the Go track
 through one more decisive vertical — **Phase 2–3 (NetDiscovery/SNMP via
 `gosnmp`)** — which is the remaining library-friction unknown, then revisit this
 ADR with that data and pick option 1 or 2.
+
+**Update:** Phase 2 (NetDiscovery SNMP probe) has since started; the early
+`gosnmp` signal is positive (criterion #4). The verdict still waits on
+NetInventory + the MIB classification tail and the unmeasured items (idle RAM,
+OS packaging).
 
 ## Consequences
 

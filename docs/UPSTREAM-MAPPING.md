@@ -25,7 +25,8 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 > Implemented so far: the single-binary CLI skeleton, `--version`, the inventory
 > *document* model, the `inject` (bin/glpi-injector) and `wakeonlan` paths,
 > `config` + `logging`, **Phase 8 vSphere/ESX**, the **Phase 7 SSH** remote
-> path, and the **Phase 10** cross-compile/CI spike. Areas where Go is uniformly
+> path, the **Phase 10** cross-compile/CI spike, and the start of **Phase 2**
+> (NetDiscovery SNMP probe via gosnmp). Areas where Go is uniformly
 > not started yet carry a per-section Go note below instead of a column of
 > identical ⬜ cells; tables where Go already has entries get a full **Go** column.
 >
@@ -43,8 +44,8 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 | Upstream `Task/` | Rust crate | Rust | Go package | Go |
 | --- | --- | --- | --- | --- |
 | `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 protocol document model only; category collectors are Phase 6 |
-| `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | ⬜ Phase 2–3 |
-| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | ⬜ Phase 2–3 |
+| `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 SNMP probe (generic system-MIB device properties) + IPv4 range scan via gosnmp; SNMPv3, threaded scan, sysObjectID classification pending |
+| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | ⬜ Phase 3 |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
 | `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ | `internal/remote` | 🟡 SSH connect/exec + remote document (host/OS/arch); WinRM and full collectors pending |
 | `Collect.pm` | `glpi-collect` | ✅ | `internal/collect` | ⬜ Phase 9 |
@@ -126,7 +127,10 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 
 ## SNMP — standard MIBs
 
-> **Go:** ⬜ not started (Phase 2–3, `gosnmp` + `internal/discovery/mib`).
+> **Go:** 🟡 started (`gosnmp`). The **system MIB** generic device properties
+> (sysDescr/sysName/sysLocation/sysContact/sysUpTime/sysObjectID) are read by
+> `internal/discovery` for NetDiscovery. interfaces/ip/bridge/LLDP/CDP/entity/
+> printer and the device classification are ⬜ pending (NetInventory, Phase 3).
 
 | Area | Rust | Status |
 | --- | --- | --- |
