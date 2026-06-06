@@ -75,6 +75,11 @@
         <Property Id="ARPURLINFOABOUT" Value="https://github.com/glpi-project/glpi-agent-rust"/>
         <Property Id="WIXUI_INSTALLDIR" Value="APPLICATIONFOLDER"/>
 
+        <!-- The licence shown on the WixUI LicenseAgreement dialog. Without this
+             override WiX falls back to the WixUIExtension's placeholder RTF (the
+             "lorem ipsum" text); point it at the project's GPL-2.0 licence. -->
+        <WixVariable Id="WixUILicenseRtf" Value="wix\License.rtf"/>
+
         <UIRef Id="WixUI_FeatureTree"/>
     </Product>
 </Wix>
