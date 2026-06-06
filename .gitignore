@@ -8,6 +8,11 @@
 *.swp
 .DS_Store
 
+# Upstream Perl source, cloned locally as the authoritative reference for the
+# Go implementation (pinned to the commit in UPSTREAM.md). Reference only — not
+# part of this repo's build.
+/.upstream/
+
 # NOTE: Cargo.lock is intentionally committed. This workspace builds a binary
 # (glpi-agent) and depends on pre-release crypto crates (p384, elliptic-curve,
 # primefield via russh/ssh-key). Without a committed lockfile, CI re-resolves

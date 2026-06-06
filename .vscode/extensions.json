@@ -1,5 +1,6 @@
 {
   "recommendations": [
+    "golang.go",
     "vadimcn.vscode-lldb",
     "rust-lang.rust-analyzer",
     "llvm-vs-code-extensions.lldb-dap"

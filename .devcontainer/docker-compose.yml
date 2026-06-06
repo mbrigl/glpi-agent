@@ -48,7 +48,7 @@ services:
       - glpi_data:/var/glpi
 
   devcontainer:
-    image: "mcr.microsoft.com/devcontainers/rust:latest"
+    image: "mcr.microsoft.com/devcontainers/go:latest"
     volumes:
       # Mount host workspace into the container
       - ..:/workspace:cached
