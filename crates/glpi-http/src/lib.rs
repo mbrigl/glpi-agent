@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 //! `glpi-http` — the embedded HTTP control server for the GLPI Agent Rust
-//! workspace (v2.0.0).
+//! workspace.
 //!
 //! Provides the agent's local control surface:
 //!

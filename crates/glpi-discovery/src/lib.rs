@@ -2,7 +2,7 @@
 
 //! `glpi-discovery` — network discovery and SNMP inventory.
 //!
-//! Part of the GLPI Agent Rust workspace (v2.0.0). This crate hosts the
+//! Part of the GLPI Agent Rust workspace. This crate hosts the
 //! NetDiscovery / NetInventory tasks (Phase 2+): the parallel scanner, the
 //! discovery methods (ping, ARP, NetBIOS, SNMP) and the SNMP stack with its
 //! MIB-support modules.

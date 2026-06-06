@@ -2,7 +2,7 @@
 
 //! `glpi-vsphere` — VMware ESX / vCenter inventory (Phase 8).
 //!
-//! Part of the GLPI Agent Rust workspace (v2.0.0).
+//! Part of the GLPI Agent Rust workspace.
 //!
 //! The crate inventories a VMware vSphere endpoint — a standalone ESXi host or a
 //! vCenter — over the SOAP `vim25` API and renders each hypervisor host (plus

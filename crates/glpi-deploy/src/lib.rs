@@ -2,7 +2,7 @@
 
 //! `glpi-deploy` — the Deploy task v3.5 (Phase 9).
 //!
-//! Part of the GLPI Agent Rust workspace (v2.0.0).
+//! Part of the GLPI Agent Rust workspace.
 //!
 //! The Deploy task applies a server order: evaluate preconditions, fetch and
 //! verify the associated files (multipart, SHA-512), run the actions

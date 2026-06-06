@@ -1218,7 +1218,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "glpi-agent-tests"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "glpi-core",
  "glpi-discovery",
@@ -1232,7 +1232,7 @@ dependencies = [
 
 [[package]]
 name = "glpi-cli"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1255,7 +1255,7 @@ dependencies = [
 
 [[package]]
 name = "glpi-collect"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "glpi-core",
  "serde",
@@ -1268,7 +1268,7 @@ dependencies = [
 
 [[package]]
 name = "glpi-core"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "insta",
  "quick-xml",
@@ -1280,7 +1280,7 @@ dependencies = [
 
 [[package]]
 name = "glpi-deploy"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "async-trait",
  "glpi-core",
@@ -1295,7 +1295,7 @@ dependencies = [
 
 [[package]]
 name = "glpi-discovery"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "async-trait",
  "glpi-core",
@@ -1311,7 +1311,7 @@ dependencies = [
 
 [[package]]
 name = "glpi-http"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -1335,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "glpi-iec61850"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "async-trait",
  "glpi-core",
@@ -1346,7 +1346,7 @@ dependencies = [
 
 [[package]]
 name = "glpi-inventory-local"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "chrono",
  "glpi-core",
@@ -1356,7 +1356,7 @@ dependencies = [
 
 [[package]]
 name = "glpi-inventory-remote"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -1372,14 +1372,14 @@ dependencies = [
 
 [[package]]
 name = "glpi-plugins"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "glpi-core",
 ]
 
 [[package]]
 name = "glpi-scheduler"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "chrono",
  "glpi-core",
@@ -1392,7 +1392,7 @@ dependencies = [
 
 [[package]]
 name = "glpi-transport"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "glpi-core",
  "reqwest",
@@ -1405,7 +1405,7 @@ dependencies = [
 
 [[package]]
 name = "glpi-vsphere"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "async-trait",
  "glpi-core",
@@ -1420,7 +1420,7 @@ dependencies = [
 
 [[package]]
 name = "glpi-wakeonlan"
-version = "2.0.0"
+version = "2.17.0"
 dependencies = [
  "glpi-core",
  "tracing",

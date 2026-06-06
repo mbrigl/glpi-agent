@@ -2,7 +2,7 @@
 
 //! `glpi-collect` — the Collect task v3.0 (Phase 9).
 //!
-//! Part of the GLPI Agent Rust workspace (v2.0.0).
+//! Part of the GLPI Agent Rust workspace.
 //!
 //! The Collect task runs server-supplied collection jobs on the agent host and
 //! returns their results. Four functions are supported: `findFile`,

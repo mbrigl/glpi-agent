@@ -6,8 +6,13 @@
 
 A **Rust rewrite** of the [GLPI inventory agent](https://github.com/glpi-project/glpi-agent). The
 upstream agent is written in Perl; this project re-implements it as a Cargo workspace of focused
-crates while staying compatible with the GLPI inventory protocol. It starts at **v2.0.0** to
-separate it from the Perl 1.x line.
+crates while staying compatible with the GLPI inventory protocol.
+
+Its version tracks the upstream GLPI agent's, with the major bumped to 2 to separate it from the
+Perl 1.x line — GLPI `1.MINOR` maps to Rust `2.MINOR`, so this rewrite is **v2.17.x** alongside
+GLPI **1.17**. The rewrite is pinned to a specific upstream commit so changes from the Perl agent
+can be tracked and adopted deliberately; the current sync point and the process for moving it
+forward (and bumping the version with it) live in [UPSTREAM.md](UPSTREAM.md).
 
 > **Status: all nine tasks implemented; stabilization (Phase 10) under way.** The Cargo workspace and
 > its member crates are in place; the cross-platform surface is implemented and tested, with the

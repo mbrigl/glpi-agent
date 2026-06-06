@@ -26,8 +26,8 @@ if [ "$event_name" = "workflow_dispatch" ]; then
 else
   v="$ref_name"
 fi
-v="${v:-2.0.0}"
-v="${v#v}"   # tolerate a leading "v" (v1.7.0 -> 1.7.0) from either source
+v="${v:-2.17.0}"   # fallback mirrors GLPI's version line (see UPSTREAM.md)
+v="${v#v}"         # tolerate a leading "v" (v2.17.0 -> 2.17.0) from either source
 
 # Split optional -prerelease / +build metadata from the numeric core.
 core="${v%%[-+]*}"

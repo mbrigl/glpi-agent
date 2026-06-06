@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 //! `glpi-inventory-local` — local-system inventory for the GLPI Agent Rust
-//! workspace (v2.0.0).
+//! workspace.
 //!
 //! Collects the local machine's inventory into a [`Content`] payload, one
 //! category at a time. Each category parses a captured data source (a command's

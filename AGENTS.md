@@ -31,7 +31,7 @@ This is a **Rust rewrite** of the [GLPI Agent](https://github.com/glpi-project/g
 | Aspect | Detail |
 |--------|--------|
 | **Target** | Full feature parity with GLPI Agent 1.17 |
-| **Version** | v2.0.0 (separate from Perl 1.x line) |
+| **Version** | v2.17.x — mirrors GLPI's version, major bumped to 2 (GLPI `1.17` → `2.17`); see [UPSTREAM.md](UPSTREAM.md) |
 | **License** | GPL-2.0-only |
 | **Rust** | 1.96.0 (pinned in `rust-toolchain.toml`) |
 | **Repository** | `glpi-agent-rust` |

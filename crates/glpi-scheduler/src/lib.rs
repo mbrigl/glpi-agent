@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//! `glpi-scheduler` — daemon scheduling for the GLPI Agent Rust workspace
-//! (v2.0.0).
+//! `glpi-scheduler` — daemon scheduling for the GLPI Agent Rust workspace.
 //!
 //! Decides when each target runs. Landing incrementally; currently available:
 //!

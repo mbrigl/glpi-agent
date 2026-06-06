@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//! `glpi-agent` — command-line entry point for the GLPI Agent Rust workspace
-//! (v2.0.0).
+//! `glpi-agent` — command-line entry point for the GLPI Agent Rust workspace.
 //!
 //! Subcommands: `inventory` (local), `netdiscovery`, `netinventory`,
 //! `remoteinventory` (SSH, with `--remote-workers` parallelism), `esx`

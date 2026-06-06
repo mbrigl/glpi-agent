@@ -18,9 +18,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to stamp into package names (no leading v)"
+        description: "Version to stamp into package names (no leading v); mirrors GLPI's, e.g. 2.17.0"
         required: false
-        default: "2.0.0"
+        default: "2.17.0"
 
 permissions:
   contents: write

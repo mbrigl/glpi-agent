@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 //! `glpi-core` — shared types, configuration, protocol, auth and logging for
-//! the GLPI Agent Rust workspace (v2.0.0).
+//! the GLPI Agent Rust workspace.
 //!
 //! This crate is the foundation every task crate builds on. Phase 1 lands the
 //! pieces incrementally; currently available:

@@ -2,7 +2,7 @@
 
 //! `glpi-wakeonlan` — the Wake-on-LAN task (Phase 9).
 //!
-//! Part of the GLPI Agent Rust workspace (v2.0.0).
+//! Part of the GLPI Agent Rust workspace.
 //!
 //! Builds the 102-byte Wake-on-LAN magic packet ([`MagicPacket`]) and broadcasts
 //! it for one or more target MAC addresses ([`WakeOnLanTask`]) over UDP.

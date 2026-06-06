@@ -3,7 +3,11 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "2.0.0"
+# Versioning policy: this rewrite mirrors the upstream GLPI agent's version with
+# the major bumped to 2 (GLPI `1.MINOR[.PATCH]` -> Rust `2.MINOR[.PATCH]`), so
+# GLPI 1.17 -> 2.17.0. The upstream sync point is recorded in UPSTREAM.md; keep
+# this in step when bumping it.
+version = "2.17.0"
 edition = "2021"
 license = "GPL-2.0-only"
 authors = ["GLPI Agent Rust contributors"]
