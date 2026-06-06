@@ -87,8 +87,9 @@ though the build is local; internal packages are imported as
 
 ## 2. Toolchain & dependencies
 
-- **Go:** pinned via `go.mod` `go 1.23` (and a `go/.go-version` for tooling),
-  mirroring how `rust-toolchain.toml` pins Rust.
+- **Go:** pinned via `go.mod` (currently `go 1.25.0`, raised from the initial
+  1.23 by the `govmomi` SDK requirement), mirroring how `rust-toolchain.toml`
+  pins Rust.
 - **License compatibility:** every dependency must be GPL-2.0-compatible (same
   bar as the Rust side — avoid Apache-2.0-only where it would conflict; most of
   the libraries below are BSD/MIT).

@@ -5,4 +5,8 @@
 // the Rust workspace under ../crates is not a source for this module.
 module github.com/glpi-project/glpi-agent/go
 
-go 1.23
+go 1.25.0
+
+require github.com/vmware/govmomi v0.54.1
+
+require github.com/google/uuid v1.6.0 // indirect
