@@ -72,6 +72,86 @@ cargo test -p glpi-transport basic_auth_header_is_sent
 Lints are enforced workspace-wide (`clippy::all = warn`, `clippy::suspicious = deny`,
 `missing_docs = warn`), and the same checks run in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 
+## Command-line usage
+
+The agent ships as a single binary, `glpi-agent` (`glpi-agent.exe` on Windows), with subcommands. The
+same commands and flags work on Linux, macOS and Windows; the few platform differences are listed at
+the end of this section. Run `glpi-agent --help` (or `glpi-agent <command> --help`) for the full,
+authoritative list, and `glpi-agent --version` to print the version.
+
+```bash
+glpi-agent <command> [options]
+```
+
+### Global options
+
+These apply to every subcommand:
+
+| Option | Purpose |
+| ------ | ------- |
+| `--conf-file <PATH>` | Load an `agent.cfg` configuration file. |
+| `--conf-dir <PATH>` | Load `*.cfg` drop-ins from a `conf.d` directory (lexical order). |
+| `--logger <stderr\|file\|syslog>` | Logging backend (default `stderr`; a detached daemon must use `file` or `syslog`). |
+| `--logfile <PATH>` | Log file, required with `--logger file`. |
+| `--logfacility <NAME>` | Syslog facility for `--logger syslog` (e.g. `daemon`, `local0`). |
+
+Effective settings are layered **defaults → `agent.cfg` → `conf.d/*.cfg` → environment → CLI flags**,
+so a flag always wins. Configuration files are only read when you pass `--conf-file` / `--conf-dir`;
+with neither, the agent runs on defaults plus any environment overrides.
+
+### Commands
+
+```bash
+# Inventory the local machine. With no --server it prints JSON to stdout;
+# with one or more --server it submits and exits.
+glpi-agent inventory
+glpi-agent inventory -s https://glpi.example.com/front/inventory.php -u user -p secret
+glpi-agent inventory --no-category software --no-category process   # drop categories
+
+# Discover live / SNMP-capable devices on IPv4 ranges (single, CIDR or a.b.c.d-e).
+glpi-agent netdiscovery 10.0.0.0/24 -c public
+
+# Inventory one device over SNMP.
+glpi-agent netinventory 10.0.0.5 -c public
+
+# Inventory remote hosts. SSH for Unix targets, WinRM for Windows targets.
+glpi-agent remoteinventory ssh://user@host -i ~/.ssh/id_ed25519
+glpi-agent remoteinventory --transport winrm 'http://user:pass@winhost:5985'
+
+# Inventory a VMware ESXi host or vCenter over the vSphere API.
+glpi-agent esx vcenter.example.com -u readonly -p secret --no-ssl-check
+
+# Send existing inventory files (JSON/XML) to a GLPI server.
+glpi-agent inject inventory.json -s https://glpi.example.com/front/inventory.php
+
+# Wake hosts by MAC (Wake-on-LAN magic packets).
+glpi-agent wakeup de:ad:be:ef:00:01
+
+# Run continuously: rescan a range each cycle plus an HTTP control server.
+glpi-agent daemon 10.0.0.0/24 -c public --interval 3600
+```
+
+Commands that submit to a server (`inventory`, `remoteinventory`) share the auth/TLS flags
+`-u/--user`, `-p/--password`, `--oauth-token <TOKEN>`, `--ca-cert-file <PATH>` and `--no-ssl-check`.
+Use `--statedir <DIR>` (with `--full-inventory-postpone`) to send incremental *partial* inventories.
+
+### Platform differences
+
+The behaviour is identical across platforms except for:
+
+- **Binary location.** The `.deb`/`.rpm` install to `/usr/bin/glpi-agent`; the macOS `.pkg` to
+  `/usr/local/bin/glpi-agent`; the Windows `.msi` installs `glpi-agent.exe` under
+  `%ProgramFiles%\GLPI Agent\` and adds it to the system `PATH`. The `.tar.gz` and `.AppImage`
+  builds are portable (run them from wherever you unpack them).
+- **Daemon detaching.** `glpi-agent daemon -d/--daemonize` backgrounds the process on **Unix only**
+  (Linux/macOS). On Windows the daemon runs in the foreground — wrap it in a Windows service or a
+  scheduled task to run it unattended. `--pidfile` works on all platforms.
+- **Logging backend.** `--logger syslog` is Unix-only; on Windows use `--logger file`.
+- **Privileges.** A complete local `inventory` needs elevated rights to read some hardware details
+  (run as `root`/with `sudo` on Linux and macOS, or from an elevated prompt / as `Administrator` on
+  Windows). `netdiscovery`/`netinventory` ICMP probing may likewise need raw-socket privileges
+  (`CAP_NET_RAW` or root on Linux, Administrator on Windows).
+
 ## Development environment
 
 A devcontainer / Docker Compose setup in [`.devcontainer/`](.devcontainer/) runs a full GLPI stack as
