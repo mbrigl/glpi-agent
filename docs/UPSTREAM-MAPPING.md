@@ -28,6 +28,11 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 > path, and the **Phase 10** cross-compile/CI spike. Areas where Go is uniformly
 > not started yet carry a per-section Go note below instead of a column of
 > identical ⬜ cells; tables where Go already has entries get a full **Go** column.
+>
+> The §8 bake-off slice (Phase 1 + vSphere + SSH + packaging) is **complete**; its
+> measured findings are recorded in
+> [ADR-011](adr/ADR-011-go-dual-track-evaluation.md) (the go/no-go decision is
+> pending there).
 
 > Status reflects *module/section presence*, not field-by-field depth inside a
 > ported section. Where a section is ported but some platform's detail fields

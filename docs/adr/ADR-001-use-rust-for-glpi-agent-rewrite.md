@@ -4,6 +4,10 @@
 
 🟢 Accepted
 
+> **Under re-evaluation.** A parallel Go implementation is being bake-off-tested
+> against this decision; see [ADR-011](./ADR-011-go-dual-track-evaluation.md). The
+> Rust choice stands unless and until ADR-011 is accepted.
+
 ## Context and Problem Statement
 
 The upstream [GLPI Agent](https://github.com/glpi-project/glpi-agent) is written in **Perl** and has accumulated technical debt over its 17-year history. A rewrite is necessary to:

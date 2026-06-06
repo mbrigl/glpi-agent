@@ -15,6 +15,14 @@ covers shipping functionality.
 Legend: ✅ migrated · 🟡 partial (platform/feature gap tracked) · ⬜ pending ·
 🚫 intentionally dropped.
 
+> **Scope.** This audit currently maps the upstream `t/` families to the **Rust**
+> track. The parallel **Go** track ([ADR-011](../docs/adr/ADR-011-go-dual-track-evaluation.md))
+> ships its own unit/end-to-end tests (e.g. the `vcsim` ESX test, the in-process
+> SSH-server test) but has **not** yet migrated the upstream `t/` families; its
+> per-module status lives in the Go column/notes of
+> [docs/UPSTREAM-MAPPING.md](../docs/UPSTREAM-MAPPING.md). When the Go track begins
+> replaying upstream `t/`+`resources/**` fixtures, add a Go column here.
+
 ## Agent core
 
 | Perl source | Rust target | Status | Notes |

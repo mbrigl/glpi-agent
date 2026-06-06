@@ -39,6 +39,9 @@ ADRs document **important architectural decisions** made during the development 
 | [ADR-006](./ADR-006-phased-migration-strategy.md) | Phased Migration Strategy | 🟢 Accepted | 2024-XX-XX |
 | [ADR-007](./ADR-007-golden-file-testing.md) | Golden-file Testing with Fixture Replay | 🟢 Accepted | 2024-XX-XX |
 | [ADR-008](./ADR-008-protocol-priority.md) | GLPI Native JSON Protocol Priority | 🟢 Accepted | 2024-XX-XX |
+| [ADR-009](./ADR-009-cross-platform-inventory-collection.md) | Cross-platform Inventory Collection | 🟢 Accepted | 2024-XX-XX |
+| [ADR-010](./ADR-010-release-pipeline-and-packaging.md) | Release Pipeline and Packaging | 🟢 Accepted | 2024-XX-XX |
+| [ADR-011](./ADR-011-go-dual-track-evaluation.md) | Go Dual-Track Evaluation (Bake-off) | 🟡 Proposed | 2026-06-06 |
 
 ## Template
 
