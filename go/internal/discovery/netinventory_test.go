@@ -53,6 +53,35 @@ func TestGetInventoryPorts(t *testing.T) {
 	}
 }
 
+// TestGetInventoryIdentity checks the sysObjectID classification and the
+// device-level SERIAL/MAC enrichment.
+func TestGetInventoryIdentity(t *testing.T) {
+	getter := &fakeGetter{
+		values: map[string]string{
+			oidSysDescr:            "Cisco IOS",
+			oidSysObjectID:         ".1.3.6.1.4.1.9.1.282", // Cisco Catalyst 6506
+			oidDot1dBaseBridgeAddr: "00:aa:bb:cc:dd:ee",
+		},
+		walks: map[string]map[string]string{
+			oidEntPhysicalSerialNum: {"1": "FOX1234ABCD"},
+		},
+	}
+	device, err := GetInventory("192.0.2.7", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if device["TYPE"] != "NETWORKING" || device["MANUFACTURER"] != "Cisco" || device["MODEL"] != "Catalyst 6506" {
+		t.Errorf("classification wrong: TYPE=%v MANUFACTURER=%v MODEL=%v",
+			device["TYPE"], device["MANUFACTURER"], device["MODEL"])
+	}
+	if device["SERIAL"] != "FOX1234ABCD" {
+		t.Errorf("SERIAL = %v, want FOX1234ABCD", device["SERIAL"])
+	}
+	if device["MAC"] != "00:aa:bb:cc:dd:ee" {
+		t.Errorf("MAC = %v, want the bridge address", device["MAC"])
+	}
+}
+
 // TestGetInventoryNoSNMP returns nil when the device does not answer.
 func TestGetInventoryNoSNMP(t *testing.T) {
 	getter := &fakeGetter{values: map[string]string{}}
