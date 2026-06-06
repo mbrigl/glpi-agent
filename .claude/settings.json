@@ -1,0 +1,25 @@
+{
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "allow": [
+      "Read(//home/vscode/.cargo/registry/**)",
+      "WebFetch(domain:docs.rs)",
+      "Bash(cd)",
+      "Bash(sed)",
+      "Bash(awk)",
+      "Bash(grep)",
+      "Bash(curl)",
+      "Bash(grep)",
+      "Bash(cargo)",
+      "Bash(timeout)",
+      "Bash(git add *)",
+      "Bash(git restore *)",
+      "Bash(git commit -q -m ' *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('users:', d.get\\('users'\\)\\); print\\('sections:', sorted\\(d.keys\\(\\)\\)\\)\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(sorted\\(d.keys\\(\\)\\), 'envs:', len\\(d.get\\('envs',[]\\)\\)\\)\")",
+      "Bash(python3 -c \"import json; c=json.load\\(open\\('/tmp/content.json'\\)\\); open\\('/tmp/envelope.json','w'\\).write\\(json.dumps\\({'action':'inventory','deviceid':'test-device','itemtype':'Computer','content':c}\\)\\); print\\('timezone:', c.get\\('operatingsystem',{}\\).get\\('timezone'\\)\\)\")",
+      "Bash(python3 -c \"import json; c=json.load\\(open\\('/tmp/content.json'\\)\\); open\\('/tmp/envelope.json','w'\\).write\\(json.dumps\\({'action':'inventory','deviceid':'test-device','itemtype':'Computer','content':c}\\)\\)\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('storages:', d.get\\('storages'\\)\\)\")"
+    ]
+  }
+}
