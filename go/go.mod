@@ -8,6 +8,7 @@ module github.com/glpi-project/glpi-agent/go
 go 1.25.0
 
 require (
+	github.com/gosnmp/gosnmp v1.43.2
 	github.com/vmware/govmomi v0.54.1
 	golang.org/x/crypto v0.52.0
 )

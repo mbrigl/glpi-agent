@@ -48,7 +48,7 @@ func subcommands() []subcommand {
 		{"inventory", "run a local inventory (bin/glpi-inventory)", runInventory},
 		{"inject", "push an inventory file to a server (bin/glpi-injector)", runInject},
 		{"wakeonlan", "send a Wake-on-LAN magic packet (bin/glpi-wakeonlan)", runWakeOnLan},
-		{"netdiscovery", "scan networks for devices (bin/glpi-netdiscovery)", notImplemented("netdiscovery")},
+		{"netdiscovery", "scan networks for devices (bin/glpi-netdiscovery)", runNetDiscovery},
 		{"netinventory", "SNMP inventory of network devices (bin/glpi-netinventory)", notImplemented("netinventory")},
 		{"esx", "inventory VMware ESX/vCenter (bin/glpi-esx)", runESX},
 		{"remote", "remote inventory over SSH/WinRM (bin/glpi-remote)", runRemote},
