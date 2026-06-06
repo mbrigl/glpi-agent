@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# CI for the Go track (the dual-track Go implementation under /go). Mirrors
+# ci.yml for the Rust workspace: lint + per-OS test, plus a cross-compile matrix
+# that is the Phase 10 bake-off signal — every target is a pure-Go static build
+# (CGO disabled), so the whole matrix builds from a single Linux runner with no
+# per-target toolchains.
+name: Go CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: go
+
+jobs:
+  lint:
+    name: Lint (gofmt + vet)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; echo 'run gofmt -w .'; exit 1; }
+      - run: go vet ./...
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - run: go build ./...
+      - run: go test ./...
+
+  cross:
+    name: Cross-compile matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      # One Linux runner cross-builds all six targets (Linux/Windows/macOS x
+      # amd64/arm64) because the optional cgo module is off by default.
+      - name: Cross build (all targets)
+        run: bash scripts/cross-build.sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glpi-agent-go-binaries
+          path: go/dist/glpi-agent-*

@@ -1,6 +1,9 @@
 # Rust build artifacts
 /target
 
+# Go cross-compile output
+/go/dist/
+
 # Devcontainer
 .devcontainer/devcontainer-lock.json
 

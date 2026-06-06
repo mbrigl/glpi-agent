@@ -127,6 +127,11 @@ func splitGlobals(args []string) (map[string]any, []string) {
 	i := 0
 	for ; i < len(args); i++ {
 		arg := args[i]
+		// The top-level version/help forms are commands, not global options,
+		// even though they start with "--": leave them for the dispatcher.
+		if arg == "--version" || arg == "-V" || arg == "--help" || arg == "-h" {
+			break
+		}
 		if !strings.HasPrefix(arg, "--") {
 			break // subcommand name reached
 		}
