@@ -77,21 +77,8 @@ jobs:
         id: version
         shell: bash
         run: |
-          # A manual run uses the typed input; a tag push uses the tag name
-          # (sans leading `v`). Keyed on event_name, not ref_type, so a
-          # workflow_dispatch launched from a tag ref still honours the input.
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            v="${{ github.event.inputs.version }}"
-          else
-            v="${GITHUB_REF_NAME#v}"
-          fi
-          v="${v:-2.0.0}"
-          # Reject anything that isn't a plain version (e.g. a slash-bearing ref):
-          # it would break the sed stamp below and produce bogus package versions.
-          if ! printf '%s' "$v" | grep -Eq '^[0-9]+(\.[0-9]+)*([-+][0-9A-Za-z.]+)?$'; then
-            echo "::error::Invalid release version '$v' (expected e.g. 1.7.0)." >&2
-            exit 1
-          fi
+          v="$(bash .github/scripts/resolve-version.sh \
+            '${{ github.event_name }}' '${{ github.ref_name }}' '${{ github.event.inputs.version }}')"
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
       # Stamp the release version into the workspace so every artifact reports
@@ -254,11 +241,8 @@ jobs:
       - name: Stamp release version into Cargo.toml
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then v="${{ github.event.inputs.version }}"; else v="${GITHUB_REF_NAME#v}"; fi
-          v="${v:-2.0.0}"
-          if ! printf '%s' "$v" | grep -Eq '^[0-9]+(\.[0-9]+)*([-+][0-9A-Za-z.]+)?$'; then
-            echo "::error::Invalid release version '$v' (expected e.g. 1.7.0)." >&2; exit 1
-          fi
+          v="$(bash .github/scripts/resolve-version.sh \
+            '${{ github.event_name }}' '${{ github.ref_name }}' '${{ github.event.inputs.version }}')"
           sed -E "s|^version = \"[^\"]*\"|version = \"$v\"|" Cargo.toml > Cargo.toml.tmp
           mv Cargo.toml.tmp Cargo.toml
           grep -m1 '^version = ' Cargo.toml
@@ -305,11 +289,8 @@ jobs:
       - name: Collect flatpak
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then v="${{ github.event.inputs.version }}"; else v="${GITHUB_REF_NAME#v}"; fi
-          v="${v:-2.0.0}"
-          if ! printf '%s' "$v" | grep -Eq '^[0-9]+(\.[0-9]+)*([-+][0-9A-Za-z.]+)?$'; then
-            echo "::error::Invalid release version '$v' (expected e.g. 1.7.0)." >&2; exit 1
-          fi
+          v="$(bash .github/scripts/resolve-version.sh \
+            '${{ github.event_name }}' '${{ github.ref_name }}' '${{ github.event.inputs.version }}')"
           mkdir -p dist
           cp glpi-agent.flatpak "dist/${BIN_NAME}-${v}-x86_64.flatpak"
       - uses: actions/upload-artifact@v4
