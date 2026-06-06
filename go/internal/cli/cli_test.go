@@ -39,13 +39,13 @@ func TestRunUnknownCommand(t *testing.T) {
 // the subcommand still dispatches.
 func TestGlobalDebugThenSubcommand(t *testing.T) {
 	var out, errOut bytes.Buffer
-	// netinventory is still a stub returning 1; reaching it proves dispatch
-	// worked past the global --debug.
-	code := Run([]string{"--debug", "netinventory"}, &out, &errOut)
-	if code != 1 {
-		t.Errorf("exit = %d, want 1 from the netinventory stub", code)
+	// Reaching netdiscovery's argument validation (no --range -> exit 2) proves
+	// dispatch worked past the leading global --debug.
+	code := Run([]string{"--debug", "netdiscovery"}, &out, &errOut)
+	if code != 2 {
+		t.Errorf("exit = %d, want 2 from netdiscovery arg validation", code)
 	}
-	if !strings.Contains(errOut.String(), "not implemented") {
-		t.Errorf("stderr = %q, want the not-implemented stub message", errOut.String())
+	if !strings.Contains(errOut.String(), "no range given") {
+		t.Errorf("stderr = %q, want the netdiscovery validation message", errOut.String())
 	}
 }

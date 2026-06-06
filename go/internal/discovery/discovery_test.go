@@ -7,9 +7,11 @@ import (
 )
 
 // fakeGetter is an in-memory SNMPGetter: hosts present in the map answer with
-// their OID values; absent hosts return an error (unreachable).
+// their OID values; absent hosts return an error (unreachable). walks maps a
+// base OID to its index->value table.
 type fakeGetter struct {
 	values map[string]string
+	walks  map[string]map[string]string
 }
 
 func (f *fakeGetter) Get(oids []string) (map[string]string, error) {
@@ -20,6 +22,13 @@ func (f *fakeGetter) Get(oids []string) (map[string]string, error) {
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeGetter) Walk(base string) (map[string]string, error) {
+	if t, ok := f.walks[base]; ok {
+		return t, nil
+	}
+	return map[string]string{}, nil
 }
 func (f *fakeGetter) Close() error { return nil }
 

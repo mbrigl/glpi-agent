@@ -49,7 +49,7 @@ func subcommands() []subcommand {
 		{"inject", "push an inventory file to a server (bin/glpi-injector)", runInject},
 		{"wakeonlan", "send a Wake-on-LAN magic packet (bin/glpi-wakeonlan)", runWakeOnLan},
 		{"netdiscovery", "scan networks for devices (bin/glpi-netdiscovery)", runNetDiscovery},
-		{"netinventory", "SNMP inventory of network devices (bin/glpi-netinventory)", notImplemented("netinventory")},
+		{"netinventory", "SNMP inventory of network devices (bin/glpi-netinventory)", runNetInventory},
 		{"esx", "inventory VMware ESX/vCenter (bin/glpi-esx)", runESX},
 		{"remote", "remote inventory over SSH/WinRM (bin/glpi-remote)", runRemote},
 	}
@@ -153,15 +153,6 @@ func asInt(v any) int {
 		return n
 	}
 	return 0
-}
-
-// notImplemented returns a runner that reports the command is not yet
-// implemented, keeping the dispatch surface complete.
-func notImplemented(name string) func(*Context, []string) int {
-	return func(ctx *Context, _ []string) int {
-		fmt.Fprintf(ctx.Stderr, "%s: not implemented yet\n", name)
-		return 1
-	}
 }
 
 func usage(w io.Writer) {

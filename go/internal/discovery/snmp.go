@@ -39,6 +39,9 @@ var genericOIDs = []string{
 // gosnmp-backed client and the tests' fake responder.
 type SNMPGetter interface {
 	Get(oids []string) (map[string]string, error)
+	// Walk returns every value under a base OID, keyed by the index suffix that
+	// follows the base (mirrors the Perl SNMP walk used to build tables).
+	Walk(base string) (map[string]string, error)
 	Close() error
 }
 
@@ -100,17 +103,70 @@ func (c *gosnmpClient) Get(oids []string) (map[string]string, error) {
 	return out, nil
 }
 
+// Walk returns every value under base, keyed by the index suffix following base.
+// It uses GETBULK on v2c and GETNEXT on v1, mirroring the Perl walk().
+func (c *gosnmpClient) Walk(base string) (map[string]string, error) {
+	root := "." + strings.TrimPrefix(base, ".")
+	prefix := strings.TrimPrefix(base, ".") + "."
+	out := map[string]string{}
+	collect := func(pdu gosnmp.SnmpPDU) error {
+		if pdu.Type == gosnmp.NoSuchObject || pdu.Type == gosnmp.NoSuchInstance || pdu.Type == gosnmp.Null {
+			return nil
+		}
+		name := strings.TrimPrefix(pdu.Name, ".")
+		out[strings.TrimPrefix(name, prefix)] = pduString(pdu)
+		return nil
+	}
+	var err error
+	if c.snmp.Version == gosnmp.Version1 {
+		err = c.snmp.Walk(root, collect)
+	} else {
+		err = c.snmp.BulkWalk(root, collect)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *gosnmpClient) Close() error { return c.snmp.Conn.Close() }
 
 // pduString renders an SNMP value as the Perl SNMP layer would present it: octet
-// strings as text, object identifiers and integers as their printed form.
+// strings as text, binary octet strings (e.g. ifPhysAddress) as colon-separated
+// hex, and other types as their printed form.
 func pduString(v gosnmp.SnmpPDU) string {
 	switch val := v.Value.(type) {
 	case []byte:
-		return strings.TrimRight(string(val), "\x00")
+		if isPrintable(val) {
+			return strings.TrimRight(string(val), "\x00")
+		}
+		return hexColon(val)
 	case string:
 		return val
 	default:
 		return fmt.Sprintf("%v", val)
 	}
+}
+
+// isPrintable reports whether the bytes are all printable ASCII (plus common
+// whitespace), so they can be shown as text rather than hex.
+func isPrintable(b []byte) bool {
+	for _, c := range b {
+		if c == 0 || c == '\t' || c == '\n' || c == '\r' {
+			continue
+		}
+		if c < 0x20 || c > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
+// hexColon formats bytes as uppercase colon-separated hex (MAC style).
+func hexColon(b []byte) string {
+	parts := make([]string, len(b))
+	for i, c := range b {
+		parts[i] = fmt.Sprintf("%02x", c)
+	}
+	return strings.Join(parts, ":")
 }
