@@ -4,7 +4,7 @@
 //!
 //! [`SshCliSession`] shells out to the OpenSSH `ssh` binary, the most portable
 //! transport and the one that needs no extra Rust dependencies (key/agent
-//! authentication; password auth is left to the future russh mode). The
+//! authentication; for password auth use the russh mode instead). The
 //! argument vector is built by the pure [`SshCliSession::ssh_args`] so it can be
 //! asserted in tests without contacting a host.
 

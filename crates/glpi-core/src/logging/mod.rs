@@ -11,7 +11,8 @@
 //! - [`CallbackBackend`] — hand each line to a closure (the "callback API" the
 //!   GLPI server uses to capture agent output).
 //!
-//! A `syslog` backend (`cfg(unix)`) is planned for a later step.
+//! There is no syslog backend here: the CLI (`glpi-cli`) routes
+//! `--logger syslog` through its own logging layer on Unix.
 
 pub mod file;
 pub mod stderr;
