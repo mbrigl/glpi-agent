@@ -24,7 +24,8 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 > **Go track status (Phase map, [plan §4](../glpi-agent-go-implementation-plan.md)).**
 > Implemented so far: the single-binary CLI skeleton, `--version`, the inventory
 > *document* model, the `inject` (bin/glpi-injector) and `wakeonlan` paths,
-> `config` + `logging`, and **Phase 8 vSphere/ESX**. Areas where Go is uniformly
+> `config` + `logging`, **Phase 8 vSphere/ESX**, and the **Phase 7 SSH** remote
+> path. Areas where Go is uniformly
 > not started yet carry a per-section Go note below instead of a column of
 > identical ⬜ cells; tables where Go already has entries get a full **Go** column.
 
@@ -40,11 +41,21 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | ⬜ Phase 2–3 |
 | `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | ⬜ Phase 2–3 |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
-| `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ | `internal/remote` | ⬜ Phase 7 |
+| `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ | `internal/remote` | 🟡 SSH connect/exec + remote document (host/OS/arch); WinRM and full collectors pending |
 | `Collect.pm` | `glpi-collect` | ✅ | `internal/collect` | ⬜ Phase 9 |
 | `Deploy.pm` | `glpi-deploy` | ✅ | `internal/deploy` | ⬜ Phase 9 |
 | `WakeOnLan.pm` | `glpi-wakeonlan` | ✅ | `internal/cli` (wakeonlan) | 🟡 udp method; ethernet (raw L2) deferred |
 | _(no upstream equivalent)_ | `glpi-iec61850` | ➕ Rust addition | `internal/iec61850` | ⬜ Phase 4 (build-tagged, cgo) |
+
+## Remote inventory transport
+
+How `RemoteInventory` reaches a host. Upstream supports SSH (system `ssh`,
+`Net::SSH2`/libssh2, or a pure-Perl mode) and WinRM.
+
+| Upstream `RemoteInventory/Remote/` | Rust | Go | Go status |
+| --- | --- | --- | --- |
+| `Ssh.pm` | `glpi-inventory-remote` (russh) | `internal/remote/ssh.go` (`x/crypto/ssh`) | 🟡 connect (password + identity), `LANG=C` exec, OSName/hostname/FQDN/CanRun/ReadFile, host-key policy from `stricthostkeychecking` (strict/accept-new/no) |
+| `Winrm.pm` | `glpi-inventory-remote` | `internal/remote` | ⬜ pending (`masterzen/winrm`) |
 
 ## Local inventory sections
 
