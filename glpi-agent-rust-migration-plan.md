@@ -1,6 +1,6 @@
 # GLPI Agent — Rust Migration Plan (v5, English, implementation-ready)
 
-**Source basis:** glpi-project/glpi-agent, source code + changelog v1.7–v1.17 (May 2026), pinned at commit `24fec36` (the `1.17` line). The exact upstream sync point, and the version-mapping rule that keeps the Rust version in step with GLPI's (GLPI `1.17` → Rust `2.17`), are tracked in [UPSTREAM.md](UPSTREAM.md).
+**Source basis:** glpi-project/glpi-agent, source code + changelog v1.7–v1.17 (May 2026), pinned at commit `24fec36` (the `1.17` line). The exact upstream sync point, and the version-mapping rule that keeps the Rust version in step with GLPI's (GLPI `1.17` → Rust `2.17`), are tracked in [UPSTREAM.md](UPSTREAM.md). The module-by-module upstream→Rust mapping (and remaining gaps) is in [docs/UPSTREAM-MAPPING.md](docs/UPSTREAM-MAPPING.md).
 **Scope:** Agent only, no server. Full feature parity with GLPI Agent 1.17.
 **Goal:** A Rust Cargo workspace usable as a library (`lib`), a CLI, and a daemon/agent — modular and extensible.
 
