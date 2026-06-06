@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/glpi-project/glpi-agent/go/internal/content"
+	"github.com/glpi-project/glpi-agent/go/internal/inventory"
 )
 
 // runInventory implements the `inventory` subcommand, derived from
@@ -58,6 +59,19 @@ func runInventory(ctx *Context, args []string) int {
 			"KEYNAME":  "TAG",
 			"KEYVALUE": tagValue,
 		}
+	}
+
+	// Merge the local category collectors (OPERATINGSYSTEM, HARDWARE, CPUS, …).
+	for section, value := range inventory.Collect() {
+		if existing, ok := inv.Content[section].(map[string]any); ok {
+			if collected, ok := value.(map[string]any); ok {
+				for k, v := range collected {
+					existing[k] = v
+				}
+				continue
+			}
+		}
+		inv.Content[section] = value
 	}
 
 	data, err := inv.JSON()

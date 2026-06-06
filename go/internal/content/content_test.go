@@ -63,3 +63,31 @@ func TestJSONShapeAndLowercasing(t *testing.T) {
 		t.Error("found uppercase key HARDWARE; _convert lowercasing not applied")
 	}
 }
+
+// TestEntryListLowercasing guards that section entry lists typed as
+// []map[string]any (e.g. CPUS, PORTS) get their keys lowercased on export.
+func TestEntryListLowercasing(t *testing.T) {
+	inv := New("host-1")
+	inv.Content["CPUS"] = []map[string]any{
+		{"NAME": "Intel", "CORE": 4},
+	}
+	data, err := inv.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var msg map[string]any
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatal(err)
+	}
+	cpus, ok := msg["content"].(map[string]any)["cpus"].([]any)
+	if !ok || len(cpus) != 1 {
+		t.Fatalf("cpus not exported as a list: %v", msg["content"])
+	}
+	entry := cpus[0].(map[string]any)
+	if _, bad := entry["NAME"]; bad {
+		t.Error("CPU entry key NAME not lowercased")
+	}
+	if entry["name"] != "Intel" || entry["core"] != float64(4) {
+		t.Errorf("cpu entry = %v", entry)
+	}
+}

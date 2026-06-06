@@ -103,6 +103,13 @@ func lowercaseKeys(v any) any {
 			out[i] = lowercaseKeys(inner)
 		}
 		return out
+	case []map[string]any:
+		// Section entry lists (e.g. CPUS, PORTS) are commonly typed this way.
+		out := make([]any, len(val))
+		for i, inner := range val {
+			out[i] = lowercaseKeys(inner)
+		}
+		return out
 	default:
 		return v
 	}
