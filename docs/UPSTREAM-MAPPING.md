@@ -25,8 +25,9 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 > Implemented so far: the single-binary CLI skeleton, `--version`, the inventory
 > *document* model, the `inject` (bin/glpi-injector) and `wakeonlan` paths,
 > `config` + `logging`, **Phase 8 vSphere/ESX**, the **Phase 7 SSH** remote
-> path, the **Phase 10** cross-compile/CI spike, and **Phase 2–3**
-> (NetDiscovery + NetInventory over SNMP via gosnmp). Areas where Go is uniformly
+> path, the **Phase 10** cross-compile/CI spike, **Phase 2–3** (NetDiscovery +
+> NetInventory over SNMP via gosnmp), and the start of **Phase 6** (Linux local
+> inventory: OS/HARDWARE/CPUS). Areas where Go is uniformly
 > not started yet carry a per-section Go note below instead of a column of
 > identical ⬜ cells; tables where Go already has entries get a full **Go** column.
 >
@@ -43,7 +44,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 
 | Upstream `Task/` | Rust crate | Rust | Go package | Go |
 | --- | --- | --- | --- | --- |
-| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 protocol document model only; category collectors are Phase 6 |
+| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + Linux OPERATINGSYSTEM/HARDWARE(memory)/CPUS collectors; remaining categories and Windows/macOS pending (Phase 6) |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 SNMP probe (generic system-MIB device properties) + IPv4 range scan via gosnmp; SNMPv3, threaded scan, sysObjectID classification pending |
 | `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS via gosnmp; per-vendor MibSupport sections pending |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
@@ -70,10 +71,12 @@ MacOS,…}`); here they are mapped by the **GLPI JSON section** the data lands i
 which is how the Rust side ([`glpi-inventory-local`](../crates/glpi-inventory-local/src/categories/),
 emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is organised.
 
-> **Go:** local inventory collection is **Phase 6, not started** — every section
-> below is ⬜ for `internal/inventory`. Only the *document* model and the canonical
-> section keys exist (`internal/content`). The Go column is therefore omitted here
-> and will be added when the Go category collectors land.
+> **Go:** local inventory collection is **Phase 6, in progress** (Linux first).
+> Done in `internal/inventory`: **`operatingsystem`** (os-release + kernel
+> name/version), **`hardware`** memory/swap + hostname, and **`cpus`**
+> (/proc/cpuinfo, physical-id grouping). Every other section below is still ⬜ for
+> Go, as are the Windows/macOS collectors; a full Go column is added here once
+> more sections land.
 
 | GLPI section | Upstream module(s) | Rust | Status |
 | --- | --- | --- | --- |
@@ -113,7 +116,8 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 
 ## Platform inventory coverage
 
-> **Go:** ⬜ across all platforms (depends on the Phase 6 local inventory).
+> **Go:** Linux 🟡 (OPERATINGSYSTEM/HARDWARE-memory/CPUS via `//go:build linux`
+> collectors); Windows/macOS ⬜ (a non-Linux stub collects only the hostname).
 
 | OS | Upstream | Rust (`cfg(target_os)`) | Status |
 | --- | --- | --- | --- |
