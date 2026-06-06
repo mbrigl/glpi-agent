@@ -24,8 +24,8 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 > **Go track status (Phase map, [plan §4](../glpi-agent-go-implementation-plan.md)).**
 > Implemented so far: the single-binary CLI skeleton, `--version`, the inventory
 > *document* model, the `inject` (bin/glpi-injector) and `wakeonlan` paths,
-> `config` + `logging`, **Phase 8 vSphere/ESX**, and the **Phase 7 SSH** remote
-> path. Areas where Go is uniformly
+> `config` + `logging`, **Phase 8 vSphere/ESX**, the **Phase 7 SSH** remote
+> path, and the **Phase 10** cross-compile/CI spike. Areas where Go is uniformly
 > not started yet carry a per-section Go note below instead of a column of
 > identical ⬜ cells; tables where Go already has entries get a full **Go** column.
 
@@ -246,6 +246,19 @@ the Rust SNMP core handles differently. This table is generated — see
 | env layer | `config/sources.rs` | ✅ | — | ⬜ |
 | Windows registry | — | ⬜ fehlt ([config/mod.rs](../crates/glpi-core/src/config/mod.rs)) | — | ⬜ Phase 6 (`x/sys/windows/registry`) |
 | logging backends (Stderr/File/Syslog) | `glpi-core::logging` | ✅ | `internal/logging` | 🟡 Stderr + File; Syslog deferred |
+
+## Build & packaging
+
+Both tracks target the same release matrix — Linux/Windows/macOS on x86_64 and
+aarch64 (see [release.yml](../.github/workflows/release.yml)).
+
+| Concern | Rust | Go | Go status |
+| --- | --- | --- | --- |
+| Cross-compile matrix | per-triple `rustup target` + toolchain | `go/scripts/cross-build.sh` (`GOOS/GOARCH`) | ✅ all six targets, pure-Go static (`CGO_ENABLED=0`) from one host |
+| CI (lint/test) | `ci.yml` (fmt + clippy, per-OS test) | [`go.yml`](../.github/workflows/go.yml) | ✅ gofmt+vet, per-OS test, cross matrix |
+| deb / rpm / msi / pkg | `release.yml` (cargo-deb, generate-rpm, WiX, pkgbuild) | — | ⬜ pending (binaries built; OS packages next) |
+| snap / flatpak | `release.yml` + [`packaging/`](../packaging/) | — | ⬜ pending |
+| IEC 61850 (cgo) impact on cross-build | feature-gated FFI | build-tagged, off by default | ✅ keeps the default build cgo-free |
 
 ## Keeping this current
 
