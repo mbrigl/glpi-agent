@@ -2,9 +2,15 @@
 
 # Upstream module mapping
 
-Maps the upstream **Perl** GLPI agent's modules and features to their Rust
-counterparts in this workspace, so upstream fixes and features can be located
-and ported deliberately rather than rediscovered each time.
+Maps the upstream **Perl** GLPI agent's modules and features to their **Rust**
+and **Go** counterparts in this workspace, so upstream fixes and features can be
+located and ported deliberately rather than rediscovered each time.
+
+This workspace carries two parallel re-implementations (see the
+[Rust migration plan](../glpi-agent-rust-migration-plan.md) and the
+[Go implementation plan](../glpi-agent-go-implementation-plan.md)). Both derive
+from the **same upstream Perl** source; the Go track in particular is derived
+*exclusively* from Perl, never from the Rust code.
 
 This is the **module/feature** layer of upstream tracking. It pairs with:
 
@@ -15,23 +21,30 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 
 **Legend:** ✅ ported · 🟡 partial / best-effort · ⬜ missing · 🚫 intentionally dropped.
 
+> **Go track status (Phase map, [plan §4](../glpi-agent-go-implementation-plan.md)).**
+> Implemented so far: the single-binary CLI skeleton, `--version`, the inventory
+> *document* model, the `inject` (bin/glpi-injector) and `wakeonlan` paths,
+> `config` + `logging`, and **Phase 8 vSphere/ESX**. Areas where Go is uniformly
+> not started yet carry a per-section Go note below instead of a column of
+> identical ⬜ cells; tables where Go already has entries get a full **Go** column.
+
 > Status reflects *module/section presence*, not field-by-field depth inside a
 > ported section. Where a section is ported but some platform's detail fields
 > are best-effort, it is marked 🟡 with a note.
 
 ## Tasks
 
-| Upstream `Task/` | Rust crate | Status |
-| --- | --- | --- |
-| `Inventory.pm` | `glpi-inventory-local` | ✅ |
-| `NetDiscovery.pm` | `glpi-discovery` | ✅ |
-| `NetInventory.pm` | `glpi-discovery` | ✅ |
-| `ESX.pm` | `glpi-vsphere` | ✅ |
-| `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ |
-| `Collect.pm` | `glpi-collect` | ✅ |
-| `Deploy.pm` | `glpi-deploy` | ✅ |
-| `WakeOnLan.pm` | `glpi-wakeonlan` | ✅ |
-| _(no upstream equivalent)_ | `glpi-iec61850` | ➕ Rust addition |
+| Upstream `Task/` | Rust crate | Rust | Go package | Go |
+| --- | --- | --- | --- | --- |
+| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 protocol document model only; category collectors are Phase 6 |
+| `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | ⬜ Phase 2–3 |
+| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | ⬜ Phase 2–3 |
+| `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
+| `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ | `internal/remote` | ⬜ Phase 7 |
+| `Collect.pm` | `glpi-collect` | ✅ | `internal/collect` | ⬜ Phase 9 |
+| `Deploy.pm` | `glpi-deploy` | ✅ | `internal/deploy` | ⬜ Phase 9 |
+| `WakeOnLan.pm` | `glpi-wakeonlan` | ✅ | `internal/cli` (wakeonlan) | 🟡 udp method; ethernet (raw L2) deferred |
+| _(no upstream equivalent)_ | `glpi-iec61850` | ➕ Rust addition | `internal/iec61850` | ⬜ Phase 4 (build-tagged, cgo) |
 
 ## Local inventory sections
 
@@ -39,6 +52,11 @@ Upstream organises inventory modules by OS (`Task/Inventory/{Generic,Linux,Win32
 MacOS,…}`); here they are mapped by the **GLPI JSON section** the data lands in,
 which is how the Rust side ([`glpi-inventory-local`](../crates/glpi-inventory-local/src/categories/),
 emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is organised.
+
+> **Go:** local inventory collection is **Phase 6, not started** — every section
+> below is ⬜ for `internal/inventory`. Only the *document* model and the canonical
+> section keys exist (`internal/content`). The Go column is therefore omitted here
+> and will be added when the Go category collectors land.
 
 | GLPI section | Upstream module(s) | Rust | Status |
 | --- | --- | --- | --- |
@@ -78,6 +96,8 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 
 ## Platform inventory coverage
 
+> **Go:** ⬜ across all platforms (depends on the Phase 6 local inventory).
+
 | OS | Upstream | Rust (`cfg(target_os)`) | Status |
 | --- | --- | --- | --- |
 | Linux | `Inventory/Linux/**` | `linux` | ✅ |
@@ -89,6 +109,8 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 | *BSD | `Inventory/BSD/**` (13) | — | ⬜ fehlt |
 
 ## SNMP — standard MIBs
+
+> **Go:** ⬜ not started (Phase 2–3, `gosnmp` + `internal/discovery/mib`).
 
 | Area | Rust | Status |
 | --- | --- | --- |
@@ -103,6 +125,10 @@ Upstream ships 80 `MibSupport/` modules (78 device/OS + 2 framework); 69 device
 MIBs are ported, **9 are missing**, and the 2 framework modules are infra that
 the Rust SNMP core handles differently. This table is generated — see
 "Keeping this current".
+
+> **Go:** ⬜ for all vendor MibSupport modules (Phase 2–3, ported from the same
+> upstream `MibSupport/**`, not from the Rust files). The Go column is omitted
+> from this generated table until the Go SNMP tail begins.
 
 | Upstream `MibSupport/` | Rust `…/mib/vendor/` | Status |
 | --- | --- | --- |
@@ -189,6 +215,8 @@ the Rust SNMP core handles differently. This table is generated — see
 
 ## HTTP control server
 
+> **Go:** ⬜ not started (Phase 5, `internal/httpd`).
+
 | Upstream `HTTP/Server/` | Rust `glpi-http` | Status |
 | --- | --- | --- |
 | `Proxy.pm` | `proxy.rs` | 🟡 ported; `GLPI-Proxy-ID` hop header not forwarded ([proxy.rs](../crates/glpi-http/src/proxy.rs)) |
@@ -201,15 +229,22 @@ the Rust SNMP core handles differently. This table is generated — see
 
 ## Configuration sources
 
-| Upstream layer | Rust (`glpi-core::config`) | Status |
-| --- | --- | --- |
-| defaults → `agent.cfg` → `conf.d/*.cfg` → env → CLI | `config/{sources,mod,options}.rs` | ✅ |
-| Windows registry | — | ⬜ fehlt ([config/mod.rs](../crates/glpi-core/src/config/mod.rs)) |
+| Upstream layer | Rust (`glpi-core::config`) | Rust | Go (`internal/config`) | Go |
+| --- | --- | --- | --- | --- |
+| defaults → `agent.cfg` → `conf.d/*.cfg` (`include`) → CLI | `config/{sources,mod,options}.rs` | ✅ | `internal/config` | ✅ defaults < file (`include`) < CLI + `_checkContent` |
+| env layer | `config/sources.rs` | ✅ | — | ⬜ |
+| Windows registry | — | ⬜ fehlt ([config/mod.rs](../crates/glpi-core/src/config/mod.rs)) | — | ⬜ Phase 6 (`x/sys/windows/registry`) |
+| logging backends (Stderr/File/Syslog) | `glpi-core::logging` | ✅ | `internal/logging` | 🟡 Stderr + File; Syslog deferred |
 
 ## Keeping this current
 
 This file is part of the pin-bump checklist in [UPSTREAM.md](../UPSTREAM.md): when
-the synced commit moves, reconcile this mapping in the same PR.
+the synced commit moves, reconcile this mapping in the same PR — for **both** the
+Rust and Go columns/notes, so each track's parity against upstream stays visible.
+
+As the Go track advances through its phases, promote the per-section Go notes to
+full **Go** columns once a section has at least one non-⬜ entry (the Tasks and
+Configuration tables already use full columns).
 
 The vendor-MIB table is mechanical and should be regenerated rather than
 hand-edited. Against a checkout of the pinned upstream commit and this repo,
