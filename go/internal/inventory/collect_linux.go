@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // Collect gathers the local Linux inventory: OPERATINGSYSTEM, HARDWARE (name +
@@ -63,7 +64,35 @@ func Collect() Sections {
 		s["NETWORKS"] = nets
 	}
 
+	// DRIVES (mounted filesystems) from /proc/mounts + statfs.
+	if f, err := osOpen("/proc/mounts"); err == nil {
+		mounts := ParseMounts(f)
+		f.Close()
+		if drives := BuildDrives(mounts, statfsMB); len(drives) > 0 {
+			s["DRIVES"] = drives
+		}
+	}
+
+	// SOFTWARES from the dpkg status database (Debian/Ubuntu).
+	if f, err := osOpen("/var/lib/dpkg/status"); err == nil {
+		if sw := ParseDpkgStatus(f); len(sw) > 0 {
+			s["SOFTWARES"] = sw
+		}
+		f.Close()
+	}
+
 	return s
+}
+
+// statfsMB returns a mountpoint's total and free space in MiB via statfs(2).
+func statfsMB(mountpoint string) (totalMB, freeMB int, ok bool) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(mountpoint, &st); err != nil {
+		return 0, 0, false
+	}
+	bs := uint64(st.Bsize)
+	const mib = 1024 * 1024
+	return int(st.Blocks * bs / mib), int(st.Bavail * bs / mib), true
 }
 
 // readDMI reads the /sys/class/dmi/id fields ParseDMI consumes.
