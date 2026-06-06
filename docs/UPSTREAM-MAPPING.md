@@ -45,7 +45,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 | --- | --- | --- | --- | --- |
 | `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 protocol document model only; category collectors are Phase 6 |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 SNMP probe (generic system-MIB device properties) + IPv4 range scan via gosnmp; SNMPv3, threaded scan, sysObjectID classification pending |
-| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic device properties + IF-MIB PORTS table (SNMP walk) via gosnmp; sysObjectID/MibSupport classification + vendor sections pending |
+| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS via gosnmp; per-vendor MibSupport sections pending |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
 | `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ | `internal/remote` | 🟡 SSH connect/exec + remote document (host/OS/arch); WinRM and full collectors pending |
 | `Collect.pm` | `glpi-collect` | ✅ | `internal/collect` | ⬜ Phase 9 |
@@ -127,10 +127,12 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 
 ## SNMP — standard MIBs
 
-> **Go:** 🟡 started (`gosnmp`). The **system MIB** (generic device properties)
-> and the **IF-MIB** interface table (PORTS, via SNMP walk) are read by
-> `internal/discovery`. ip/bridge/LLDP/CDP/entity/printer and the sysObjectID
-> device classification are ⬜ pending.
+> **Go:** 🟡 (`gosnmp`). The **system MIB** (generic device properties), the
+> **IF-MIB** interface table (PORTS, via SNMP walk), the **device
+> classification** (sysObjectID matched against the embedded `sysobject.ids`),
+> and the Entity/Printer SERIAL/FIRMWARE/MODEL OIDs are read by
+> `internal/discovery`. ip/bridge/LLDP/CDP and the per-vendor MibSupport
+> overrides are ⬜ pending.
 
 | Area | Rust | Go | Status |
 | --- | --- | --- | --- |
@@ -138,8 +140,8 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 | interfaces (IF-MIB) | `mib/if_mib.rs` | `discovery` PORTS (walk) | 🟡 Go core columns |
 | ip | `mib/ip_mib.rs` | — | ⬜ Go |
 | bridge / LLDP / CDP | `mib/{bridge_mib,lldp_mib,cdp_mib}.rs` | — | ⬜ Go |
-| entity / printer | `mib/{entity_mib,printer_mib}.rs` | — | ⬜ Go |
-| device classification | `mib/device.rs` | — | ⬜ Go (sysObjectID DB + MibSupport) |
+| entity / printer | `mib/{entity_mib,printer_mib}.rs` | `discovery` SERIAL/FIRMWARE/MODEL (entPhysical*, prt*) | 🟡 Go device fields |
+| device classification | `mib/device.rs` | `discovery/classify` (embedded `sysobject.ids`) | ✅ Go (sysObjectID DB); MibSupport overrides ⬜ |
 
 ## SNMP — vendor `MibSupport`
 
