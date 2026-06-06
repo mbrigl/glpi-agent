@@ -24,7 +24,8 @@ var uuidInFilename = regexp.MustCompile(`(?i)([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-
 // runInject implements the `inject` subcommand, derived from bin/glpi-injector.
 // Phase 1 covers file/directory/stdin sources, zlib (de)compression, agent-id
 // derivation and the POST; the OAuth and pending-proxy paths are deferred.
-func runInject(args []string, stdout, stderr io.Writer) int {
+func runInject(ctx *Context, args []string) int {
+	stdout, stderr := ctx.Stdout, ctx.Stderr
 	fs := flag.NewFlagSet("inject", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (

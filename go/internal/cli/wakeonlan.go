@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"io"
 	"net"
 	"regexp"
 	"strings"
@@ -24,7 +23,8 @@ var macAddressPattern = regexp.MustCompile(`^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$
 // Only the self-contained "udp" method is implemented in Phase 1; it mirrors
 // _send_magic_packet_udp (broadcast to 255.255.255.255:9). The "ethernet"
 // method needs raw layer-2 sockets and root and is deferred.
-func runWakeOnLan(args []string, stdout, stderr io.Writer) int {
+func runWakeOnLan(ctx *Context, args []string) int {
+	stdout, stderr := ctx.Stdout, ctx.Stderr
 	fs := flag.NewFlagSet("wakeonlan", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (

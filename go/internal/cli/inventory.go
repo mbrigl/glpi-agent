@@ -5,7 +5,6 @@ package cli
 import (
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -18,7 +17,8 @@ import (
 // Phase 1 emits a minimal but valid GLPI Agent Protocol inventory document
 // (deviceid + action + itemtype + content with VERSIONCLIENT and the default
 // HARDWARE.VMSYSTEM). Category collectors are added in Phase 6.
-func runInventory(args []string, stdout, stderr io.Writer) int {
+func runInventory(ctx *Context, args []string) int {
+	stdout, stderr := ctx.Stdout, ctx.Stderr
 	fs := flag.NewFlagSet("inventory", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (
@@ -43,11 +43,20 @@ func runInventory(args []string, stdout, stderr io.Writer) int {
 		assetName = host
 	}
 
+	ctx.Logger.Debug("running local inventory for " + assetName)
+
+	// The --tag flag overrides the configured tag, otherwise fall back to the
+	// config value (tag is a config option in the Perl agent).
+	tagValue := *tag
+	if tagValue == "" {
+		tagValue = ctx.Cfg.String("tag")
+	}
+
 	inv := content.New(content.DeviceID(assetName, time.Now()))
-	if *tag != "" {
+	if tagValue != "" {
 		inv.Content["ACCOUNTINFO"] = map[string]any{
 			"KEYNAME":  "TAG",
-			"KEYVALUE": *tag,
+			"KEYVALUE": tagValue,
 		}
 	}
 
