@@ -44,7 +44,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 
 | Upstream `Task/` | Rust crate | Rust | Go package | Go |
 | --- | --- | --- | --- | --- |
-| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + Linux OPERATINGSYSTEM/HARDWARE(memory)/CPUS collectors; remaining categories and Windows/macOS pending (Phase 6) |
+| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + Linux BIOS/OPERATINGSYSTEM/HARDWARE(memory)/CPUS/NETWORKS collectors; remaining categories and Windows/macOS pending (Phase 6) |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 SNMP probe (generic system-MIB device properties) + IPv4 range scan via gosnmp; SNMPv3, threaded scan, sysObjectID classification pending |
 | `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS via gosnmp; per-vendor MibSupport sections pending |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
@@ -72,11 +72,12 @@ which is how the Rust side ([`glpi-inventory-local`](../crates/glpi-inventory-lo
 emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is organised.
 
 > **Go:** local inventory collection is **Phase 6, in progress** (Linux first).
-> Done in `internal/inventory`: **`operatingsystem`** (os-release + kernel
-> name/version), **`hardware`** memory/swap + hostname, and **`cpus`**
-> (/proc/cpuinfo, physical-id grouping). Every other section below is still ⬜ for
-> Go, as are the Windows/macOS collectors; a full Go column is added here once
-> more sections land.
+> Done in `internal/inventory`: **`bios`** (sysfs DMI), **`operatingsystem`**
+> (os-release + kernel name/version), **`hardware`** memory/swap + hostname,
+> **`cpus`** (/proc/cpuinfo, physical-id grouping), and **`networks`**
+> (net.Interfaces + sysfs). Every other section below is still ⬜ for Go, as are
+> the Windows/macOS collectors; a full Go column is added here once more sections
+> land.
 
 | GLPI section | Upstream module(s) | Rust | Status |
 | --- | --- | --- | --- |
@@ -116,8 +117,9 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 
 ## Platform inventory coverage
 
-> **Go:** Linux 🟡 (OPERATINGSYSTEM/HARDWARE-memory/CPUS via `//go:build linux`
-> collectors); Windows/macOS ⬜ (a non-Linux stub collects only the hostname).
+> **Go:** Linux 🟡 (BIOS/OPERATINGSYSTEM/HARDWARE-memory/CPUS/NETWORKS via
+> `//go:build linux` collectors); Windows/macOS ⬜ (a non-Linux stub collects only
+> the hostname).
 
 | OS | Upstream | Rust (`cfg(target_os)`) | Status |
 | --- | --- | --- | --- |
