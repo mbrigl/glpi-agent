@@ -20,7 +20,7 @@
             Keywords="Installer"
             Description="GLPI inventory agent (Rust rewrite)"
             Manufacturer="GLPI Agent Rust contributors"
-            InstallerVersion="450"
+            InstallerVersion="500"
             Languages="1033"
             Compressed="yes"
             InstallScope="perMachine"
@@ -77,8 +77,12 @@
 
         <!-- The licence shown on the WixUI LicenseAgreement dialog. Without this
              override WiX falls back to the WixUIExtension's placeholder RTF (the
-             "lorem ipsum" text); point it at the project's GPL-2.0 licence. -->
-        <WixVariable Id="WixUILicenseRtf" Value="wix\License.rtf"/>
+             "lorem ipsum" text); point it at the project's GPL-2.0 licence.
+             $(sys.SOURCEFILEDIR) (candle expands it to this file's directory, with
+             a trailing separator) makes the path absolute — a relative `wix\…`
+             path is resolved by light against its working dir, which in this
+             workspace is the repo root, not crates/glpi-cli, so it fails. -->
+        <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)License.rtf"/>
 
         <UIRef Id="WixUI_FeatureTree"/>
     </Product>
