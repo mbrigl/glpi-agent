@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to stamp into package names (no leading v); mirrors GLPI's, e.g. 2.17.0"
+        description: "Release version as x.y.z, no leading v; mirrors GLPI's (e.g. 2.17.0)"
         required: false
         default: "2.17.0"
 
@@ -77,9 +77,14 @@ jobs:
         id: version
         shell: bash
         run: |
-          v="$(bash .github/scripts/resolve-version.sh \
-            '${{ github.event_name }}' '${{ github.ref_name }}' '${{ github.event.inputs.version }}')"
-          echo "version=$v" >> "$GITHUB_OUTPUT"
+          # A manual run uses the typed input (which must be a full x.y.z
+          # version); a tag push uses the tag name with its leading `v` stripped.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            v="${{ github.event.inputs.version }}"
+          else
+            v="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=${v:-2.17.0}" >> "$GITHUB_OUTPUT"
 
       # Stamp the release version into the workspace so every artifact reports
       # it — the binary's `--version`, the MSI ProductVersion, and the deb/rpm
@@ -241,8 +246,8 @@ jobs:
       - name: Stamp release version into Cargo.toml
         shell: bash
         run: |
-          v="$(bash .github/scripts/resolve-version.sh \
-            '${{ github.event_name }}' '${{ github.ref_name }}' '${{ github.event.inputs.version }}')"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then v="${{ github.event.inputs.version }}"; else v="${GITHUB_REF_NAME#v}"; fi
+          v="${v:-2.17.0}"
           sed -E "s|^version = \"[^\"]*\"|version = \"$v\"|" Cargo.toml > Cargo.toml.tmp
           mv Cargo.toml.tmp Cargo.toml
           grep -m1 '^version = ' Cargo.toml
@@ -289,8 +294,8 @@ jobs:
       - name: Collect flatpak
         shell: bash
         run: |
-          v="$(bash .github/scripts/resolve-version.sh \
-            '${{ github.event_name }}' '${{ github.ref_name }}' '${{ github.event.inputs.version }}')"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then v="${{ github.event.inputs.version }}"; else v="${GITHUB_REF_NAME#v}"; fi
+          v="${v:-2.17.0}"
           mkdir -p dist
           cp glpi-agent.flatpak "dist/${BIN_NAME}-${v}-x86_64.flatpak"
       - uses: actions/upload-artifact@v4
