@@ -5,7 +5,9 @@
 package inventory
 
 import (
+	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -51,7 +53,87 @@ func Collect() Sections {
 		f.Close()
 	}
 
+	// BIOS from the DMI sysfs tree.
+	if bios := ParseDMI(readDMI()); len(bios) > 0 {
+		s["BIOS"] = bios
+	}
+
+	// NETWORKS from the kernel interface list + sysfs details.
+	if nets := BuildNetworks(linuxInterfaces()); len(nets) > 0 {
+		s["NETWORKS"] = nets
+	}
+
 	return s
+}
+
+// readDMI reads the /sys/class/dmi/id fields ParseDMI consumes.
+func readDMI() map[string]string {
+	const base = "/sys/class/dmi/id"
+	fields := []string{
+		"bios_vendor", "bios_version", "bios_date", "sys_vendor", "product_name",
+		"product_sku", "product_serial", "board_vendor", "board_name",
+		"board_serial", "chassis_asset_tag", "chassis_serial",
+	}
+	dmi := map[string]string{}
+	for _, f := range fields {
+		if v := firstLine(base + "/" + f); v != "" {
+			dmi[f] = v
+		}
+	}
+	return dmi
+}
+
+// linuxInterfaces builds the NetIface list from the kernel interface table and
+// per-interface sysfs attributes (virtual flag, link speed, driver).
+func linuxInterfaces() []NetIface {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var out []NetIface
+	for _, iface := range ifaces {
+		ni := NetIface{
+			Name: iface.Name,
+			MAC:  iface.HardwareAddr.String(),
+			Up:   iface.Flags&net.FlagUp != 0,
+		}
+		if _, err := os.Stat("/sys/devices/virtual/net/" + iface.Name); err == nil {
+			ni.Virtual = true
+		}
+		if sp := firstLine("/sys/class/net/" + iface.Name + "/speed"); sp != "" {
+			if n, err := strconv.Atoi(sp); err == nil && n > 0 {
+				ni.Speed = n
+			}
+		}
+		ni.Driver = ueventDriver(iface.Name)
+
+		addrs, _ := iface.Addrs()
+		for _, a := range addrs {
+			if ipnet, ok := a.(*net.IPNet); ok && ipnet.IP.To4() != nil {
+				ni.Addrs = append(ni.Addrs, NetAddr{
+					IP:   ipnet.IP.String(),
+					Mask: net.IP(ipnet.Mask).String(),
+				})
+			}
+		}
+		out = append(out, ni)
+	}
+	return out
+}
+
+// ueventDriver extracts DRIVER= from /sys/class/net/<name>/device/uevent
+// (Linux/Networks.pm _getUevent).
+func ueventDriver(name string) string {
+	data, err := os.ReadFile("/sys/class/net/" + name + "/device/uevent")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if v, ok := strings.CutPrefix(line, "DRIVER="); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 func osOpen(path string) (*os.File, error) { return os.Open(path) }
