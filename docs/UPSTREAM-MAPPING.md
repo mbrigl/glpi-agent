@@ -25,8 +25,8 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 > Implemented so far: the single-binary CLI skeleton, `--version`, the inventory
 > *document* model, the `inject` (bin/glpi-injector) and `wakeonlan` paths,
 > `config` + `logging`, **Phase 8 vSphere/ESX**, the **Phase 7 SSH** remote
-> path, the **Phase 10** cross-compile/CI spike, and the start of **Phase 2**
-> (NetDiscovery SNMP probe via gosnmp). Areas where Go is uniformly
+> path, the **Phase 10** cross-compile/CI spike, and **Phase 2–3**
+> (NetDiscovery + NetInventory over SNMP via gosnmp). Areas where Go is uniformly
 > not started yet carry a per-section Go note below instead of a column of
 > identical ⬜ cells; tables where Go already has entries get a full **Go** column.
 >
@@ -45,7 +45,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 | --- | --- | --- | --- | --- |
 | `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 protocol document model only; category collectors are Phase 6 |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 SNMP probe (generic system-MIB device properties) + IPv4 range scan via gosnmp; SNMPv3, threaded scan, sysObjectID classification pending |
-| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | ⬜ Phase 3 |
+| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic device properties + IF-MIB PORTS table (SNMP walk) via gosnmp; sysObjectID/MibSupport classification + vendor sections pending |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
 | `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ | `internal/remote` | 🟡 SSH connect/exec + remote document (host/OS/arch); WinRM and full collectors pending |
 | `Collect.pm` | `glpi-collect` | ✅ | `internal/collect` | ⬜ Phase 9 |
@@ -127,17 +127,19 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 
 ## SNMP — standard MIBs
 
-> **Go:** 🟡 started (`gosnmp`). The **system MIB** generic device properties
-> (sysDescr/sysName/sysLocation/sysContact/sysUpTime/sysObjectID) are read by
-> `internal/discovery` for NetDiscovery. interfaces/ip/bridge/LLDP/CDP/entity/
-> printer and the device classification are ⬜ pending (NetInventory, Phase 3).
+> **Go:** 🟡 started (`gosnmp`). The **system MIB** (generic device properties)
+> and the **IF-MIB** interface table (PORTS, via SNMP walk) are read by
+> `internal/discovery`. ip/bridge/LLDP/CDP/entity/printer and the sysObjectID
+> device classification are ⬜ pending.
 
-| Area | Rust | Status |
-| --- | --- | --- |
-| system / interfaces / ip | `mib/{system_mib,if_mib,ip_mib}.rs` | ✅ |
-| bridge / LLDP / CDP | `mib/{bridge_mib,lldp_mib,cdp_mib}.rs` | ✅ |
-| entity / printer | `mib/{entity_mib,printer_mib}.rs` | ✅ |
-| device classification | `mib/device.rs` | ✅ |
+| Area | Rust | Go | Status |
+| --- | --- | --- | --- |
+| system | `mib/system_mib.rs` | `discovery` generic properties | ✅ Go |
+| interfaces (IF-MIB) | `mib/if_mib.rs` | `discovery` PORTS (walk) | 🟡 Go core columns |
+| ip | `mib/ip_mib.rs` | — | ⬜ Go |
+| bridge / LLDP / CDP | `mib/{bridge_mib,lldp_mib,cdp_mib}.rs` | — | ⬜ Go |
+| entity / printer | `mib/{entity_mib,printer_mib}.rs` | — | ⬜ Go |
+| device classification | `mib/device.rs` | — | ⬜ Go (sysObjectID DB + MibSupport) |
 
 ## SNMP — vendor `MibSupport`
 
