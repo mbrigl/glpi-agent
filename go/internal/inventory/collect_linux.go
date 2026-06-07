@@ -19,17 +19,17 @@ func Collect() Sections {
 	s := Sections{}
 
 	// OPERATINGSYSTEM: os-release distro fields + kernel name/version.
-	os := map[string]any{"KERNEL_NAME": "linux"}
+	osInfo := map[string]any{"KERNEL_NAME": "linux"}
 	if f, err := osOpen("/etc/os-release"); err == nil {
 		for k, v := range ParseOSRelease(f) {
-			os[k] = v
+			osInfo[k] = v
 		}
 		f.Close()
 	}
 	if rel := firstLine("/proc/sys/kernel/osrelease"); rel != "" {
-		os["KERNEL_VERSION"] = rel
+		osInfo["KERNEL_VERSION"] = rel
 	}
-	s["OPERATINGSYSTEM"] = os
+	s["OPERATINGSYSTEM"] = osInfo
 
 	// HARDWARE: hostname + memory/swap.
 	s.mergeHardware(map[string]any{"NAME": hostname()})
@@ -81,8 +81,48 @@ func Collect() Sections {
 		f.Close()
 	}
 
+	// LOCAL_USERS / LOCAL_GROUPS from /etc/passwd + /etc/group.
+	passwd, _ := os.Open("/etc/passwd")
+	group, _ := os.Open("/etc/group")
+	users, groups := BuildUsers(passwd, group)
+	if passwd != nil {
+		passwd.Close()
+	}
+	if group != nil {
+		group.Close()
+	}
+	if len(users) > 0 {
+		s["LOCAL_USERS"] = users
+	}
+	if len(groups) > 0 {
+		s["LOCAL_GROUPS"] = groups
+	}
+
+	// ENVS from the process environment.
+	if envs := BuildEnvs(osEnviron()); len(envs) > 0 {
+		s["ENVS"] = envs
+	}
+
+	// STORAGES and BATTERIES from sysfs.
+	if st := BuildStorages(""); len(st) > 0 {
+		s["STORAGES"] = st
+	}
+	if bat := BuildBatteries(""); len(bat) > 0 {
+		s["BATTERIES"] = bat
+	}
+
+	// INPUTS from /proc/bus/input/devices.
+	if f, err := osOpen("/proc/bus/input/devices"); err == nil {
+		if in := ParseInputDevices(f); len(in) > 0 {
+			s["INPUTS"] = in
+		}
+		f.Close()
+	}
+
 	return s
 }
+
+func osEnviron() []string { return os.Environ() }
 
 // statfsMB returns a mountpoint's total and free space in MiB via statfs(2).
 func statfsMB(mountpoint string) (totalMB, freeMB int, ok bool) {
