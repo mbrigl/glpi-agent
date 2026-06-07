@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -145,6 +146,11 @@ func Collect() Sections {
 		s["PROCESSES"] = procs
 	}
 
+	// MONITORS from the DRM EDID blocks.
+	if mon := collectMonitors(); len(mon) > 0 {
+		s["MONITORS"] = mon
+	}
+
 	// CONTROLLERS / VIDEOS / SOUNDS from one lspci scan.
 	if out := runCommand("lspci", "-v", "-nn"); out != "" {
 		devices := ParseLspci(strings.NewReader(out))
@@ -160,6 +166,51 @@ func Collect() Sections {
 	}
 
 	return s
+}
+
+// collectMonitors reads the EDID block of each connected DRM output and builds
+// the MONITORS entries (Generic/Screen.pm reads the same drm card edid files).
+// Entries are de-duplicated by serial/BASE64.
+func collectMonitors() []map[string]any {
+	matches, _ := filepathGlob(
+		"/sys/devices/*/*/drm/*/edid",
+		"/sys/devices/*/*/*/drm/*/edid",
+	)
+	seen := map[string]bool{}
+	var monitors []map[string]any
+	for _, path := range matches {
+		raw, err := os.ReadFile(path)
+		if err != nil || len(raw) < 128 {
+			continue
+		}
+		monitor := BuildMonitor(raw)
+		if monitor == nil {
+			continue
+		}
+		key, _ := monitor["SERIAL"].(string)
+		if key == "" {
+			key, _ = monitor["BASE64"].(string)
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		monitors = append(monitors, monitor)
+	}
+	return monitors
+}
+
+// filepathGlob globs several patterns and concatenates the matches.
+func filepathGlob(patterns ...string) ([]string, error) {
+	var all []string
+	for _, p := range patterns {
+		m, err := filepath.Glob(p)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, m...)
+	}
+	return all, nil
 }
 
 // runCommand runs a tool found on PATH and returns its stdout, or "" if it is
