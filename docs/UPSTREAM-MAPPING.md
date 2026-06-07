@@ -26,8 +26,8 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 > *document* model, the `inject` (bin/glpi-injector) and `wakeonlan` paths,
 > `config` + `logging`, **Phase 8 vSphere/ESX**, the **Phase 7 SSH** remote
 > path, the **Phase 10** cross-compile/CI spike, **Phase 2–3** (NetDiscovery +
-> NetInventory over SNMP via gosnmp), and the start of **Phase 6** (Linux local
-> inventory: OS/HARDWARE/CPUS). Areas where Go is uniformly
+> NetInventory over SNMP via gosnmp), and **Phase 6** (Linux local inventory: 13
+> sections so far). Areas where Go is uniformly
 > not started yet carry a per-section Go note below instead of a column of
 > identical ⬜ cells; tables where Go already has entries get a full **Go** column.
 >
@@ -44,7 +44,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 
 | Upstream `Task/` | Rust crate | Rust | Go package | Go |
 | --- | --- | --- | --- | --- |
-| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + Linux BIOS/OPERATINGSYSTEM/HARDWARE/CPUS/NETWORKS/DRIVES/SOFTWARES collectors; remaining categories and Windows/macOS pending (Phase 6) |
+| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 13 Linux sections (bios, hardware, os, cpus, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs); see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 SNMP probe (generic system-MIB device properties) + IPv4 range scan via gosnmp; SNMPv3, threaded scan, sysObjectID classification pending |
 | `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS via gosnmp; per-vendor MibSupport sections pending |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
@@ -72,55 +72,52 @@ which is how the Rust side ([`glpi-inventory-local`](../crates/glpi-inventory-lo
 emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is organised.
 
 > **Go:** local inventory collection is **Phase 6, in progress** (Linux first).
-> Done in `internal/inventory`: **`bios`** (sysfs DMI), **`operatingsystem`**
-> (os-release + kernel name/version), **`hardware`** memory/swap + hostname,
-> **`cpus`** (/proc/cpuinfo, physical-id grouping), **`networks`**
-> (net.Interfaces + sysfs), **`drives`** (/proc/mounts + statfs), and
-> **`softwares`** (dpkg status). Every other section below is still ⬜ for Go, as
-> are the Windows/macOS collectors; a full Go column is added here once more
-> sections land.
+> The **Go** column below tracks `internal/inventory`. Done sections read pure
+> files/sysfs (no external tools); the ⬜ ones still pending are mostly those that
+> need an external command (dmidecode/lspci/lvm) or EDID parsing, noted inline.
+> Windows/macOS collectors are separate (a non-Linux stub yields only the
+> hostname).
 
-| GLPI section | Upstream module(s) | Rust | Status |
+| GLPI section | Upstream module(s) | Rust | Go (Linux) |
 | --- | --- | --- | --- |
-| `bios` / `hardware` | `Generic/Dmidecode`, `*/Bios`, `*/Hardware` | `categories/hardware.rs` (+`dmi.rs`) | ✅ |
-| `operatingsystem` | `Generic/OS`, `*/OS` | `categories/os.rs` | ✅ |
-| `cpus` | `*/CPU` | `categories/cpu.rs` | ✅ |
-| `memories` | `*/Memory` | `categories/memory.rs` | ✅ |
-| `softwares` | `Generic/Softwares/*` | `categories/software.rs` | ✅ |
-| `networks` | `Generic/Networks`, `*/Networks` | `categories/network.rs` | ✅ |
-| `storages` | `Generic/Storages/*` | `categories/storage.rs` | ✅ |
-| `processes` | `Generic/Processes` | `categories/process.rs` | ✅ |
-| `controllers` | `Win32/Controllers`, PCI controllers | `categories/pci.rs` | 🟡 Linux via `lspci`; Win/macOS detail best-effort |
-| `usbdevices` | `Generic/USB` | `categories/usb.rs` | ✅ |
-| `users` | `Generic/Users` (logged-in) | `categories/user.rs` | ✅ |
-| `batteries` | `Generic/Batteries/*` | `categories/battery.rs` | ✅ |
-| `envs` | environment variables | `categories/environment.rs` | ✅ |
-| `videos` | `*/Videos` | `categories/video.rs` | ✅ |
-| `sounds` | `*/Sounds` | `categories/sound.rs` | ✅ |
-| `printers` | `Generic/Printers/*` | `categories/printer.rs` | ✅ |
-| `monitors` | `Generic/Screen` (EDID) | `categories/monitor.rs` | ✅ |
-| `antivirus` | `{Linux,Win32,MacOS}/AntiVirus/*` | `categories/antivirus.rs` | 🟡 platform coverage varies |
-| `drives` | `Generic/Drives` (filesystems) | — | ⬜ fehlt |
-| `virtualmachines` | `Generic/Virtualization/*`, `Vmsystem` | — | ⬜ fehlt (local host guests; ESX VMs are in `glpi-vsphere`) |
-| `licenseinfos` | `Win32/License`, `MacOS/License` | — | ⬜ fehlt |
-| `remote_mgmt` | `Generic/Remote_Mgmt/*`, `Generic/Ipmi` | — | ⬜ fehlt (IPMI/BMC, TeamViewer, AnyDesk, …) |
-| `databases_services` | `Generic/Databases/*` | — | ⬜ fehlt |
-| `firewall` | `Generic/Firewall`, `*/Firewall` | — | ⬜ fehlt |
-| `physical_volumes` / `logical_volumes` | `Linux/LVM` | — | ⬜ fehlt (LVM) |
-| `local_users` / `local_groups` | `Generic/Users` (local accounts) | — | ⬜ fehlt |
-| `inputs` | `{Win32,Linux}/Inputs` | — | ⬜ fehlt (keyboard/mouse) |
-| `ports` | `Win32/Ports` | — | ⬜ fehlt |
-| `slots` | `Win32/Slots`, `Generic/Dmidecode` | — | ⬜ fehlt |
-| `modems` | `Win32/Modems` | — | ⬜ fehlt |
-| `powersupplies` | `MacOS/Psu`, dmidecode | — | ⬜ fehlt |
-| `accesslog` | `Inventory/AccessLog` | — | 🚫 minor metadata, dropped |
-| `rudder` | `Generic/Rudder` | — | 🚫 Rudder integration, dropped |
+| `bios` | `Generic/Dmidecode`, `*/Bios` | ✅ | ✅ sysfs DMI |
+| `hardware` | `*/Hardware`, `*/Memory` | ✅ | ✅ name + MEMORY/SWAP |
+| `operatingsystem` | `Generic/OS`, `*/OS` | ✅ | ✅ os-release + kernel |
+| `cpus` | `*/CPU` | ✅ | ✅ /proc/cpuinfo |
+| `memories` | `*/Memory` | ✅ | ⬜ needs dmidecode (type 17 DIMMs) |
+| `softwares` | `Generic/Softwares/*` | ✅ | ✅ dpkg (rpm pending) |
+| `networks` | `Generic/Networks`, `*/Networks` | ✅ | ✅ net.Interfaces + sysfs |
+| `storages` | `Generic/Storages/*` | ✅ | ✅ /sys/block |
+| `drives` | `Generic/Drives` (filesystems) | ⬜ | ✅ /proc/mounts + statfs |
+| `local_users` / `local_groups` | `Generic/Users` (local accounts) | ⬜ | ✅ /etc/passwd + /etc/group |
+| `envs` | environment variables | ✅ | ✅ |
+| `batteries` | `Generic/Batteries/*` | ✅ | ✅ sysfs power_supply |
+| `inputs` | `{Win32,Linux}/Inputs` | ⬜ | ✅ /proc/bus/input/devices |
+| `processes` | `Generic/Processes` | ✅ | ⬜ /proc (ps-like) pending |
+| `usbdevices` | `Generic/USB` | ✅ | ⬜ /sys/bus/usb pending |
+| `users` | `Generic/Users` (logged-in) | ✅ | ⬜ pending (who/utmp) |
+| `controllers` | `Win32/Controllers`, PCI | 🟡 | ⬜ needs lspci |
+| `videos` | `*/Videos` | ✅ | ⬜ needs lspci/Xorg |
+| `sounds` | `*/Sounds` | ✅ | ⬜ needs lspci |
+| `monitors` | `Generic/Screen` (EDID) | ✅ | ⬜ EDID parsing |
+| `printers` | `Generic/Printers/*` | ✅ | ⬜ pending |
+| `slots` / `ports` | `Generic/Dmidecode`, `Win32/*` | 🟡 | ⬜ needs dmidecode |
+| `modems` / `powersupplies` | `Win32/Modems`, `MacOS/Psu`, dmidecode | ⬜ | ⬜ needs dmidecode |
+| `antivirus` | `{Linux,Win32,MacOS}/AntiVirus/*` | 🟡 | ⬜ pending |
+| `physical_volumes` / `logical_volumes` | `Linux/LVM` | ⬜ | ⬜ needs lvm |
+| `virtualmachines` | `Generic/Virtualization/*`, `Vmsystem` | ⬜ | ⬜ (ESX VMs are in `internal/vsphere`) |
+| `licenseinfos` | `Win32/License`, `MacOS/License` | ⬜ | ⬜ pending |
+| `remote_mgmt` | `Generic/Remote_Mgmt/*`, `Generic/Ipmi` | ⬜ | ⬜ pending |
+| `databases_services` | `Generic/Databases/*` | ⬜ | ⬜ pending |
+| `firewall` | `Generic/Firewall`, `*/Firewall` | ⬜ | ⬜ pending |
+| `accesslog` | `Inventory/AccessLog` | 🚫 | 🚫 minor metadata |
+| `rudder` | `Generic/Rudder` | 🚫 | 🚫 Rudder integration |
 
 ## Platform inventory coverage
 
-> **Go:** Linux 🟡 (BIOS/OPERATINGSYSTEM/HARDWARE/CPUS/NETWORKS/DRIVES/SOFTWARES
-> via `//go:build linux` collectors); Windows/macOS ⬜ (a non-Linux stub collects
-> only the hostname).
+> **Go:** Linux 🟡 (13 sections via `//go:build linux` collectors — see the local
+> inventory sections table); Windows/macOS ⬜ (a non-Linux stub collects only the
+> hostname).
 
 | OS | Upstream | Rust (`cfg(target_os)`) | Status |
 | --- | --- | --- | --- |
