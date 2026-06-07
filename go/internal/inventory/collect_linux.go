@@ -233,7 +233,30 @@ func collectVirtualMachines() []map[string]any {
 	vms = append(vms, collectDocker()...)
 	vms = append(vms, collectVirtualBox()...)
 	vms = append(vms, collectNspawn()...)
+	vms = append(vms, collectXen()...)
+	vms = append(vms, collectVirtuozzo()...)
 	return vms
+}
+
+// collectXen lists Xen domains via xl (or the legacy xm), mirroring
+// Virtualization/Xen.pm.
+func collectXen() []map[string]any {
+	for _, tool := range []string{"xl", "xm"} {
+		if _, err := exec.LookPath(tool); err == nil {
+			return ParseXenList(runCommand(tool, "list"), tool)
+		}
+	}
+	return nil
+}
+
+// collectVirtuozzo lists OpenVZ/Virtuozzo containers, mirroring
+// Virtualization/Virtuozzo.pm.
+func collectVirtuozzo() []map[string]any {
+	if _, err := exec.LookPath("vzlist"); err != nil {
+		return nil
+	}
+	return ParseVirtuozzo(runCommand("vzlist", "--all", "--no-header",
+		"-o", "hostname,ctid,cpulimit,status,ostemplate"))
 }
 
 // collectNspawn lists systemd-nspawn machines via machinectl, mirroring
@@ -299,18 +322,58 @@ func collectLibvirt() []map[string]any {
 // per-product Linux/AntiVirus/* detectors.
 func collectAntivirus() []map[string]any {
 	var av []map[string]any
-	if _, err := exec.LookPath("mdatp"); err == nil {
-		if e := ParseDefenderHealth([]byte(runCommand("mdatp", "health", "--output", "json"))); e != nil {
+	add := func(e map[string]any) {
+		if e != nil {
 			av = append(av, e)
 		}
 	}
-	const falconctl = "/opt/CrowdStrike/falconctl"
-	if _, err := os.Stat(falconctl); err == nil {
-		if e := ParseCrowdStrikeVersion(runCommand(falconctl, "-g", "--version")); e != nil {
-			av = append(av, e)
-		}
+
+	if _, err := exec.LookPath("mdatp"); err == nil {
+		add(ParseDefenderHealth([]byte(runCommand("mdatp", "health", "--output", "json"))))
+	}
+	if hasFile("/opt/CrowdStrike/falconctl") {
+		add(ParseCrowdStrikeVersion(runCommand("/opt/CrowdStrike/falconctl", "-g", "--version")))
+	}
+	if bdui := "/opt/bitdefender-security-tools/bin/bduitool"; hasFile(bdui) {
+		add(ParseBitdefender(runCommand(bdui, "get", "ps")))
+	}
+	if cytool := "/opt/traps/bin/cytool"; hasFile(cytool) {
+		add(ParseCortex(runCommand(cytool, "info"), runCommand(cytool, "info", "query")))
+	}
+	if _, err := exec.LookPath("drweb-ctl"); err == nil {
+		add(ParseDrWeb(
+			runCommand("drweb-ctl", "--version"),
+			runCommand("systemctl", "is-active", "drweb-configd.service"),
+			runCommand("drweb-ctl", "baseinfo"),
+		))
+	}
+	if upd, lic := "/opt/eset/eea/bin/upd", "/opt/eset/eea/sbin/lic"; hasFile(upd) && hasFile(lic) {
+		add(ParseEEA(
+			runCommand(upd, "-version"),
+			runCommand("systemctl", "is-active", "eea.service"),
+			runCommand(lic, "--status"),
+			runCommand(upd, "--list-modules"),
+		))
+	}
+	if _, err := exec.LookPath("kesl-control"); err == nil {
+		add(ParseKESL(
+			runCommand("systemctl", "is-active", "kesl.service"),
+			runCommand("kesl-control", "--app-info"),
+		))
+	}
+	if sc := "/opt/sentinelone/bin/sentinelctl"; hasFile(sc) {
+		add(ParseSentinelOne(runCommand(sc, "version") + "\n" +
+			runCommand(sc, "engines", "status") + "\n" +
+			runCommand(sc, "control", "status") + "\n" +
+			runCommand(sc, "management", "status")))
 	}
 	return av
+}
+
+// hasFile reports whether a path exists.
+func hasFile(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // collectRemoteMgmt gathers remote-management agent ids, mirroring the

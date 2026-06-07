@@ -149,6 +149,82 @@ func ParseVBoxShowVMInfo(out string) []map[string]any {
 	return machines
 }
 
+var xenLineRE = regexp.MustCompile(`^(.*\S)\s+(\d+)\s+(\d+)\s+(\d+)\s+([a-z-]{5,6})\s`)
+
+// xenStatus maps a Xen state letter to a GLPI status (Xen.pm %status_list).
+var xenStatus = map[string]string{
+	"r": "running", "b": "blocked", "p": "paused",
+	"s": "shutdown", "c": "crashed", "d": "dying",
+}
+
+// ParseXenList builds VIRTUALMACHINES entries from `xm list`/`xl list` output,
+// mirroring Virtualization/Xen.pm: NAME/MEMORY/VCPU/STATUS/VMTYPE=xen,
+// SUBSYSTEM=toolstack. Domain-0 and domain id 0 are skipped.
+func ParseXenList(out, toolstack string) []map[string]any {
+	var machines []map[string]any
+	for _, line := range strings.Split(out, "\n") {
+		m := xenLineRE.FindStringSubmatch(line)
+		if m == nil {
+			continue // header or non-matching line
+		}
+		name, vmid, memory, vcpu, state := m[1], m[2], m[3], m[4], m[5]
+		if vmid == "0" || name == "Domain-0" {
+			continue
+		}
+		status := "off"
+		if stripped := strings.ReplaceAll(state, "-", ""); stripped != "" {
+			if s, ok := xenStatus[stripped]; ok {
+				status = s
+			}
+		}
+		machines = append(machines, map[string]any{
+			"NAME":      name,
+			"MEMORY":    atoiOr0(memory),
+			"VCPU":      atoiOr0(vcpu),
+			"STATUS":    status,
+			"VMTYPE":    "xen",
+			"SUBSYSTEM": toolstack,
+		})
+	}
+	return machines
+}
+
+// virtuozzoStatus maps a vzlist status to a GLPI status (Virtuozzo.pm).
+var virtuozzoStatus = map[string]string{
+	"stopped": "off", "running": "running", "paused": "paused",
+	"mounted": "off", "suspended": "paused", "unknown": "off",
+}
+
+// ParseVirtuozzo builds VIRTUALMACHINES entries from `vzlist --all --no-header
+// -o hostname,ctid,cpulimit,status,ostemplate`, mirroring Virtualization/
+// Virtuozzo.pm (NAME/VCPU/STATUS/SUBSYSTEM/VMTYPE; MEMORY/MAC come from the
+// container config and are pending).
+func ParseVirtuozzo(out string) []map[string]any {
+	var containers []map[string]any
+	eachFields(out, func(f []string) {
+		if len(f) < 5 {
+			return
+		}
+		status := virtuozzoStatus[f[3]]
+		if status == "" {
+			status = "off"
+		}
+		containers = append(containers, map[string]any{
+			"NAME":      f[0],
+			"VCPU":      atoiOr0(f[2]),
+			"STATUS":    status,
+			"SUBSYSTEM": f[4],
+			"VMTYPE":    "virtuozzo",
+		})
+	})
+	return containers
+}
+
+func atoiOr0(s string) int {
+	n, _ := strconv.Atoi(strings.TrimSpace(s))
+	return n
+}
+
 // ParseMachinectl builds VIRTUALMACHINES entries from `machinectl --no-pager
 // --no-legend`, mirroring Virtualization/SystemdNspawn.pm: name/class/service,
 // skipping libvirt-qemu machines (covered by the libvirt collector).

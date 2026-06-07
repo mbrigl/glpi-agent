@@ -41,6 +41,45 @@ func TestParseMachinectl(t *testing.T) {
 	}
 }
 
+func TestParseXenList(t *testing.T) {
+	const out = `Name                                        ID   Mem VCPUs      State   Time(s)
+Domain-0                                     0  4096     4     r-----   1234.5
+web                                          1  2048     2     -b----    567.8
+db                                           2  1024     1     --p---     12.3
+`
+	vms := ParseXenList(out, "xl")
+	if len(vms) != 2 {
+		t.Fatalf("vms = %d, want 2 (header + Domain-0 skipped)", len(vms))
+	}
+	if vms[0]["NAME"] != "web" || vms[0]["MEMORY"] != 2048 || vms[0]["VCPU"] != 2 {
+		t.Errorf("web = %v", vms[0])
+	}
+	if vms[0]["STATUS"] != "blocked" || vms[0]["VMTYPE"] != "xen" || vms[0]["SUBSYSTEM"] != "xl" {
+		t.Errorf("web status/type = %v", vms[0])
+	}
+	if vms[1]["STATUS"] != "paused" {
+		t.Errorf("db STATUS = %v, want paused", vms[1]["STATUS"])
+	}
+}
+
+func TestParseVirtuozzo(t *testing.T) {
+	const out = "web    101  2  running  centos-7-x86_64\n" +
+		"db     102  4  stopped  debian-12-x86_64\n"
+	c := ParseVirtuozzo(out)
+	if len(c) != 2 {
+		t.Fatalf("containers = %d, want 2", len(c))
+	}
+	if c[0]["NAME"] != "web" || c[0]["VCPU"] != 2 || c[0]["STATUS"] != "running" {
+		t.Errorf("web = %v", c[0])
+	}
+	if c[0]["SUBSYSTEM"] != "centos-7-x86_64" || c[0]["VMTYPE"] != "virtuozzo" {
+		t.Errorf("web subsys = %v", c[0])
+	}
+	if c[1]["STATUS"] != "off" { // stopped -> off
+		t.Errorf("db STATUS = %v, want off", c[1]["STATUS"])
+	}
+}
+
 func TestParseCrowdStrikeVersion(t *testing.T) {
 	av := ParseCrowdStrikeVersion("version = 7.10.16208.0\n")
 	if av == nil || av["NAME"] != "CrowdStrike Falcon Sensor" || av["VERSION"] != "7.10.16208.0" {

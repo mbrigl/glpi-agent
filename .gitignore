@@ -20,3 +20,6 @@
 # (glpi-agent) and depends on pre-release crypto crates (p384, elliptic-curve,
 # primefield via russh/ssh-key). Without a committed lockfile, CI re-resolves
 # these rc.* versions to an incompatible set and fails to compile. Keep it tracked.
+
+# Local Claude settings
+.claude/settings.local.json
