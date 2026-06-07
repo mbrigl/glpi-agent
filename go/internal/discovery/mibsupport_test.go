@@ -46,16 +46,47 @@ func TestMikrotikMibSupport(t *testing.T) {
 // TestMatchMibModulesPriority checks sysObjectID vs sysORID matching.
 func TestMatchMibModulesPriority(t *testing.T) {
 	// Ubiquiti matches both by sysObjectID and by the sysORID oid rule.
-	bySysobj := matchMibModules(".1.3.6.1.4.1.41112.1.6", map[string]bool{})
+	bySysobj := matchMibModules(".1.3.6.1.4.1.41112.1.6", map[string]bool{}, nil)
 	if !containsModule(bySysobj, "ubnt") {
 		t.Error("ubnt should match by sysObjectID")
 	}
-	byOrid := matchMibModules("", map[string]bool{"1.3.6.1.4.1.41112": true})
+	byOrid := matchMibModules("", map[string]bool{"1.3.6.1.4.1.41112": true}, nil)
 	if !containsModule(byOrid, "ubnt") {
 		t.Error("ubnt should match by sysORID oid rule")
 	}
-	if len(matchMibModules(".1.2.3.4", map[string]bool{})) != 0 {
+	if len(matchMibModules(".1.2.3.4", map[string]bool{}, nil)) != 0 {
 		t.Error("an unrelated sysObjectID must match nothing")
+	}
+}
+
+// TestLexmarkMibSupport checks a sysObjectID-matched printer module.
+func TestLexmarkMibSupport(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:                   "Lexmark MX522",
+		oidSysObjectID:                ".1.3.6.1.4.1.641.2",
+		"1.3.6.1.4.1.641.2.1.2.1.2.1": "Lexmark MX522adhe",
+		"1.3.6.1.4.1.641.2.1.2.1.4.1": "LW80.PR.P241",
+		"1.3.6.1.4.1.641.2.1.2.1.6.1": "5012ABC0001",
+	}}
+	device, _ := GetInventory("192.0.2.20", getter)
+	if device["MODEL"] != "Lexmark MX522adhe" || device["FIRMWARE"] != "LW80.PR.P241" || device["SERIAL"] != "5012ABC0001" {
+		t.Errorf("lexmark device = %v", device)
+	}
+}
+
+// TestHpPrivateOidMatch checks the privateoid match path (the device responds to
+// the HP gdStatusId even though its sysObjectID is generic).
+func TestHpPrivateOidMatch(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:                          "HP ETHERNET MULTI-ENVIRONMENT",
+		oidSysObjectID:                       ".1.3.6.1.4.1.11.2.3.9.1",
+		"1.3.6.1.4.1.11.2.3.9.1.1.7.0":       "READY",       // gdStatusId -> privateoid match
+		"1.3.6.1.4.1.11.2.3.9.4.2.1.1.3.2.0": "HP LaserJet", // model
+		"1.3.6.1.4.1.11.2.3.9.4.2.1.1.3.3.0": "CNB1234567",  // serial
+	}}
+	device, _ := GetInventory("192.0.2.21", getter)
+	if device["MODEL"] != "HP LaserJet" || device["SERIAL"] != "CNB1234567" {
+		t.Errorf("hp device = %v", device)
 	}
 }
 

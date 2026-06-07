@@ -22,7 +22,8 @@ const sysORID = "1.3.6.1.2.1.1.9.1.2"
 type MibModule struct {
 	Name        string
 	SysObjectID *regexp.Regexp
-	OID         string
+	OID         string // matched against the sysORID table
+	PrivateOID  string // matched when a GET on it responds
 	Priority    int
 
 	Type         func(g SNMPGetter, d Device) string
@@ -55,13 +56,15 @@ func oidMatch(oid string) *regexp.Regexp {
 
 // matchMibModules returns the modules that apply to a device, sorted by
 // priority. sysorid is the set of OIDs advertised in the device's sysORID table.
-func matchMibModules(sysObjectID string, sysorid map[string]bool) []MibModule {
+func matchMibModules(sysObjectID string, sysorid map[string]bool, getter SNMPGetter) []MibModule {
 	var matched []MibModule
 	for _, m := range mibRegistry {
 		switch {
 		case m.SysObjectID != nil && sysObjectID != "" && m.SysObjectID.MatchString(sysObjectID):
 			matched = append(matched, m)
 		case m.OID != "" && sysorid[strings.TrimPrefix(m.OID, ".")]:
+			matched = append(matched, m)
+		case m.PrivateOID != "" && getter != nil && getOne(getter, m.PrivateOID) != "":
 			matched = append(matched, m)
 		}
 	}
@@ -74,7 +77,7 @@ func matchMibModules(sysObjectID string, sysorid map[string]bool) []MibModule {
 // first matching module to provide a field wins, overriding the generic
 // sysObjectID-database classification.
 func applyMibSupport(device Device, getter SNMPGetter, sysObjectID string) {
-	modules := matchMibModules(sysObjectID, walkSysORIDSet(getter))
+	modules := matchMibModules(sysObjectID, walkSysORIDSet(getter), getter)
 	if len(modules) == 0 {
 		return
 	}
