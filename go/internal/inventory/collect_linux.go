@@ -146,6 +146,40 @@ func Collect() Sections {
 		s["PROCESSES"] = procs
 	}
 
+	// USERS: currently logged-in users (who).
+	if _, err := exec.LookPath("who"); err == nil {
+		if u := BuildLoggedUsers(runCommand("who", "--users")); len(u) > 0 {
+			s["USERS"] = u
+		}
+	}
+
+	// PRINTERS from the CUPS configuration.
+	if f, err := osOpen("/etc/cups/printers.conf"); err == nil {
+		if p := ParsePrintersConf(f); len(p) > 0 {
+			s["PRINTERS"] = p
+		}
+		f.Close()
+	}
+
+	// FIREWALL: ufw and/or firewalld status.
+	if fw := collectFirewall(); len(fw) > 0 {
+		s["FIREWALL"] = fw
+	}
+
+	// ANTIVIRUS: Microsoft Defender for Endpoint (extensible to more products).
+	if _, err := exec.LookPath("mdatp"); err == nil {
+		if av := ParseDefenderHealth([]byte(runCommand("mdatp", "health", "--output", "json"))); av != nil {
+			s["ANTIVIRUS"] = []map[string]any{av}
+		}
+	}
+
+	// REMOTE_MGMT: TeamViewer (extensible to more agents).
+	if _, err := exec.LookPath("teamviewer"); err == nil {
+		if rm := ParseTeamViewerInfo(runCommand("teamviewer", "--info")); rm != nil {
+			s["REMOTE_MGMT"] = []map[string]any{rm}
+		}
+	}
+
 	// MONITORS from the DRM EDID blocks.
 	if mon := collectMonitors(); len(mon) > 0 {
 		s["MONITORS"] = mon
@@ -183,6 +217,25 @@ func Collect() Sections {
 	}
 
 	return s
+}
+
+// collectFirewall reports the ufw and firewalld status as FIREWALL entries,
+// mirroring Generic/Firewall/{Ufw,Systemd}.pm (STATUS on/off).
+func collectFirewall() []map[string]any {
+	var fw []map[string]any
+	if _, err := exec.LookPath("ufw"); err == nil {
+		status := "off"
+		if strings.Contains(runCommand("ufw", "status"), "Status: active") {
+			status = "on"
+		}
+		fw = append(fw, map[string]any{"DESCRIPTION": "ufw", "STATUS": status})
+	}
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		if strings.TrimSpace(runCommand("systemctl", "is-active", "firewalld")) == "active" {
+			fw = append(fw, map[string]any{"DESCRIPTION": "firewalld", "STATUS": "on"})
+		}
+	}
+	return fw
 }
 
 // collectMonitors reads the EDID block of each connected DRM output and builds
