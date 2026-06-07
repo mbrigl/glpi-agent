@@ -41,6 +41,114 @@ func ParseVirshList(out string) []map[string]any {
 	return machines
 }
 
+// dockerSeparator is the field separator Docker.pm embeds in its
+// `docker ps -a --format` template.
+const dockerSeparator = "#=#=#"
+
+// DockerPSTemplate is the `docker ps -a --format` template (ID/Image/Ports/Names),
+// matching Virtualization/Docker.pm.
+const DockerPSTemplate = "{{.ID}}" + dockerSeparator + "{{.Image}}" + dockerSeparator + "{{.Ports}}" + dockerSeparator + "{{.Names}}"
+
+// ParseDockerPS builds the base VIRTUALMACHINES entries from `docker ps -a`
+// output (VMTYPE/UUID/IMAGE/NAME), mirroring Docker.pm::_getContainers. STATUS
+// is filled per container by the collector (docker inspect).
+func ParseDockerPS(out string) []map[string]any {
+	var containers []map[string]any
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			continue
+		}
+		f := strings.Split(line, dockerSeparator)
+		if len(f) != 4 {
+			continue
+		}
+		containers = append(containers, map[string]any{
+			"VMTYPE": "docker",
+			"UUID":   f[0],
+			"IMAGE":  f[1],
+			"NAME":   f[3],
+		})
+	}
+	return containers
+}
+
+var vboxListRE = regexp.MustCompile(`^"[^"]+"\s+\{([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\}$`)
+
+// ParseVBoxList extracts the VM uuids from `VBoxManage list vms` output,
+// mirroring _parseVBoxManageVms.
+func ParseVBoxList(out string) []string {
+	var uuids []string
+	for _, line := range strings.Split(out, "\n") {
+		if m := vboxListRE.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
+			uuids = append(uuids, m[1])
+		}
+	}
+	return uuids
+}
+
+// vboxStatus maps a VBoxManage state to the GLPI virtual-machine STATUS values
+// (Virtualization/VirtualBox.pm %status_list).
+var vboxStatus = map[string]string{
+	"powered off": "off", "saved": "off", "teleported": "off",
+	"aborted": "crashed", "stuck": "blocked", "teleporting": "paused",
+	"live snapshotting": "running", "starting": "running", "stopping": "dying",
+	"saving": "dying", "restoring": "running", "running": "running", "paused": "paused",
+}
+
+var (
+	vboxNameRE  = regexp.MustCompile(`^Name:\s+(.*)$`)
+	vboxUUIDRE  = regexp.MustCompile(`^UUID:\s+(.+)`)
+	vboxMemRE   = regexp.MustCompile(`^Memory size:\s+(.+)`)
+	vboxStateRE = regexp.MustCompile(`^State:\s+(.+) \(`)
+	vboxIndexRE = regexp.MustCompile(`^Index:\s+(\d+)$`)
+)
+
+// ParseVBoxShowVMInfo parses concatenated `VBoxManage showvminfo` output into
+// VIRTUALMACHINES entries, mirroring _parseVBoxManage including the Index trick
+// that disambiguates a VM Name from a USB-device Name.
+func ParseVBoxShowVMInfo(out string) []map[string]any {
+	var machines []map[string]any
+	var cur map[string]any
+	haveIndex := false
+
+	for _, line := range strings.Split(out, "\n") {
+		switch {
+		case vboxNameRE.MatchString(line):
+			if haveIndex {
+				haveIndex = false // this Name belongs to a USB device, skip it
+				continue
+			}
+			if cur != nil {
+				machines = append(machines, cur)
+			}
+			cur = map[string]any{
+				"NAME":      vboxNameRE.FindStringSubmatch(line)[1],
+				"VCPU":      1,
+				"SUBSYSTEM": "Oracle VM VirtualBox",
+				"VMTYPE":    "virtualbox",
+			}
+		case cur == nil:
+			continue
+		case vboxUUIDRE.MatchString(line):
+			cur["UUID"] = vboxUUIDRE.FindStringSubmatch(line)[1]
+		case vboxMemRE.MatchString(line):
+			if mb := canonicalSizeMB(strings.TrimSpace(vboxMemRE.FindStringSubmatch(line)[1])); mb > 0 {
+				cur["MEMORY"] = mb
+			}
+		case vboxStateRE.MatchString(line):
+			if st, ok := vboxStatus[vboxStateRE.FindStringSubmatch(line)[1]]; ok {
+				cur["STATUS"] = st
+			}
+		case vboxIndexRE.MatchString(line):
+			haveIndex = true
+		}
+	}
+	if cur != nil {
+		machines = append(machines, cur)
+	}
+	return machines
+}
+
 type virshDomain struct {
 	Type          string `xml:"type,attr"`
 	UUID          string `xml:"uuid"`

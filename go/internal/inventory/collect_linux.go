@@ -185,8 +185,8 @@ func Collect() Sections {
 		}
 	}
 
-	// VIRTUALMACHINES: local libvirt guests.
-	if vms := collectLibvirt(); len(vms) > 0 {
+	// VIRTUALMACHINES: local guests across the available hypervisors.
+	if vms := collectVirtualMachines(); len(vms) > 0 {
 		s["VIRTUALMACHINES"] = vms
 	}
 
@@ -227,6 +227,49 @@ func Collect() Sections {
 	}
 
 	return s
+}
+
+// collectVirtualMachines gathers local guests from every available hypervisor,
+// mirroring the per-hypervisor Virtualization/* modules.
+func collectVirtualMachines() []map[string]any {
+	var vms []map[string]any
+	vms = append(vms, collectLibvirt()...)
+	vms = append(vms, collectDocker()...)
+	vms = append(vms, collectVirtualBox()...)
+	return vms
+}
+
+// collectDocker lists containers and resolves each one's running state, mirroring
+// Virtualization/Docker.pm (needs docker).
+func collectDocker() []map[string]any {
+	if _, err := exec.LookPath("docker"); err != nil {
+		return nil
+	}
+	containers := ParseDockerPS(runCommand("docker", "ps", "-a", "--format", DockerPSTemplate))
+	for _, c := range containers {
+		id, _ := c["UUID"].(string)
+		running := strings.TrimSpace(runCommand("docker", "inspect", "--format", "{{.State.Running}}", id))
+		if running == "true" {
+			c["STATUS"] = "running"
+		} else {
+			c["STATUS"] = "off"
+		}
+	}
+	return containers
+}
+
+// collectVirtualBox lists VMs and parses each one's showvminfo, mirroring
+// Virtualization/VirtualBox.pm (needs VBoxManage).
+func collectVirtualBox() []map[string]any {
+	if _, err := exec.LookPath("VBoxManage"); err != nil {
+		return nil
+	}
+	var dump strings.Builder
+	for _, uuid := range ParseVBoxList(runCommand("VBoxManage", "-nologo", "list", "vms")) {
+		dump.WriteString(runCommand("VBoxManage", "-nologo", "showvminfo", uuid))
+		dump.WriteByte('\n')
+	}
+	return ParseVBoxShowVMInfo(dump.String())
 }
 
 // collectLibvirt lists local libvirt guests and enriches each from its domain
