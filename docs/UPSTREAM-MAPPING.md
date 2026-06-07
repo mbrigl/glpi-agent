@@ -26,7 +26,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 > *document* model, the `inject` (bin/glpi-injector) and `wakeonlan` paths,
 > `config` + `logging`, **Phase 8 vSphere/ESX**, the **Phase 7 SSH** remote
 > path, the **Phase 10** cross-compile/CI spike, **Phase 2–3** (NetDiscovery +
-> NetInventory over SNMP via gosnmp), and **Phase 6** (Linux local inventory: 28 (+3 partial)
+> NetInventory over SNMP via gosnmp), and **Phase 6** (Linux local inventory: ~31 sections, 2 partial
 > sections so far). Areas where Go is uniformly
 > not started yet carry a per-section Go note below instead of a column of
 > identical ⬜ cells; tables where Go already has entries get a full **Go** column.
@@ -44,7 +44,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 
 | Upstream `Task/` | Rust crate | Rust | Go package | Go |
 | --- | --- | --- | --- | --- |
-| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 28 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices, controllers, videos, sounds, slots, ports, monitors, physical_volumes, volume_groups, logical_volumes, users, printers, firewall) + antivirus/remote_mgmt/virtualmachines partial; softwares incl. rpm; virtualmachines all mainstream Linux hypervisors (10); antivirus complete (8 detectors); remote_mgmt +AnyDesk+RustDesk; processes +STARTED; see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
+| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 28 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices, controllers, videos, sounds, slots, ports, monitors, physical_volumes, volume_groups, logical_volumes, users, printers, firewall) (virtualmachines: all mainstream Linux hypervisors; antivirus: all 8 detectors; remote_mgmt 🟡 TeamViewer+AnyDesk+RustDesk; videos 🟡 lspci); see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 SNMP probe (generic system-MIB device properties) + IPv4 range scan via gosnmp; SNMPv3, threaded scan, sysObjectID classification pending |
 | `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS via gosnmp; per-vendor MibSupport sections pending |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
