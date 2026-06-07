@@ -32,6 +32,20 @@ Memory Device
 	Size: No Module Installed
 	Locator: DIMM 1
 	Type: Unknown
+
+Handle 0x0900, DMI type 9, 17 bytes
+System Slot Information
+	Designation: PCIe x16
+	Type: x16 PCI Express
+	Current Usage: In Use
+	ID: 1
+
+Handle 0x0800, DMI type 8, 9 bytes
+Port Connector Information
+	Internal Reference Designator: JFP1
+	External Reference Designator: USB1
+	External Connector Type: Access Bus (USB)
+	Port Type: USB
 `
 
 func TestParseDmidecodeAndMemories(t *testing.T) {
@@ -69,6 +83,35 @@ func TestParseDmidecodeAndMemories(t *testing.T) {
 	}
 	if _, present := mem[1]["CAPACITY"]; present {
 		t.Errorf("empty slot must not have CAPACITY: %v", mem[1])
+	}
+}
+
+func TestBuildSlotsAndPorts(t *testing.T) {
+	byType := ParseDmidecode(strings.NewReader(dmidecodeSample))
+
+	slots := BuildSlots(byType)
+	if len(slots) != 1 {
+		t.Fatalf("slots = %d, want 1", len(slots))
+	}
+	s := slots[0]
+	if s["NAME"] != "PCIe x16" || s["DESCRIPTION"] != "x16 PCI Express" || s["DESIGNATION"] != "1" {
+		t.Errorf("slot = %v", s)
+	}
+	if s["STATUS"] != "used" { // "In Use" -> used
+		t.Errorf("slot STATUS = %v, want used", s["STATUS"])
+	}
+
+	ports := BuildPorts(byType)
+	if len(ports) != 1 {
+		t.Fatalf("ports = %d, want 1", len(ports))
+	}
+	p := ports[0]
+	// NAME prefers the internal reference designator; CAPTION the external one.
+	if p["NAME"] != "JFP1" || p["CAPTION"] != "USB1" || p["TYPE"] != "USB" {
+		t.Errorf("port = %v", p)
+	}
+	if p["DESCRIPTION"] != "Access Bus (USB)" { // first non-empty in the chain
+		t.Errorf("port DESCRIPTION = %v", p["DESCRIPTION"])
 	}
 }
 

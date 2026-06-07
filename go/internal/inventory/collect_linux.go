@@ -125,10 +125,18 @@ func Collect() Sections {
 		s["USBDEVICES"] = usb
 	}
 
-	// MEMORIES from dmidecode (needs the dmidecode tool; best-effort).
+	// MEMORIES / SLOTS / PORTS from one dmidecode scan (best-effort: needs the
+	// dmidecode tool and privileges).
 	if out := runCommand("dmidecode"); out != "" {
-		if mem := BuildMemories(ParseDmidecode(strings.NewReader(out))); len(mem) > 0 {
+		dmi := ParseDmidecode(strings.NewReader(out))
+		if mem := BuildMemories(dmi); len(mem) > 0 {
 			s["MEMORIES"] = mem
+		}
+		if slots := BuildSlots(dmi); len(slots) > 0 {
+			s["SLOTS"] = slots
+		}
+		if ports := BuildPorts(dmi); len(ports) > 0 {
+			s["PORTS"] = ports
 		}
 	}
 

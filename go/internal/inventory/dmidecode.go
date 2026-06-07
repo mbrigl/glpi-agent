@@ -93,6 +93,55 @@ func BuildMemories(byType map[int][]DmiRecord) []map[string]any {
 	return memories
 }
 
+// slotStatus maps the dmidecode "Current Usage" to the GLPI SLOTS STATUS
+// (Slots.pm %status).
+var slotStatus = map[string]string{"In Use": "used", "Available": "free"}
+
+// BuildSlots assembles the SLOTS section from dmidecode type 9 (System Slot)
+// records, mirroring Generic/Dmidecode/Slots.pm.
+func BuildSlots(byType map[int][]DmiRecord) []map[string]any {
+	var slots []map[string]any
+	for _, rec := range byType[9] {
+		info := rec.Fields
+		slot := map[string]any{}
+		setIf(slot, "DESCRIPTION", info["Type"])
+		setIf(slot, "DESIGNATION", info["ID"])
+		setIf(slot, "NAME", info["Designation"])
+		if st, ok := slotStatus[info["Current Usage"]]; ok {
+			slot["STATUS"] = st
+		}
+		slots = append(slots, slot)
+	}
+	return slots
+}
+
+// BuildPorts assembles the PORTS section from dmidecode type 8 (Port Connector)
+// records, mirroring the field coalescing of Generic/Dmidecode/Ports.pm.
+func BuildPorts(byType map[int][]DmiRecord) []map[string]any {
+	var ports []map[string]any
+	for _, rec := range byType[8] {
+		info := rec.Fields
+		port := map[string]any{}
+		setIf(port, "CAPTION", coalesce(info, "External Reference Designator", "External Connector Type", "External Designator"))
+		setIf(port, "DESCRIPTION", coalesce(info, "Internal Connector Type", "External Designator", "Internal Designator", "External Connector Type"))
+		setIf(port, "NAME", coalesce(info, "Internal Reference Designator", "External Reference Designator", "Internal Designator", "External Designator"))
+		setIf(port, "TYPE", coalesce(info, "Port Type", "External Connector Type"))
+		ports = append(ports, port)
+	}
+	return ports
+}
+
+// coalesce returns the first non-empty field value for the given keys, mirroring
+// the Perl // (defined-or) chains.
+func coalesce(fields map[string]string, keys ...string) string {
+	for _, k := range keys {
+		if v := strings.TrimSpace(fields[k]); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 var sizeRE = regexp.MustCompile(`(?i)^(\d+)\s*([kmgt]?i?b)$`)
 
 // canonicalSizeMB converts a dmidecode size like "16 GB" / "8192 MB" to MiB,
