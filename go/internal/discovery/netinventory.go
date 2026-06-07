@@ -125,6 +125,12 @@ func setIdentity(getter SNMPGetter, device Device) {
 		device["MAC"] = mac
 	}
 
+	// Vendor MibSupport refinements override the generic classification (the
+	// getXByMibSupport precedence in SNMP/Device.pm).
+	if sysoid, ok := device["SYSOBJECTID"].(string); ok && sysoid != "" {
+		applyMibSupport(device, getter, sysoid)
+	}
+
 	// MODEL fallback when the database had none.
 	if _, ok := device["MODEL"]; !ok {
 		var model string
