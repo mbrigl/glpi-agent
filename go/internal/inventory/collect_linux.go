@@ -235,6 +235,123 @@ func collectVirtualMachines() []map[string]any {
 	vms = append(vms, collectNspawn()...)
 	vms = append(vms, collectXen()...)
 	vms = append(vms, collectVirtuozzo()...)
+	vms = append(vms, collectQemu()...)
+	vms = append(vms, collectLxd()...)
+	vms = append(vms, collectLxc()...)
+	vms = append(vms, collectVserver()...)
+	return vms
+}
+
+// collectQemu reports standalone qemu-system guests by parsing their process
+// command lines, mirroring Virtualization/Qemu.pm. Skipped when virsh is present
+// (libvirt already covers those guests).
+func collectQemu() []map[string]any {
+	if _, err := exec.LookPath("virsh"); err == nil {
+		return nil
+	}
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil
+	}
+	var vms []map[string]any
+	for _, e := range entries {
+		pid := e.Name()
+		if !isAllDigits(pid) {
+			continue
+		}
+		raw, err := os.ReadFile("/proc/" + pid + "/cmdline")
+		if err != nil || len(raw) == 0 {
+			continue
+		}
+		cmd := strings.TrimSpace(strings.ReplaceAll(string(raw), "\x00", " "))
+		if !strings.Contains(cmd, "qemu-system") {
+			continue
+		}
+		if vm := ParseQemuCmd(cmd); vm != nil {
+			vm["STATUS"] = "running"
+			vms = append(vms, vm)
+		}
+	}
+	return vms
+}
+
+// collectLxd lists LXD containers and enriches each from `lxc info`/`config
+// show`, mirroring Virtualization/Lxd.pm.
+func collectLxd() []map[string]any {
+	if !hasFile("/snap/bin/lxd") {
+		return nil
+	}
+	if _, err := exec.LookPath("lxc"); err != nil {
+		return nil
+	}
+	var vms []map[string]any
+	for _, name := range ParseLxdList(runCommand("lxc", "list")) {
+		vcpu, mem := ParseLxdConfig(runCommand("lxc", "config", "show", name))
+		vm := map[string]any{
+			"NAME":   name,
+			"VMTYPE": "LXD",
+			"STATUS": ParseLxdInfoStatus(runCommand("lxc", "info", name)),
+			"VCPU":   vcpu,
+		}
+		if mem > 0 {
+			vm["MEMORY"] = mem
+		}
+		vms = append(vms, vm)
+	}
+	return vms
+}
+
+// collectLxc lists LXC containers and reads each one's state, mirroring
+// Virtualization/Lxc.pm (the detailed memory/cpuset/mac fields are pending).
+func collectLxc() []map[string]any {
+	if _, err := exec.LookPath("lxc-ls"); err != nil {
+		return nil
+	}
+	var vms []map[string]any
+	for _, name := range strings.Fields(runCommand("lxc-ls", "-1")) {
+		vms = append(vms, map[string]any{
+			"NAME":   name,
+			"VMTYPE": "lxc",
+			"VCPU":   0,
+			"STATUS": ParseLxcState(runCommand("lxc-info", "-n", name, "-s")),
+		})
+	}
+	return vms
+}
+
+// collectVserver lists Linux-VServer guests, mirroring Virtualization/Vserver.pm.
+func collectVserver() []map[string]any {
+	if _, err := exec.LookPath("vserver"); err != nil {
+		return nil
+	}
+	cfgDir, subsys := "", ""
+	for _, line := range strings.Split(runCommand("vserver-info"), "\n") {
+		if m := strings.TrimSpace(line); strings.HasPrefix(m, "cfg-Directory:") {
+			cfgDir = strings.TrimSpace(strings.TrimPrefix(m, "cfg-Directory:"))
+		} else if strings.HasPrefix(m, "util-vserver:") {
+			subsys = strings.TrimSpace(strings.TrimPrefix(m, "util-vserver:"))
+		}
+	}
+	if cfgDir == "" {
+		return nil
+	}
+	dirs, err := os.ReadDir(cfgDir)
+	if err != nil {
+		return nil
+	}
+	var vms []map[string]any
+	for _, d := range dirs {
+		if !d.IsDir() {
+			continue
+		}
+		name := d.Name()
+		vms = append(vms, map[string]any{
+			"NAME":      name,
+			"VMTYPE":    "vserver",
+			"SUBSYSTEM": subsys,
+			"STATUS":    ParseVserverStatus(runCommand("vserver", name, "status")),
+		})
+	}
 	return vms
 }
 

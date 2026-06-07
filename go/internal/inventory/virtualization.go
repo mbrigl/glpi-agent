@@ -225,6 +225,165 @@ func atoiOr0(s string) int {
 	return n
 }
 
+// ParseQemuCmd builds a VIRTUALMACHINES entry from a qemu-system process command
+// line, mirroring Virtualization/Qemu.pm: options are split on " -" and
+// name/mem/uuid/smp/accel are read. STATUS is set by the caller (running).
+func ParseQemuCmd(cmd string) map[string]any {
+	options := strings.Split(cmd, " -")
+	if len(options) == 0 {
+		return nil
+	}
+	vm := map[string]any{"VMTYPE": "qemu"}
+	if m := regexp.MustCompile(`^(?:/usr/s?bin/)?(\S+)`).FindStringSubmatch(options[0]); m != nil {
+		if strings.Contains(m[1], "kvm") {
+			vm["VMTYPE"] = "kvm"
+		}
+	}
+	for _, opt := range options[1:] {
+		switch {
+		case strings.HasPrefix(opt, "name "):
+			vm["NAME"] = strings.SplitN(strings.TrimPrefix(opt, "name "), ",", 2)[0]
+		case strings.HasPrefix(opt, "uuid "):
+			vm["UUID"] = strings.Fields(strings.TrimPrefix(opt, "uuid "))[0]
+		case strings.HasPrefix(opt, "m "):
+			if mb := qemuMemMB(strings.SplitN(strings.TrimPrefix(opt, "m "), ",", 2)[0]); mb > 0 {
+				vm["MEMORY"] = mb
+			}
+		case strings.HasPrefix(opt, "smp "):
+			if v := qemuVCPU(strings.TrimPrefix(opt, "smp ")); v > 0 {
+				vm["VCPU"] = v
+			}
+		case opt == "enable-kvm" || strings.Contains(opt, "accel=kvm"):
+			vm["VMTYPE"] = "kvm"
+		}
+	}
+	return vm
+}
+
+func qemuMemMB(s string) int {
+	s = strings.TrimSpace(strings.TrimPrefix(s, "size="))
+	if regexp.MustCompile(`^\d+$`).MatchString(s) {
+		return atoiOr0(s) // bare number: MiB
+	}
+	return canonicalSizeMB(s + "B")
+}
+
+func qemuVCPU(s string) int {
+	args := strings.Split(s, ",")
+	for _, a := range args {
+		if m := regexp.MustCompile(`^(?:cpus=)?(\d+)$`).FindStringSubmatch(a); m != nil {
+			return atoiOr0(m[1])
+		}
+	}
+	vcpu := 1
+	found := false
+	for _, key := range []string{"cores", "threads", "sockets"} {
+		if m := regexp.MustCompile(`^(?:` + key + `=)?(\d+)$`).FindStringSubmatch(matchArg(args, key)); m != nil {
+			vcpu *= atoiOr0(m[1])
+			found = true
+		}
+	}
+	if found {
+		return vcpu
+	}
+	return 0
+}
+
+func matchArg(args []string, key string) string {
+	for _, a := range args {
+		if strings.HasPrefix(a, key+"=") {
+			return a
+		}
+	}
+	return ""
+}
+
+var lxdNameRE = regexp.MustCompile(`^\|+\s*([^| ]+)`)
+
+// ParseLxdList extracts container names from the `lxc list` table, mirroring
+// Virtualization/Lxd.pm (header NAME…STATE skipped).
+func ParseLxdList(out string) []string {
+	var names []string
+	for _, line := range strings.Split(out, "\n") {
+		if regexp.MustCompile(`NAME.*STATE`).MatchString(line) {
+			continue
+		}
+		if m := lxdNameRE.FindStringSubmatch(line); m != nil {
+			names = append(names, m[1])
+		}
+	}
+	return names
+}
+
+var lxdStatusMap = map[string]string{"running": "running", "frozen": "paused", "stopped": "off"}
+
+// ParseLxdInfoStatus reads the STATUS from `lxc info <name>` key/value output,
+// mirroring Lxd.pm::_getVirtualMachineState.
+func ParseLxdInfoStatus(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if m := regexp.MustCompile(`^(\S+):\s*(\S+)\s*$`).FindStringSubmatch(line); m != nil && strings.ToLower(m[1]) == "status" {
+			if s, ok := lxdStatusMap[strings.ToLower(m[2])]; ok {
+				return s
+			}
+			return strings.ToLower(m[2])
+		}
+	}
+	return ""
+}
+
+// ParseLxdConfig reads VCPU and MEMORY from `lxc config show <name>`, mirroring
+// Lxd.pm::_getVirtualMachineConfig (limits.cpu / limits.memory).
+func ParseLxdConfig(out string) (vcpu, memoryMB int) {
+	for _, line := range strings.Split(out, "\n") {
+		m := regexp.MustCompile(`^\s*(\S+)\s*:\s*(\S+)\s*$`).FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		key, val := m[1], strings.Trim(m[2], `"`)
+		switch key {
+		case "limits.cpu":
+			if regexp.MustCompile(`^\d+$`).MatchString(val) {
+				vcpu = atoiOr0(val)
+			}
+		case "limits.memory":
+			memoryMB = canonicalSizeMB(val)
+		}
+	}
+	return vcpu, memoryMB
+}
+
+var lxcStateRE = regexp.MustCompile(`(?im)^State:\s*(\S+)$`)
+
+// ParseLxcState maps the `lxc-info -n <ct> -s` State to a GLPI status, mirroring
+// Virtualization/Lxc.pm.
+func ParseLxcState(out string) string {
+	m := lxcStateRE.FindStringSubmatch(out)
+	if m == nil {
+		return "off"
+	}
+	switch strings.ToUpper(m[1]) {
+	case "RUNNING":
+		return "running"
+	case "FROZEN":
+		return "paused"
+	default:
+		return "off"
+	}
+}
+
+// ParseVserverStatus maps `vserver <name> status` output to a GLPI status,
+// mirroring Virtualization/Vserver.pm.
+func ParseVserverStatus(out string) string {
+	switch {
+	case strings.Contains(out, "is running"):
+		return "running"
+	case strings.Contains(out, "is stopped"):
+		return "off"
+	default:
+		return "off"
+	}
+}
+
 // ParseMachinectl builds VIRTUALMACHINES entries from `machinectl --no-pager
 // --no-legend`, mirroring Virtualization/SystemdNspawn.pm: name/class/service,
 // skipping libvirt-qemu machines (covered by the libvirt collector).
