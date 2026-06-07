@@ -26,7 +26,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 > *document* model, the `inject` (bin/glpi-injector) and `wakeonlan` paths,
 > `config` + `logging`, **Phase 8 vSphere/ESX**, the **Phase 7 SSH** remote
 > path, the **Phase 10** cross-compile/CI spike, **Phase 2–3** (NetDiscovery +
-> NetInventory over SNMP via gosnmp), and **Phase 6** (Linux local inventory: 16
+> NetInventory over SNMP via gosnmp), and **Phase 6** (Linux local inventory: 19
 > sections so far). Areas where Go is uniformly
 > not started yet carry a per-section Go note below instead of a column of
 > identical ⬜ cells; tables where Go already has entries get a full **Go** column.
@@ -44,7 +44,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 
 | Upstream `Task/` | Rust crate | Rust | Go package | Go |
 | --- | --- | --- | --- | --- |
-| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 16 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices); see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
+| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 19 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices, controllers, videos, sounds); see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 SNMP probe (generic system-MIB device properties) + IPv4 range scan via gosnmp; SNMPv3, threaded scan, sysObjectID classification pending |
 | `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS via gosnmp; per-vendor MibSupport sections pending |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
@@ -96,9 +96,9 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 | `processes` | `Generic/Processes` | ✅ | ✅ /proc (PID/USER/CMD/MEM; STARTED pending) |
 | `usbdevices` | `Generic/USB` | ✅ | ✅ /sys/bus/usb |
 | `users` | `Generic/Users` (logged-in) | ✅ | ⬜ pending (who/utmp) |
-| `controllers` | `Win32/Controllers`, PCI | 🟡 | ⬜ needs lspci |
-| `videos` | `*/Videos` | ✅ | ⬜ needs lspci/Xorg |
-| `sounds` | `*/Sounds` | ✅ | ⬜ needs lspci |
+| `controllers` | `Win32/Controllers`, PCI | 🟡 | ✅ lspci -v -nn |
+| `videos` | `*/Videos` | ✅ | 🟡 lspci (X11 resolution pending) |
+| `sounds` | `*/Sounds` | ✅ | ✅ lspci |
 | `monitors` | `Generic/Screen` (EDID) | ✅ | ⬜ EDID parsing |
 | `printers` | `Generic/Printers/*` | ✅ | ⬜ pending |
 | `slots` / `ports` | `Generic/Dmidecode`, `Win32/*` | 🟡 | ⬜ dmidecode parser ready (types 9/8) |
@@ -115,7 +115,7 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 
 ## Platform inventory coverage
 
-> **Go:** Linux 🟡 (16 sections via `//go:build linux` collectors — see the local
+> **Go:** Linux 🟡 (19 sections via `//go:build linux` collectors — see the local
 > inventory sections table); Windows/macOS ⬜ (a non-Linux stub collects only the
 > hostname).
 
