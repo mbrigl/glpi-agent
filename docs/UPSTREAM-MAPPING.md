@@ -44,7 +44,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 
 | Upstream `Task/` | Rust crate | Rust | Go package | Go |
 | --- | --- | --- | --- | --- |
-| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 28 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices, controllers, videos, sounds, slots, ports, monitors, physical_volumes, volume_groups, logical_volumes, users, printers, firewall) + antivirus/remote_mgmt/virtualmachines partial; softwares incl. rpm; virtualmachines incl. docker+virtualbox; see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
+| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 28 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices, controllers, videos, sounds, slots, ports, monitors, physical_volumes, volume_groups, logical_volumes, users, printers, firewall) + antivirus/remote_mgmt/virtualmachines partial; softwares incl. rpm; virtualmachines incl. docker+virtualbox+nspawn; antivirus +CrowdStrike; remote_mgmt +AnyDesk+RustDesk; processes +STARTED; see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 SNMP probe (generic system-MIB device properties) + IPv4 range scan via gosnmp; SNMPv3, threaded scan, sysObjectID classification pending |
 | `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS via gosnmp; per-vendor MibSupport sections pending |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
@@ -93,7 +93,7 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 | `envs` | environment variables | ✅ | ✅ |
 | `batteries` | `Generic/Batteries/*` | ✅ | ✅ sysfs power_supply |
 | `inputs` | `{Win32,Linux}/Inputs` | ⬜ | ✅ /proc/bus/input/devices |
-| `processes` | `Generic/Processes` | ✅ | ✅ /proc (PID/USER/CMD/MEM; STARTED pending) |
+| `processes` | `Generic/Processes` | ✅ | ✅ /proc (PID/USER/CMD/MEM/STARTED; CPUUSAGE/TTY pending) |
 | `usbdevices` | `Generic/USB` | ✅ | ✅ /sys/bus/usb |
 | `users` | `Generic/Users` (logged-in) | ✅ | ✅ who --users |
 | `controllers` | `Win32/Controllers`, PCI | 🟡 | ✅ lspci -v -nn |
@@ -103,11 +103,11 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 | `printers` | `Generic/Printers/*` | ✅ | ✅ /etc/cups/printers.conf |
 | `slots` / `ports` | `Generic/Dmidecode`, `Win32/*` | 🟡 | ✅ dmidecode types 9/8 |
 | `modems` / `powersupplies` | `Win32/Modems`, `MacOS/Psu`, dmidecode | ⬜ | ⬜ dmidecode parser ready |
-| `antivirus` | `{Linux,Win32,MacOS}/AntiVirus/*` | 🟡 | 🟡 Defender (mdatp); other product detectors pending |
+| `antivirus` | `{Linux,Win32,MacOS}/AntiVirus/*` | 🟡 | 🟡 Defender + CrowdStrike; other product detectors pending |
 | `physical_volumes` / `volume_groups` / `logical_volumes` | `Linux/LVM` | ⬜ | ✅ pvs/vgs/lvs |
-| `virtualmachines` | `Virtualization/*`, `Vmsystem` | ⬜ | 🟡 libvirt (virsh) + docker + virtualbox; lxc/qemu/xen/… pending. ESX VMs are in `internal/vsphere` |
+| `virtualmachines` | `Virtualization/*`, `Vmsystem` | ⬜ | 🟡 libvirt + docker + virtualbox + systemd-nspawn; lxc/qemu/xen/… pending. ESX VMs are in `internal/vsphere` |
 | `licenseinfos` | `Win32/License`, `MacOS/License` | ⬜ | — not a Linux category (Win32/macOS only upstream) |
-| `remote_mgmt` | `Generic/Remote_Mgmt/*` | ⬜ | 🟡 TeamViewer; other agents pending (upstream has no IPMI module) |
+| `remote_mgmt` | `Generic/Remote_Mgmt/*` | ⬜ | 🟡 TeamViewer + AnyDesk + RustDesk; other agents pending (upstream has no IPMI module) |
 | `databases_services` | `Generic/Databases/*` | ⬜ | ⬜ needs live DB connections + credentials (MySQL/PostgreSQL/Oracle/…) |
 | `firewall` | `Generic/Firewall`, `*/Firewall` | ⬜ | ✅ ufw + firewalld |
 | `accesslog` | `Inventory/AccessLog` | 🚫 | 🚫 minor metadata |
