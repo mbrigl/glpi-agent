@@ -7,6 +7,7 @@ package inventory
 import (
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -119,10 +120,99 @@ func Collect() Sections {
 		f.Close()
 	}
 
+	// USBDEVICES from sysfs.
+	if usb := BuildUSB(""); len(usb) > 0 {
+		s["USBDEVICES"] = usb
+	}
+
+	// MEMORIES from dmidecode (needs the dmidecode tool; best-effort).
+	if out := runDmidecode(); out != "" {
+		if mem := BuildMemories(ParseDmidecode(strings.NewReader(out))); len(mem) > 0 {
+			s["MEMORIES"] = mem
+		}
+	}
+
+	// PROCESSES from /proc.
+	if procs := collectProcesses(); len(procs) > 0 {
+		s["PROCESSES"] = procs
+	}
+
 	return s
 }
 
 func osEnviron() []string { return os.Environ() }
+
+// runDmidecode runs `dmidecode` and returns its output, or "" if unavailable
+// (not installed, or no privileges).
+func runDmidecode() string {
+	path, err := exec.LookPath("dmidecode")
+	if err != nil {
+		return ""
+	}
+	out, err := exec.Command(path).Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+// collectProcesses walks /proc and builds the PROCESSES entries, resolving uids
+// against /etc/passwd.
+func collectProcesses() []map[string]any {
+	uidToUser := passwdUIDMap()
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil
+	}
+	var procs []map[string]any
+	for _, e := range entries {
+		pid := e.Name()
+		if !isAllDigits(pid) {
+			continue
+		}
+		statusFile, err := os.Open("/proc/" + pid + "/status")
+		if err != nil {
+			continue
+		}
+		st := ParseProcStatus(statusFile)
+		statusFile.Close()
+		cmdline, _ := os.ReadFile("/proc/" + pid + "/cmdline")
+		procs = append(procs, processEntry(pid, st, string(cmdline), uidToUser))
+	}
+	return procs
+}
+
+// passwdUIDMap returns a uid -> login map from /etc/passwd.
+func passwdUIDMap() map[string]string {
+	m := map[string]string{}
+	f, err := os.Open("/etc/passwd")
+	if err != nil {
+		return m
+	}
+	defer f.Close()
+	scanLines(f, func(line string) {
+		if line == "" || line[0] == '#' {
+			return
+		}
+		fields := strings.Split(line, ":")
+		if len(fields) >= 3 {
+			m[fields[2]] = fields[0]
+		}
+	})
+	return m
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
 
 // statfsMB returns a mountpoint's total and free space in MiB via statfs(2).
 func statfsMB(mountpoint string) (totalMB, freeMB int, ok bool) {
