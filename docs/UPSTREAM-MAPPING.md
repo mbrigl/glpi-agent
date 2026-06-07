@@ -26,7 +26,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 > *document* model, the `inject` (bin/glpi-injector) and `wakeonlan` paths,
 > `config` + `logging`, **Phase 8 vSphere/ESX**, the **Phase 7 SSH** remote
 > path, the **Phase 10** cross-compile/CI spike, **Phase 2–3** (NetDiscovery +
-> NetInventory over SNMP via gosnmp), and **Phase 6** (Linux local inventory: ~31 sections, 2 partial
+> NetInventory over SNMP via gosnmp), the **NetInventory MibSupport** framework (first vendor batch), and **Phase 6** (Linux local inventory: ~31 sections, 2 partial
 > sections so far). Areas where Go is uniformly
 > not started yet carry a per-section Go note below instead of a column of
 > identical ⬜ cells; tables where Go already has entries get a full **Go** column.
@@ -46,7 +46,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 | --- | --- | --- | --- | --- |
 | `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 28 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices, controllers, videos, sounds, slots, ports, monitors, physical_volumes, volume_groups, logical_volumes, users, printers, firewall) (virtualmachines: all mainstream Linux hypervisors; antivirus: all 8 detectors; remote_mgmt 🟡 TeamViewer+AnyDesk+RustDesk; videos 🟡 lspci); see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 SNMP probe (generic system-MIB device properties) + IPv4 range scan via gosnmp; SNMPv3, threaded scan, sysObjectID classification pending |
-| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS via gosnmp; per-vendor MibSupport sections pending |
+| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS via gosnmp + MibSupport framework (first vendor batch: Mikrotik/Ubnt/Dell/Fortinet); the ~80 vendor MibSupport modules are an ongoing port |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
 | `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ | `internal/remote` | 🟡 SSH connect/exec + remote document (host/OS/arch); WinRM and full collectors pending |
 | `Collect.pm` | `glpi-collect` | ✅ | `internal/collect` | ⬜ Phase 9 |
@@ -145,7 +145,7 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 | ip | `mib/ip_mib.rs` | — | ⬜ Go |
 | bridge / LLDP / CDP | `mib/{bridge_mib,lldp_mib,cdp_mib}.rs` | — | ⬜ Go |
 | entity / printer | `mib/{entity_mib,printer_mib}.rs` | `discovery` SERIAL/FIRMWARE/MODEL (entPhysical*, prt*) | 🟡 Go device fields |
-| device classification | `mib/device.rs` | `discovery/classify` (embedded `sysobject.ids`) | ✅ Go (sysObjectID DB); MibSupport overrides ⬜ |
+| device classification | `mib/device.rs` | `discovery/classify` + `mibsupport` | ✅ Go (sysObjectID DB); MibSupport overrides 🟡 (framework + 4 vendors) |
 
 ## SNMP — vendor `MibSupport`
 
@@ -154,9 +154,12 @@ MIBs are ported, **9 are missing**, and the 2 framework modules are infra that
 the Rust SNMP core handles differently. This table is generated — see
 "Keeping this current".
 
-> **Go:** ⬜ for all vendor MibSupport modules (Phase 2–3, ported from the same
-> upstream `MibSupport/**`, not from the Rust files). The Go column is omitted
-> from this generated table until the Go SNMP tail begins.
+> **Go:** 🟡 **in progress**. `internal/discovery/mibsupport.go` ports the
+> MibSupport dispatcher (sysObjectID + sysORID matching, priority, per-field
+> override). Ported so far in `mib_vendors.go`: **Mikrotik, Ubnt, Dell,
+> Fortinet** (4/80), each verbatim from the upstream `MibSupport/**` OIDs (not
+> the Rust files). The remaining ~76 are mechanical additions in the same
+> pattern; a per-module Go column will be added as the port progresses.
 
 | Upstream `MibSupport/` | Rust `…/mib/vendor/` | Status |
 | --- | --- | --- |
