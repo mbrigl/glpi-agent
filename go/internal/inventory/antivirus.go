@@ -2,7 +2,10 @@
 
 package inventory
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"regexp"
+)
 
 // ParseDefenderHealth builds the Microsoft Defender ANTIVIRUS entry from
 // `mdatp health --output json`, mirroring Linux/AntiVirus/Defender.pm. It
@@ -32,4 +35,22 @@ func ParseDefenderHealth(data []byte) map[string]any {
 	setIf(av, "VERSION", info.AppVersion)
 	setIf(av, "BASE_VERSION", info.DefinitionsVersion)
 	return av
+}
+
+var crowdStrikeVersionRE = regexp.MustCompile(`version\s*=\s*([0-9.]+[0-9]+)`)
+
+// ParseCrowdStrikeVersion builds the CrowdStrike Falcon ANTIVIRUS entry from
+// `/opt/CrowdStrike/falconctl -g --version`, mirroring
+// Linux/AntiVirus/CrowdStrike.pm: ENABLED is assumed once a version is found.
+func ParseCrowdStrikeVersion(out string) map[string]any {
+	m := crowdStrikeVersionRE.FindStringSubmatch(out)
+	if m == nil {
+		return nil
+	}
+	return map[string]any{
+		"NAME":    "CrowdStrike Falcon Sensor",
+		"COMPANY": "CrowdStrike",
+		"ENABLED": 1,
+		"VERSION": m[1],
+	}
 }

@@ -149,6 +149,30 @@ func ParseVBoxShowVMInfo(out string) []map[string]any {
 	return machines
 }
 
+// ParseMachinectl builds VIRTUALMACHINES entries from `machinectl --no-pager
+// --no-legend`, mirroring Virtualization/SystemdNspawn.pm: name/class/service,
+// skipping libvirt-qemu machines (covered by the libvirt collector).
+func ParseMachinectl(out string) []map[string]any {
+	var machines []map[string]any
+	eachFields(out, func(f []string) {
+		if len(f) < 3 {
+			return
+		}
+		name, class, service := f[0], f[1], f[2]
+		if service == "libvirt-qemu" {
+			return
+		}
+		machines = append(machines, map[string]any{
+			"NAME":      name,
+			"VMTYPE":    service,
+			"SUBSYSTEM": class,
+			"VCPU":      0,
+			"STATUS":    "running", // machinectl lists running machines
+		})
+	})
+	return machines
+}
+
 type virshDomain struct {
 	Type          string `xml:"type,attr"`
 	UUID          string `xml:"uuid"`

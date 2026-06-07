@@ -17,3 +17,28 @@ func ParseTeamViewerInfo(output string) map[string]any {
 	}
 	return map[string]any{"ID": m[1], "TYPE": "teamviewer"}
 }
+
+var (
+	anyDeskIDRE  = regexp.MustCompile(`(?m)^ad\.anynet\.id=(\S+)`)
+	rustDeskIDRE = regexp.MustCompile(`(?m)^id\s*=\s*'(.*)'$`)
+)
+
+// ParseAnyDeskID builds the AnyDesk REMOTE_MGMT entry from an AnyDesk
+// system.conf, mirroring Remote_Mgmt/AnyDesk.pm (ad.anynet.id).
+func ParseAnyDeskID(conf string) map[string]any {
+	m := anyDeskIDRE.FindStringSubmatch(conf)
+	if m == nil {
+		return nil
+	}
+	return map[string]any{"ID": m[1], "TYPE": "anydesk"}
+}
+
+// ParseRustDeskID builds the RustDesk REMOTE_MGMT entry from a RustDesk.toml,
+// mirroring Remote_Mgmt/RustDesk.pm (id = '...').
+func ParseRustDeskID(toml string) map[string]any {
+	m := rustDeskIDRE.FindStringSubmatch(toml)
+	if m == nil || m[1] == "" {
+		return nil
+	}
+	return map[string]any{"ID": m[1], "TYPE": "rustdesk"}
+}

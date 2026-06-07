@@ -7,7 +7,38 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// clockTick is the kernel USER_HZ used to convert /proc starttime ticks to
+// seconds (100 on Linux).
+const clockTick = 100
+
+// procStarttimeTicks extracts field 22 (starttime, in clock ticks) from a
+// /proc/<pid>/stat line. The comm field (field 2) may contain spaces and
+// parentheses, so fields are taken after the last ')'.
+func procStarttimeTicks(stat string) int64 {
+	i := strings.LastIndexByte(stat, ')')
+	if i < 0 {
+		return 0
+	}
+	fields := strings.Fields(stat[i+1:]) // fields[0] = state (field 3)
+	const idx = 22 - 3                   // starttime is field 22
+	if len(fields) <= idx {
+		return 0
+	}
+	n, _ := strconv.ParseInt(fields[idx], 10, 64)
+	return n
+}
+
+// computeStarted converts the boot epoch plus a process starttime (in clock
+// ticks) to "YYYY-MM-DD HH:MM:SS".
+func computeStarted(btime, startTicks int64) string {
+	if btime == 0 || startTicks == 0 {
+		return ""
+	}
+	return time.Unix(btime+startTicks/clockTick, 0).Format("2006-01-02 15:04:05")
+}
 
 // ProcStatus holds the fields read from /proc/<pid>/status.
 type ProcStatus struct {

@@ -171,18 +171,14 @@ func Collect() Sections {
 		s["FIREWALL"] = fw
 	}
 
-	// ANTIVIRUS: Microsoft Defender for Endpoint (extensible to more products).
-	if _, err := exec.LookPath("mdatp"); err == nil {
-		if av := ParseDefenderHealth([]byte(runCommand("mdatp", "health", "--output", "json"))); av != nil {
-			s["ANTIVIRUS"] = []map[string]any{av}
-		}
+	// ANTIVIRUS: product-specific detectors (Defender, CrowdStrike, …).
+	if av := collectAntivirus(); len(av) > 0 {
+		s["ANTIVIRUS"] = av
 	}
 
-	// REMOTE_MGMT: TeamViewer (extensible to more agents).
-	if _, err := exec.LookPath("teamviewer"); err == nil {
-		if rm := ParseTeamViewerInfo(runCommand("teamviewer", "--info")); rm != nil {
-			s["REMOTE_MGMT"] = []map[string]any{rm}
-		}
+	// REMOTE_MGMT: remote-control agents (TeamViewer, AnyDesk, RustDesk, …).
+	if rm := collectRemoteMgmt(); len(rm) > 0 {
+		s["REMOTE_MGMT"] = rm
 	}
 
 	// VIRTUALMACHINES: local guests across the available hypervisors.
@@ -236,7 +232,17 @@ func collectVirtualMachines() []map[string]any {
 	vms = append(vms, collectLibvirt()...)
 	vms = append(vms, collectDocker()...)
 	vms = append(vms, collectVirtualBox()...)
+	vms = append(vms, collectNspawn()...)
 	return vms
+}
+
+// collectNspawn lists systemd-nspawn machines via machinectl, mirroring
+// Virtualization/SystemdNspawn.pm.
+func collectNspawn() []map[string]any {
+	if _, err := exec.LookPath("machinectl"); err != nil {
+		return nil
+	}
+	return ParseMachinectl(runCommand("machinectl", "--no-pager", "--no-legend"))
 }
 
 // collectDocker lists containers and resolves each one's running state, mirroring
@@ -287,6 +293,55 @@ func collectLibvirt() []map[string]any {
 		ApplyVirshDumpXML(m, runCommand("virsh", "--readonly", "dumpxml", name))
 	}
 	return machines
+}
+
+// collectAntivirus gathers product-specific antivirus entries, mirroring the
+// per-product Linux/AntiVirus/* detectors.
+func collectAntivirus() []map[string]any {
+	var av []map[string]any
+	if _, err := exec.LookPath("mdatp"); err == nil {
+		if e := ParseDefenderHealth([]byte(runCommand("mdatp", "health", "--output", "json"))); e != nil {
+			av = append(av, e)
+		}
+	}
+	const falconctl = "/opt/CrowdStrike/falconctl"
+	if _, err := os.Stat(falconctl); err == nil {
+		if e := ParseCrowdStrikeVersion(runCommand(falconctl, "-g", "--version")); e != nil {
+			av = append(av, e)
+		}
+	}
+	return av
+}
+
+// collectRemoteMgmt gathers remote-management agent ids, mirroring the
+// per-agent Generic/Remote_Mgmt/* detectors.
+func collectRemoteMgmt() []map[string]any {
+	var rm []map[string]any
+	if _, err := exec.LookPath("teamviewer"); err == nil {
+		if e := ParseTeamViewerInfo(runCommand("teamviewer", "--info")); e != nil {
+			rm = append(rm, e)
+		}
+	}
+	for _, conf := range append(globMatches("/etc/anydesk_ad_*/system.conf"), "/etc/anydesk/system.conf") {
+		if data, err := os.ReadFile(conf); err == nil {
+			if e := ParseAnyDeskID(string(data)); e != nil {
+				rm = append(rm, e)
+				break
+			}
+		}
+	}
+	if data, err := os.ReadFile("/root/.config/rustdesk/RustDesk.toml"); err == nil {
+		if e := ParseRustDeskID(string(data)); e != nil {
+			rm = append(rm, e)
+		}
+	}
+	return rm
+}
+
+// globMatches returns the glob matches for a pattern (empty on error).
+func globMatches(pattern string) []string {
+	m, _ := filepath.Glob(pattern)
+	return m
 }
 
 // collectFirewall reports the ufw and firewalld status as FIREWALL entries,
@@ -373,6 +428,7 @@ func osEnviron() []string { return os.Environ() }
 // against /etc/passwd.
 func collectProcesses() []map[string]any {
 	uidToUser := passwdUIDMap()
+	btime := procBootTime()
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return nil
@@ -390,9 +446,31 @@ func collectProcesses() []map[string]any {
 		st := ParseProcStatus(statusFile)
 		statusFile.Close()
 		cmdline, _ := os.ReadFile("/proc/" + pid + "/cmdline")
-		procs = append(procs, processEntry(pid, st, string(cmdline), uidToUser))
+		entry := processEntry(pid, st, string(cmdline), uidToUser)
+
+		if stat, err := os.ReadFile("/proc/" + pid + "/stat"); err == nil {
+			if started := computeStarted(btime, procStarttimeTicks(string(stat))); started != "" {
+				entry["STARTED"] = started
+			}
+		}
+		procs = append(procs, entry)
 	}
 	return procs
+}
+
+// procBootTime reads the boot epoch (btime) from /proc/stat.
+func procBootTime() int64 {
+	data, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if v, ok := strings.CutPrefix(line, "btime "); ok {
+			n, _ := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+			return n
+		}
+	}
+	return 0
 }
 
 // passwdUIDMap returns a uid -> login map from /etc/passwd.
