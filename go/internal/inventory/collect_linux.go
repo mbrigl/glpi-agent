@@ -126,7 +126,7 @@ func Collect() Sections {
 	}
 
 	// MEMORIES from dmidecode (needs the dmidecode tool; best-effort).
-	if out := runDmidecode(); out != "" {
+	if out := runCommand("dmidecode"); out != "" {
 		if mem := BuildMemories(ParseDmidecode(strings.NewReader(out))); len(mem) > 0 {
 			s["MEMORIES"] = mem
 		}
@@ -137,24 +137,38 @@ func Collect() Sections {
 		s["PROCESSES"] = procs
 	}
 
+	// CONTROLLERS / VIDEOS / SOUNDS from one lspci scan.
+	if out := runCommand("lspci", "-v", "-nn"); out != "" {
+		devices := ParseLspci(strings.NewReader(out))
+		if c := BuildControllers(devices); len(c) > 0 {
+			s["CONTROLLERS"] = c
+		}
+		if v := BuildVideos(devices); len(v) > 0 {
+			s["VIDEOS"] = v
+		}
+		if snd := BuildSounds(devices); len(snd) > 0 {
+			s["SOUNDS"] = snd
+		}
+	}
+
 	return s
 }
 
-func osEnviron() []string { return os.Environ() }
-
-// runDmidecode runs `dmidecode` and returns its output, or "" if unavailable
-// (not installed, or no privileges).
-func runDmidecode() string {
-	path, err := exec.LookPath("dmidecode")
+// runCommand runs a tool found on PATH and returns its stdout, or "" if it is
+// unavailable or fails.
+func runCommand(name string, args ...string) string {
+	path, err := exec.LookPath(name)
 	if err != nil {
 		return ""
 	}
-	out, err := exec.Command(path).Output()
+	out, err := exec.Command(path, args...).Output()
 	if err != nil {
 		return ""
 	}
 	return string(out)
 }
+
+func osEnviron() []string { return os.Environ() }
 
 // collectProcesses walks /proc and builds the PROCESSES entries, resolving uids
 // against /etc/passwd.
