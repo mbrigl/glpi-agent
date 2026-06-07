@@ -75,12 +75,17 @@ func Collect() Sections {
 		}
 	}
 
-	// SOFTWARES from the dpkg status database (Debian/Ubuntu).
+	// SOFTWARES: dpkg (Debian/Ubuntu) or rpm (RHEL/Fedora/SUSE).
 	if f, err := osOpen("/var/lib/dpkg/status"); err == nil {
 		if sw := ParseDpkgStatus(f); len(sw) > 0 {
 			s["SOFTWARES"] = sw
 		}
 		f.Close()
+	} else if _, err := exec.LookPath("rpm"); err == nil {
+		// rpm interprets the \t and \n escapes in the queryformat itself.
+		if sw := ParseRPMQA(runCommand("rpm", "-qa", "--queryformat", rpmQueryFormat)); len(sw) > 0 {
+			s["SOFTWARES"] = sw
+		}
 	}
 
 	// LOCAL_USERS / LOCAL_GROUPS from /etc/passwd + /etc/group.
@@ -180,6 +185,11 @@ func Collect() Sections {
 		}
 	}
 
+	// VIRTUALMACHINES: local libvirt guests.
+	if vms := collectLibvirt(); len(vms) > 0 {
+		s["VIRTUALMACHINES"] = vms
+	}
+
 	// MONITORS from the DRM EDID blocks.
 	if mon := collectMonitors(); len(mon) > 0 {
 		s["MONITORS"] = mon
@@ -217,6 +227,23 @@ func Collect() Sections {
 	}
 
 	return s
+}
+
+// collectLibvirt lists local libvirt guests and enriches each from its domain
+// XML, mirroring Virtualization/Libvirt.pm (needs virsh).
+func collectLibvirt() []map[string]any {
+	if _, err := exec.LookPath("virsh"); err != nil {
+		return nil
+	}
+	machines := ParseVirshList(runCommand("virsh", "--readonly", "list", "--all"))
+	for _, m := range machines {
+		name, _ := m["NAME"].(string)
+		if name == "" {
+			continue
+		}
+		ApplyVirshDumpXML(m, runCommand("virsh", "--readonly", "dumpxml", name))
+	}
+	return machines
 }
 
 // collectFirewall reports the ufw and firewalld status as FIREWALL entries,
