@@ -151,6 +151,23 @@ func Collect() Sections {
 		s["MONITORS"] = mon
 	}
 
+	// LVM: PHYSICAL_VOLUMES / VOLUME_GROUPS / LOGICAL_VOLUMES (needs the lvm2
+	// tools and privileges).
+	if _, err := exec.LookPath("lvs"); err == nil {
+		if pv := ParsePVS(runCommand("pvs", "--noheading", "--nosuffix", "--units", "M",
+			"-o", "pv_name,pv_fmt,pv_attr,pv_size,pv_free,pv_uuid,pv_pe_count,vg_uuid")); len(pv) > 0 {
+			s["PHYSICAL_VOLUMES"] = pv
+		}
+		if vg := ParseVGS(runCommand("vgs", "--noheading", "--nosuffix", "--units", "M",
+			"-o", "vg_name,pv_count,lv_count,vg_attr,vg_size,vg_free,vg_uuid,vg_extent_size")); len(vg) > 0 {
+			s["VOLUME_GROUPS"] = vg
+		}
+		if lv := ParseLVS(runCommand("lvs", "-a", "--noheading", "--nosuffix", "--units", "M",
+			"-o", "lv_name,vg_uuid,lv_attr,lv_size,lv_uuid,seg_count")); len(lv) > 0 {
+			s["LOGICAL_VOLUMES"] = lv
+		}
+	}
+
 	// CONTROLLERS / VIDEOS / SOUNDS from one lspci scan.
 	if out := runCommand("lspci", "-v", "-nn"); out != "" {
 		devices := ParseLspci(strings.NewReader(out))
