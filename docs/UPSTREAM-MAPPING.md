@@ -44,7 +44,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 
 | Upstream `Task/` | Rust crate | Rust | Go package | Go |
 | --- | --- | --- | --- | --- |
-| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 28 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices, controllers, videos, sounds, slots, ports, monitors, physical_volumes, volume_groups, logical_volumes, users, printers, firewall) + antivirus/remote_mgmt/virtualmachines partial; softwares incl. rpm; see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
+| `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 28 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices, controllers, videos, sounds, slots, ports, monitors, physical_volumes, volume_groups, logical_volumes, users, printers, firewall) + antivirus/remote_mgmt/virtualmachines partial; softwares incl. rpm; virtualmachines incl. docker+virtualbox; see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 SNMP probe (generic system-MIB device properties) + IPv4 range scan via gosnmp; SNMPv3, threaded scan, sysObjectID classification pending |
 | `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS via gosnmp; per-vendor MibSupport sections pending |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
@@ -105,7 +105,7 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 | `modems` / `powersupplies` | `Win32/Modems`, `MacOS/Psu`, dmidecode | ⬜ | ⬜ dmidecode parser ready |
 | `antivirus` | `{Linux,Win32,MacOS}/AntiVirus/*` | 🟡 | 🟡 Defender (mdatp); other product detectors pending |
 | `physical_volumes` / `volume_groups` / `logical_volumes` | `Linux/LVM` | ⬜ | ✅ pvs/vgs/lvs |
-| `virtualmachines` | `Virtualization/*`, `Vmsystem` | ⬜ | 🟡 libvirt (virsh); other hypervisors pending. ESX VMs are in `internal/vsphere` |
+| `virtualmachines` | `Virtualization/*`, `Vmsystem` | ⬜ | 🟡 libvirt (virsh) + docker + virtualbox; lxc/qemu/xen/… pending. ESX VMs are in `internal/vsphere` |
 | `licenseinfos` | `Win32/License`, `MacOS/License` | ⬜ | — not a Linux category (Win32/macOS only upstream) |
 | `remote_mgmt` | `Generic/Remote_Mgmt/*` | ⬜ | 🟡 TeamViewer; other agents pending (upstream has no IPMI module) |
 | `databases_services` | `Generic/Databases/*` | ⬜ | ⬜ needs live DB connections + credentials (MySQL/PostgreSQL/Oracle/…) |
