@@ -150,128 +150,106 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 
 ## SNMP — vendor `MibSupport`
 
-Upstream ships 80 `MibSupport/` modules (78 device/OS + 2 framework); 69 device
-MIBs are ported, **9 are missing**, and the 2 framework modules are infra that
-the Rust SNMP core handles differently. This table is generated — see
-"Keeping this current".
+Upstream ships 80 `MibSupport/` modules (78 device/OS + 2 framework). The **Rust**
+and **Go** columns below track each track's port; the per-module Go detail now
+lives in the table rather than in prose. (The **Rust** column ports 69 device
+MIBs, 9 missing.) This table is generated — see "Keeping this current".
 
-> **Go:** 🟡 **in progress**. `internal/discovery/mibsupport.go` ports the
-> MibSupport dispatcher (sysObjectID + sysORID + privateoid matching, priority, per-field
-> override). Ported so far (mib_vendors*.go): Mikrotik, Ubnt, Dell, Fortinet, Cisco, Juniper,
-> HP, Brother, Canon, Epson, Konica, Ricoh, Kyocera, Lexmark, Zebra, Aruba, Avaya, Brocade, CheckPoint, Dlink, Hikvision, iLO, iDRAC, Nokia, SonicWall, Sophos, TpLink, Zyxel, OKI, Qnap, Ruckus, CiscoMeraki, Eaton, Raritan, Snom, Htek, WatchGuard, WyseThinOS, Intelbras, Pantum, Toshiba, Hwg, Meinberg, Avocent, Bachmann, CiscoUCS, DefensePro, DigiPower, FoxGate, Hitachi, HP-HTTP, Infortrend, Multitech, Quantum, Radware, UPS(APC/Riello/std), Voltronic, Aerohive, Akcp, NetScaler, Dlink-DGS1210, Digi, HP-Citizen, RNX, Telco, Tiesse, Voltaire, SiemensSicam, Xerox, Netgear, EMC, Force10S, Panasas, Siemens, FreeBSD/Stormshield, LinuxAppliance, CiscoPortSecurity, IEEE802dot11 **(all 78 device/OS modules)**,
-> each verbatim from the upstream `MibSupport/**` OIDs (not the Rust files).
-> Matching covers sysObjectID, sysORID and privateoid rules. The framework now also
-> ports the device-mutation hooks: `Components` (getComponents → COMPONENTS, with a
-> FIRMWARES rewrite) and `Run` (runMibSupport), wired into `GetInventory` after the
-> identity fields and ports in the upstream order (setComponents → runMibSupport).
-> This covers Xerox (PAGECOUNTERS), SiemensSicam (DGPI components + firmwares) and
-> Netgear (stacked-chassis serial/STACK_NUMBER fix-up). The generic ENTITY-MIB
-> physical-components walk (`SNMP/Device/Components.pm` — `components.go`,
-> `BuildPhysicalComponents`) is also ported and runs before the MibSupport
-> getComponents accessors, so Netgear's run hook now fixes up real chassis
-> components. The index-/conditional-logic batch is also ported: EMC (FCMGMT
-> connUnit table), Force10S (stack/port getComponents), Panasas (member serial
-> keyed by the device IP), Siemens (iASi-Link + sysDescr fallback) and
-> FreeBSD/Stormshield. LinuxAppliance is also ported (`linuxappliance.go`): the
-> ordered appliance detection (Seagate/QuesCom/Synology/CheckPoint/Sophos/UniFi/
-> Socomec/Quantum/Digi/TP-Link/printer) plus the snmpEngineID IANA-manufacturer
-> decode — reusing the embedded sysobject.ids DB as `getManufacturerIDInfo` — and
-> the run enrichment (Synology disks→STORAGES / volumes→DRIVES, per-vendor
-> firmware). Detection state is stashed under a private `_appliance` device key
-> that GetInventory strips before output. The final two enrichment modules are
-> also done: CiscoPortSecurity (a run hook attaching each port's secure MAC as a
-> PORT connection) and IEEE802dot11 (a priority-50 module filling
-> MANUFACTURER/MODEL/FIRMWARE from the dot11 resource table only when the generic
-> classification left them empty, incl. the Ubnt version extract). That completes
-> all 78 device/OS MibSupport modules. SnmpFramework is also ported
-> (`mib_vendors9.go`): a priority-100 last-resort classifier that fills
-> MANUFACTURER/MODEL/SERIAL from the IANA manufacturer id decoded out of the
-> snmpEngineID (sharing `snmpEngineIDInfo` with LinuxAppliance), only when nothing
-> more specific provided them. Only ConfigurationPlugin remains unported — it is a
-> config-time plugin loader, not a device MIB, so it has no inventory effect.
+> **Go:** ✅ **complete** for inventory purposes. `internal/discovery/mibsupport.go`
+> ports the MibSupport dispatcher (sysObjectID + sysORID + privateoid matching,
+> priority, per-field override) plus the device-mutation hooks `Components`
+> (getComponents → COMPONENTS, with a FIRMWARES rewrite) and `Run` (runMibSupport),
+> wired into `GetInventory` in the upstream order (setComponents → runMibSupport).
+> All **78 device/OS modules** are ported verbatim from the upstream
+> `MibSupport/**` OIDs (`mib_vendors*.go`, `linuxappliance.go`), as is the
+> SnmpFramework engine-id fallback classifier. The generic ENTITY-MIB
+> physical-components walk (`SNMP/Device/Components.pm` → `components.go`) backs the
+> getComponents hooks. The only unported file is `ConfigurationPlugin.pm` — a
+> config-time loader for user-supplied MIB modules, not a device MIB, so it has no
+> inventory effect.
 
-| Upstream `MibSupport/` | Rust `…/mib/vendor/` | Status |
-| --- | --- | --- |
-| `Aerohive.pm` | `aerohive.rs` | ✅ |
-| `Akcp.pm` | `akcp.rs` | ✅ |
-| `Aruba.pm` | — | ⬜ fehlt |
-| `Avaya.pm` | `avaya.rs` | ✅ |
-| `Avocent.pm` | `avocent.rs` | ✅ |
-| `Bachmann.pm` | `bachmann.rs` | ✅ |
-| `Brocade.pm` | `brocade.rs` | ✅ |
-| `BrotherNetConfig.pm` | `brother.rs` | ✅ |
-| `Canon.pm` | `canon.rs` | ✅ |
-| `CheckPoint.pm` | `checkpoint.rs` | ✅ |
-| `Cisco.pm` | `cisco.rs` | ✅ |
-| `CiscoMeraki.pm` | `cisco_meraki.rs` | ✅ |
-| `CiscoPortSecurity.pm` | — | ⬜ fehlt |
-| `CiscoUcsBoard.pm` | `cisco_ucs_board.rs` | ✅ |
-| `CitrixNetscaler.pm` | `netscaler.rs` | ✅ |
-| `ConfigurationPlugin.pm` | core SNMP framework | 🟡 infra (not a 1:1 file) |
-| `DefencePro.pm` | `defencepro.rs` | ✅ |
-| `Dell.pm` | `dell.rs` | ✅ |
-| `Digi.pm` | — | ⬜ fehlt |
-| `DigiPower.pm` | `digipower.rs` | ✅ |
-| `Dlink.pm` | `dlink.rs` | ✅ |
-| `DlinkDGS1210Series.pm` | `dlink_dgs1210.rs` | ✅ |
-| `EatonEpdu.pm` | `eaton.rs` | ✅ |
-| `EMC.pm` | `emc.rs` | ✅ |
-| `Epson.pm` | `epson.rs` | ✅ |
-| `Force10S.pm` | — | ⬜ fehlt |
-| `Fortinet.pm` | `fortinet.rs` | ✅ |
-| `FoxGate.pm` | `foxgate.rs` | ✅ |
-| `FreeBSD.pm` | — | ⬜ fehlt |
-| `Hikvision.pm` | `hikvision.rs` | ✅ |
-| `HitachiVantara.pm` | `hitachi_vantara.rs` | ✅ |
-| `HPCitizen.pm` | `hp_citizen.rs` | ✅ |
-| `HPHttpManagement.pm` | `hp_http_management.rs` | ✅ |
-| `HPNetPeripheral.pm` | `hp_printer.rs` | ✅ |
-| `Htek.pm` | `htek.rs` | ✅ |
-| `Hwg.pm` | `hwg.rs` | ✅ |
-| `Idrac.pm` | `idrac.rs` | ✅ |
-| `IEEE802dot11.pm` | — | ⬜ fehlt |
-| `iLO.pm` | `ilo.rs` | ✅ |
-| `Infortrend.pm` | `infortrend.rs` | ✅ |
-| `Intelbras.pm` | `intelbras.rs` | ✅ |
-| `Juniper.pm` | `juniper.rs` | ✅ |
-| `Konica.pm` | `konica.rs` | ✅ |
-| `Kyocera.pm` | `kyocera.rs` | ✅ |
-| `Lexmark.pm` | `lexmark.rs` | ✅ |
-| `LinuxAppliance.pm` | — | ⬜ fehlt |
-| `Meinberg.pm` | `meinberg.rs` | ✅ |
-| `Mikrotik.pm` | `mikrotik.rs` | ✅ |
-| `Multitech.pm` | `multitech.rs` | ✅ |
-| `Netgear.pm` | — | ⬜ fehlt |
-| `Nokia.pm` | `nokia.rs` | ✅ |
-| `Oki.pm` | `oki.rs` | ✅ |
-| `Panasas.pm` | — | ⬜ fehlt |
-| `Pantum.pm` | `pantum.rs` | ✅ |
-| `Qnap.pm` | `qnap.rs` | ✅ |
-| `Quantum.pm` | `quantum.rs` | ✅ |
-| `Radware.pm` | `radware.rs` | ✅ |
-| `Raritan.pm` | `raritan.rs` | ✅ |
-| `Ricoh.pm` | `ricoh.rs` | ✅ |
-| `RNX.pm` | `rnx.rs` | ✅ |
-| `Ruckus.pm` | `ruckus.rs` | ✅ |
-| `Siemens.pm` | `siemens.rs` | ✅ |
-| `SiemensSicam.pm` | `siemens_sicam.rs` | ✅ |
-| `SnmpFramework.pm` | core SNMP framework | 🟡 infra (not a 1:1 file) |
-| `Snom.pm` | `snom.rs` | ✅ |
-| `SonicWall.pm` | `sonicwall.rs` | ✅ |
-| `Sophos.pm` | `sophos.rs` | ✅ |
-| `Telco.pm` | `telco.rs` | ✅ |
-| `Tiesse.pm` | `tiesse.rs` | ✅ |
-| `Toshiba.pm` | `toshiba.rs` | ✅ |
-| `TpLink.pm` | `tplink.rs` | ✅ |
-| `Ubnt.pm` | `ubnt.rs` | ✅ |
-| `UPS.pm` | `ups.rs` | ✅ |
-| `Voltaire.pm` | `voltaire.rs` | ✅ |
-| `Voltronic.pm` | `voltronic.rs` | ✅ |
-| `WatchGuard.pm` | `watchguard.rs` | ✅ |
-| `WyseThinOS.pm` | `wyse_thinos.rs` | ✅ |
-| `Xerox.pm` | `xerox.rs` | ✅ |
-| `Zebra.pm` | `zebra.rs` | ✅ |
-| `Zyxel.pm` | `zyxel.rs` | ✅ |
+| Upstream `MibSupport/` | Rust `…/mib/vendor/` | Rust | Go |
+| --- | --- | --- | --- |
+| `Aerohive.pm` | `aerohive.rs` | ✅ | ✅ |
+| `Akcp.pm` | `akcp.rs` | ✅ | ✅ |
+| `Aruba.pm` | — | ⬜ fehlt | ✅ |
+| `Avaya.pm` | `avaya.rs` | ✅ | ✅ |
+| `Avocent.pm` | `avocent.rs` | ✅ | ✅ |
+| `Bachmann.pm` | `bachmann.rs` | ✅ | ✅ |
+| `Brocade.pm` | `brocade.rs` | ✅ | ✅ |
+| `BrotherNetConfig.pm` | `brother.rs` | ✅ | ✅ |
+| `Canon.pm` | `canon.rs` | ✅ | ✅ |
+| `CheckPoint.pm` | `checkpoint.rs` | ✅ | ✅ |
+| `Cisco.pm` | `cisco.rs` | ✅ | ✅ |
+| `CiscoMeraki.pm` | `cisco_meraki.rs` | ✅ | ✅ |
+| `CiscoPortSecurity.pm` | — | ⬜ fehlt | ✅ |
+| `CiscoUcsBoard.pm` | `cisco_ucs_board.rs` | ✅ | ✅ |
+| `CitrixNetscaler.pm` | `netscaler.rs` | ✅ | ✅ |
+| `ConfigurationPlugin.pm` | core SNMP framework | 🟡 infra (not a 1:1 file) | ⬜ plugin loader |
+| `DefencePro.pm` | `defencepro.rs` | ✅ | ✅ |
+| `Dell.pm` | `dell.rs` | ✅ | ✅ |
+| `Digi.pm` | — | ⬜ fehlt | ✅ |
+| `DigiPower.pm` | `digipower.rs` | ✅ | ✅ |
+| `Dlink.pm` | `dlink.rs` | ✅ | ✅ |
+| `DlinkDGS1210Series.pm` | `dlink_dgs1210.rs` | ✅ | ✅ |
+| `EatonEpdu.pm` | `eaton.rs` | ✅ | ✅ |
+| `EMC.pm` | `emc.rs` | ✅ | ✅ |
+| `Epson.pm` | `epson.rs` | ✅ | ✅ |
+| `Force10S.pm` | — | ⬜ fehlt | ✅ |
+| `Fortinet.pm` | `fortinet.rs` | ✅ | ✅ |
+| `FoxGate.pm` | `foxgate.rs` | ✅ | ✅ |
+| `FreeBSD.pm` | — | ⬜ fehlt | ✅ |
+| `Hikvision.pm` | `hikvision.rs` | ✅ | ✅ |
+| `HitachiVantara.pm` | `hitachi_vantara.rs` | ✅ | ✅ |
+| `HPCitizen.pm` | `hp_citizen.rs` | ✅ | ✅ |
+| `HPHttpManagement.pm` | `hp_http_management.rs` | ✅ | ✅ |
+| `HPNetPeripheral.pm` | `hp_printer.rs` | ✅ | ✅ |
+| `Htek.pm` | `htek.rs` | ✅ | ✅ |
+| `Hwg.pm` | `hwg.rs` | ✅ | ✅ |
+| `Idrac.pm` | `idrac.rs` | ✅ | ✅ |
+| `IEEE802dot11.pm` | — | ⬜ fehlt | ✅ |
+| `iLO.pm` | `ilo.rs` | ✅ | ✅ |
+| `Infortrend.pm` | `infortrend.rs` | ✅ | ✅ |
+| `Intelbras.pm` | `intelbras.rs` | ✅ | ✅ |
+| `Juniper.pm` | `juniper.rs` | ✅ | ✅ |
+| `Konica.pm` | `konica.rs` | ✅ | ✅ |
+| `Kyocera.pm` | `kyocera.rs` | ✅ | ✅ |
+| `Lexmark.pm` | `lexmark.rs` | ✅ | ✅ |
+| `LinuxAppliance.pm` | — | ⬜ fehlt | ✅ |
+| `Meinberg.pm` | `meinberg.rs` | ✅ | ✅ |
+| `Mikrotik.pm` | `mikrotik.rs` | ✅ | ✅ |
+| `Multitech.pm` | `multitech.rs` | ✅ | ✅ |
+| `Netgear.pm` | — | ⬜ fehlt | ✅ |
+| `Nokia.pm` | `nokia.rs` | ✅ | ✅ |
+| `Oki.pm` | `oki.rs` | ✅ | ✅ |
+| `Panasas.pm` | — | ⬜ fehlt | ✅ |
+| `Pantum.pm` | `pantum.rs` | ✅ | ✅ |
+| `Qnap.pm` | `qnap.rs` | ✅ | ✅ |
+| `Quantum.pm` | `quantum.rs` | ✅ | ✅ |
+| `Radware.pm` | `radware.rs` | ✅ | ✅ |
+| `Raritan.pm` | `raritan.rs` | ✅ | ✅ |
+| `Ricoh.pm` | `ricoh.rs` | ✅ | ✅ |
+| `RNX.pm` | `rnx.rs` | ✅ | ✅ |
+| `Ruckus.pm` | `ruckus.rs` | ✅ | ✅ |
+| `Siemens.pm` | `siemens.rs` | ✅ | ✅ |
+| `SiemensSicam.pm` | `siemens_sicam.rs` | ✅ | ✅ |
+| `SnmpFramework.pm` | core SNMP framework | 🟡 infra (not a 1:1 file) | ✅ |
+| `Snom.pm` | `snom.rs` | ✅ | ✅ |
+| `SonicWall.pm` | `sonicwall.rs` | ✅ | ✅ |
+| `Sophos.pm` | `sophos.rs` | ✅ | ✅ |
+| `Telco.pm` | `telco.rs` | ✅ | ✅ |
+| `Tiesse.pm` | `tiesse.rs` | ✅ | ✅ |
+| `Toshiba.pm` | `toshiba.rs` | ✅ | ✅ |
+| `TpLink.pm` | `tplink.rs` | ✅ | ✅ |
+| `Ubnt.pm` | `ubnt.rs` | ✅ | ✅ |
+| `UPS.pm` | `ups.rs` | ✅ | ✅ |
+| `Voltaire.pm` | `voltaire.rs` | ✅ | ✅ |
+| `Voltronic.pm` | `voltronic.rs` | ✅ | ✅ |
+| `WatchGuard.pm` | `watchguard.rs` | ✅ | ✅ |
+| `WyseThinOS.pm` | `wyse_thinos.rs` | ✅ | ✅ |
+| `Xerox.pm` | `xerox.rs` | ✅ | ✅ |
+| `Zebra.pm` | `zebra.rs` | ✅ | ✅ |
+| `Zyxel.pm` | `zyxel.rs` | ✅ | ✅ |
 
 ## HTTP control server
 
