@@ -62,7 +62,12 @@ func GetInventory(ip string, getter SNMPGetter) (Device, error) {
 	}
 
 	// setComponents() then runMibSupport(), in that order (SNMP/Hardware.pm), so
-	// a run hook can fix up components produced by a Components accessor.
+	// a run hook can fix up components produced earlier. setComponents itself
+	// first walks the generic ENTITY-MIB table, then the MibSupport getComponents
+	// accessors.
+	for _, comp := range BuildPhysicalComponents(getter) {
+		addComponent(device, comp)
+	}
 	setComponentsByMib(device, getter, modules)
 	runMibSupport(device, getter, modules)
 	return device, nil

@@ -46,7 +46,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 | --- | --- | --- | --- | --- |
 | `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 28 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices, controllers, videos, sounds, slots, ports, monitors, physical_volumes, volume_groups, logical_volumes, users, printers, firewall) (virtualmachines: all mainstream Linux hypervisors; antivirus: all 8 detectors; remote_mgmt 🟡 TeamViewer+AnyDesk+RustDesk; videos 🟡 lspci); see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | ✅ SNMP probe (system-MIB device properties + sysObjectID classification) + IPv4 range scan via gosnmp, SNMPv3 (USM auth/priv), a threaded worker pool, and non-SNMP host discovery via the ARP cache (`/proc/net/arp`) + NetBIOS NBSTAT (UDP/137) merged per address (`_scanAddress`) |
-| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS via gosnmp + MibSupport (72/80 vendor modules, incl. the run/getComponents device-mutation hooks; remaining ~8 use heavy index/conditional logic) |
+| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS + generic ENTITY-MIB COMPONENTS (incl. Dell/Cisco fix-ups) via gosnmp + MibSupport (72/80 vendor modules, incl. the run/getComponents device-mutation hooks; remaining ~8 use heavy index/conditional logic) |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
 | `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ | `internal/remote` | 🟡 SSH connect/exec + remote document (host/OS/arch); WinRM and full collectors pending |
 | `Collect.pm` | `glpi-collect` | ✅ | `internal/collect` | ⬜ Phase 9 |
@@ -144,7 +144,7 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 | interfaces (IF-MIB) | `mib/if_mib.rs` | `discovery` PORTS (walk) | 🟡 Go core columns |
 | ip | `mib/ip_mib.rs` | — | ⬜ Go |
 | bridge / LLDP / CDP | `mib/{bridge_mib,lldp_mib,cdp_mib}.rs` | — | ⬜ Go |
-| entity / printer | `mib/{entity_mib,printer_mib}.rs` | `discovery` SERIAL/FIRMWARE/MODEL (entPhysical*, prt*) | 🟡 Go device fields |
+| entity / printer | `mib/{entity_mib,printer_mib}.rs` | `discovery` SERIAL/FIRMWARE/MODEL (entPhysical*, prt*) + `components.go` COMPONENTS | ✅ Go device fields + ENTITY-MIB physical components |
 | device classification | `mib/device.rs` | `discovery/classify` + `mibsupport` | ✅ Go (sysObjectID DB); MibSupport overrides 🟡 (framework, incl. run/getComponents hooks, + 72 vendors) |
 
 ## SNMP — vendor `MibSupport`
@@ -164,10 +164,13 @@ the Rust SNMP core handles differently. This table is generated — see
 > FIRMWARES rewrite) and `Run` (runMibSupport), wired into `GetInventory` after the
 > identity fields and ports in the upstream order (setComponents → runMibSupport).
 > This covers Xerox (PAGECOUNTERS), SiemensSicam (DGPI components + firmwares) and
-> Netgear (stacked-chassis serial/STACK_NUMBER fix-up). The remaining ~8 (EMC,
-> Panasas, Siemens, LinuxAppliance, FreeBSD/Stormshield, Force10S, CiscoPortSecurity,
-> IEEE802dot11) need heavy index/conditional logic or generic ENTITY-MIB component
-> support; they are follow-on.
+> Netgear (stacked-chassis serial/STACK_NUMBER fix-up). The generic ENTITY-MIB
+> physical-components walk (`SNMP/Device/Components.pm` — `components.go`,
+> `BuildPhysicalComponents`) is also ported and runs before the MibSupport
+> getComponents accessors, so Netgear's run hook now fixes up real chassis
+> components. The remaining ~8 (EMC, Panasas, Siemens, LinuxAppliance,
+> FreeBSD/Stormshield, Force10S, CiscoPortSecurity, IEEE802dot11) need heavy
+> index/conditional logic; they are follow-on.
 
 | Upstream `MibSupport/` | Rust `…/mib/vendor/` | Status |
 | --- | --- | --- |
