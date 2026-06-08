@@ -80,17 +80,50 @@ func init() {
 	})
 
 	// --- Hikvision (cameras / NVRs) ---
+	// See Hikvision-MIB: identity under .39165 plus a second entity tree .50001.
 	const hikvision = "1.3.6.1.4.1.39165"
+	const hikvisionModel = hikvision + ".1.1.0"
+	const hikvisionMac = hikvision + ".1.4.0"
 	const hikvision2 = "1.3.6.1.4.1.50001"
+	const hikEntityIndex = hikvision2 + ".1.3.0"
+	// getSerial: the entity index if present, else the MAC with dashes stripped.
+	hikSerial := func(g SNMPGetter, _ Device) string {
+		if idx := mibGet(g, hikEntityIndex); idx != "" {
+			return idx
+		}
+		mac := mibGet(g, hikvisionMac)
+		if mac == "" {
+			return ""
+		}
+		return strings.ReplaceAll(mac, "-", "")
+	}
 	hik := MibModule{
 		Type:         func(SNMPGetter, Device) string { return "NETWORKING" },
 		Manufacturer: func(SNMPGetter, Device) string { return "Hikvision" },
-		Model:        func(g SNMPGetter, _ Device) string { return mibGet(g, hikvision+".1.1.0") },
-		Mac:          func(g SNMPGetter, _ Device) string { return mibGet(g, hikvision+".1.4.0") },
+		Model:        func(g SNMPGetter, _ Device) string { return mibGet(g, hikvisionModel) },
+		Serial:       hikSerial,
+		Mac: func(g SNMPGetter, _ Device) string {
+			mac := mibGet(g, hikvisionMac)
+			if mac == "" {
+				return ""
+			}
+			return canonicalMAC(mac)
+		},
+		// getSnmpHostname: MODEL_serial once MODEL is known (set earlier in the field loop).
+		SnmpHostname: func(g SNMPGetter, d Device) string {
+			serial := hikSerial(g, d)
+			model, _ := d["MODEL"].(string)
+			if serial == "" || strings.TrimSpace(model) == "" {
+				return ""
+			}
+			return model + "_" + serial
+		},
 	}
 	hik.Name, hik.SysObjectID = "hikvision", oidMatch(hikvision)
 	registerMib(hik)
-	hik.Name, hik.SysObjectID, hik.PrivateOID = "hikvision-model", nil, hikvision+".1.1.0"
+	hik.Name, hik.SysObjectID = "hikvision-50001", oidMatch(hikvision2)
+	registerMib(hik)
+	hik.Name, hik.SysObjectID, hik.PrivateOID = "hikvision-model", nil, hikvisionModel
 	registerMib(hik)
 
 	// --- HP iLO (Integrated Lights-Out, CPQSM2) ---

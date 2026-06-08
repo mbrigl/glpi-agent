@@ -46,7 +46,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 | --- | --- | --- | --- | --- |
 | `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 28 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices, controllers, videos, sounds, slots, ports, monitors, physical_volumes, volume_groups, logical_volumes, users, printers, firewall) (virtualmachines: all mainstream Linux hypervisors; antivirus: all 8 detectors; remote_mgmt 🟡 TeamViewer+AnyDesk+RustDesk; videos 🟡 lspci); see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | ✅ SNMP probe (system-MIB device properties + sysObjectID classification) + IPv4 range scan via gosnmp, SNMPv3 (USM auth/priv), a threaded worker pool, and non-SNMP host discovery via the ARP cache (`/proc/net/arp`) + NetBIOS NBSTAT (UDP/137) merged per address (`_scanAddress`) |
-| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS via gosnmp + MibSupport (68/80 vendor modules; remaining ~12 use heavy index/conditional logic) |
+| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS via gosnmp + MibSupport (69/80 vendor modules; remaining ~11 use heavy index/conditional logic or a run/device-mutation hook) |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
 | `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ | `internal/remote` | 🟡 SSH connect/exec + remote document (host/OS/arch); WinRM and full collectors pending |
 | `Collect.pm` | `glpi-collect` | ✅ | `internal/collect` | ⬜ Phase 9 |
@@ -157,10 +157,14 @@ the Rust SNMP core handles differently. This table is generated — see
 > **Go:** 🟡 **in progress**. `internal/discovery/mibsupport.go` ports the
 > MibSupport dispatcher (sysObjectID + sysORID + privateoid matching, priority, per-field
 > override). Ported so far (mib_vendors*.go): Mikrotik, Ubnt, Dell, Fortinet, Cisco, Juniper,
-> HP, Brother, Canon, Epson, Konica, Ricoh, Kyocera, Lexmark, Zebra, Aruba, Avaya, Brocade, CheckPoint, Dlink, Hikvision, iLO, iDRAC, Nokia, SonicWall, Sophos, TpLink, Zyxel, OKI, Qnap, Ruckus, CiscoMeraki, Eaton, Raritan, Snom, Htek, WatchGuard, WyseThinOS, Intelbras, Pantum, Toshiba, Hwg, Meinberg, Avocent, Bachmann, CiscoUCS, DefensePro, DigiPower, FoxGate, Hitachi, HP-HTTP, Infortrend, Multitech, Quantum, Radware, UPS(APC/Riello/std), Voltronic, Aerohive, Akcp, NetScaler, Dlink-DGS1210, Digi, HP-Citizen, RNX, Telco, Tiesse, Voltaire **(68/80)**,
+> HP, Brother, Canon, Epson, Konica, Ricoh, Kyocera, Lexmark, Zebra, Aruba, Avaya, Brocade, CheckPoint, Dlink, Hikvision, iLO, iDRAC, Nokia, SonicWall, Sophos, TpLink, Zyxel, OKI, Qnap, Ruckus, CiscoMeraki, Eaton, Raritan, Snom, Htek, WatchGuard, WyseThinOS, Intelbras, Pantum, Toshiba, Hwg, Meinberg, Avocent, Bachmann, CiscoUCS, DefensePro, DigiPower, FoxGate, Hitachi, HP-HTTP, Infortrend, Multitech, Quantum, Radware, UPS(APC/Riello/std), Voltronic, Aerohive, Akcp, NetScaler, Dlink-DGS1210, Digi, HP-Citizen, RNX, Telco, Tiesse, Voltaire, SiemensSicam (identity) **(69/80)**,
 > each verbatim from the upstream `MibSupport/**` OIDs (not the Rust files).
-> Matching covers sysObjectID, sysORID and privateoid rules. The remaining ~12 (EMC, Panasas, Siemens, LinuxAppliance, FreeBSD/Stormshield, Force10S, …)
-> are mechanical additions in the same pattern.
+> Matching covers sysObjectID, sysORID and privateoid rules. The Hikvision port now
+> mirrors the full upstream accessors (entity-index/MAC serial fallback, normalised
+> MAC, `MODEL_serial` SNMPHOSTNAME, plus the `.50001` entity tree). The remaining ~11
+> (EMC, Panasas, Siemens, LinuxAppliance, FreeBSD/Stormshield, Force10S, Netgear,
+> Xerox, …) need heavy index/conditional logic or a `run`-style device-mutation hook
+> (page counters / components / firmware rewrites); they are follow-on.
 
 | Upstream `MibSupport/` | Rust `…/mib/vendor/` | Status |
 | --- | --- | --- |

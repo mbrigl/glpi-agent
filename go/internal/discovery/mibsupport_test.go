@@ -216,6 +216,76 @@ func TestDigiMibSupport(t *testing.T) {
 	}
 }
 
+// TestHikvisionMibSupport checks the camera identity: NETWORKING + Hikvision,
+// model from the private OID, serial from the entity index, MAC normalised, and
+// SNMPHOSTNAME composed as MODEL_serial.
+func TestHikvisionMibSupport(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:               "DS-2CD2042WD-I",
+		oidSysObjectID:            ".1.3.6.1.4.1.39165.1",
+		"1.3.6.1.4.1.39165.1.1.0": "DS-2CD2042WD-I",    // model
+		"1.3.6.1.4.1.39165.1.4.0": "AA-BB-CC-DD-EE-FF", // mac
+		"1.3.6.1.4.1.50001.1.3.0": "SN-ENTITY-001",     // entity index -> serial
+	}}
+	d, err := GetInventory("192.0.2.70", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d["TYPE"] != "NETWORKING" || d["MANUFACTURER"] != "Hikvision" {
+		t.Errorf("type/manufacturer = %v/%v", d["TYPE"], d["MANUFACTURER"])
+	}
+	if d["MODEL"] != "DS-2CD2042WD-I" {
+		t.Errorf("MODEL = %v", d["MODEL"])
+	}
+	if d["SERIAL"] != "SN-ENTITY-001" {
+		t.Errorf("SERIAL = %v, want the entity index", d["SERIAL"])
+	}
+	if d["MAC"] != "aa:bb:cc:dd:ee:ff" {
+		t.Errorf("MAC = %v, want normalised", d["MAC"])
+	}
+	if d["SNMPHOSTNAME"] != "DS-2CD2042WD-I_SN-ENTITY-001" {
+		t.Errorf("SNMPHOSTNAME = %v", d["SNMPHOSTNAME"])
+	}
+}
+
+// TestHikvisionSerialFallback verifies the serial falls back to the MAC (dashes
+// stripped) when no entity index is present.
+func TestHikvisionSerialFallback(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:               "Hikvision NVR",
+		oidSysObjectID:            ".1.3.6.1.4.1.39165.1",
+		"1.3.6.1.4.1.39165.1.4.0": "AA-BB-CC-DD-EE-FF",
+	}}
+	d, _ := GetInventory("192.0.2.71", getter)
+	if d["SERIAL"] != "AABBCCDDEEFF" {
+		t.Errorf("SERIAL = %v, want the MAC without dashes", d["SERIAL"])
+	}
+}
+
+// TestSiemensSicamMibSupport checks the identity parsed out of the sysDescr.
+func TestSiemensSicamMibSupport(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:    "Siemens AG, SICAM A8000, CP-8050, HW1, FW: 4.50, SN: VPV1234567",
+		oidSysObjectID: ".1.3.6.1.4.1.22638.1",
+	}}
+	d, err := GetInventory("192.0.2.72", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d["TYPE"] != "NETWORKING" || d["MANUFACTURER"] != "Siemens" {
+		t.Errorf("type/manufacturer = %v/%v", d["TYPE"], d["MANUFACTURER"])
+	}
+	if d["MODEL"] != "SICAM A8000 CP-8050" {
+		t.Errorf("MODEL = %v", d["MODEL"])
+	}
+	if d["FIRMWARE"] != "4.50" {
+		t.Errorf("FIRMWARE = %v", d["FIRMWARE"])
+	}
+	if d["SERIAL"] != "VPV1234567" {
+		t.Errorf("SERIAL = %v", d["SERIAL"])
+	}
+}
+
 func containsModule(mods []MibModule, name string) bool {
 	for _, m := range mods {
 		if m.Name == name {
