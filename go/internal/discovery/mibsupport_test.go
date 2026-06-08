@@ -186,6 +186,36 @@ func TestUpsApcSerialFallback(t *testing.T) {
 	}
 }
 
+// TestHpCitizenMibSupport checks a STORAGE module with manufacturer/model from OIDs.
+func TestHpCitizenMibSupport(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:                     "HP storage",
+		oidSysObjectID:                  ".1.3.6.1.4.1.11.10.1",
+		"1.3.6.1.4.1.11.2.36.1.1.2.4.0": "HP",
+		"1.3.6.1.4.1.11.2.36.1.1.2.5.0": "StoreEasy",
+		"1.3.6.1.4.1.11.2.36.1.1.2.6.0": "1.2.3",
+		"1.3.6.1.4.1.11.2.36.1.1.2.9.0": "CZ12345",
+	}}
+	d, _ := GetInventory("192.0.2.60", getter)
+	if d["TYPE"] != "STORAGE" || d["MANUFACTURER"] != "HP" || d["MODEL"] != "StoreEasy" || d["SERIAL"] != "CZ12345" {
+		t.Errorf("hp-citizen = %v", d)
+	}
+}
+
+// TestDigiMibSupport checks the Digi Sarian router module.
+func TestDigiMibSupport(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:                      "Digi TransPort",
+		oidSysObjectID:                   ".1.3.6.1.4.1.16378.10000.5",
+		"1.3.6.1.4.1.16378.10000.3.15.0": "TWX-MK4-1234",
+		"1.3.6.1.4.1.16378.10000.3.16.0": "8.1.2.3",
+	}}
+	d, _ := GetInventory("192.0.2.61", getter)
+	if d["SERIAL"] != "TWX-MK4-1234" || d["FIRMWARE"] != "8.1.2.3" {
+		t.Errorf("digi = %v", d)
+	}
+}
+
 func containsModule(mods []MibModule, name string) bool {
 	for _, m := range mods {
 		if m.Name == name {
