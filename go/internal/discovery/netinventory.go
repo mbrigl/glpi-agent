@@ -70,6 +70,14 @@ func GetInventory(ip string, getter SNMPGetter) (Device, error) {
 	}
 	setComponentsByMib(device, getter, modules)
 	runMibSupport(device, getter, modules)
+
+	// Drop any private scratch state a MibSupport module stashed on the device
+	// (e.g. LinuxAppliance's "_appliance"); it must not reach the JSON output.
+	for k := range device {
+		if strings.HasPrefix(k, "_") {
+			delete(device, k)
+		}
+	}
 	return device, nil
 }
 

@@ -49,6 +49,14 @@ func sysobjectDatabase() map[string]classification {
 	return sysobjectDB
 }
 
+// manufacturerIDInfo looks up a bare manufacturer (enterprise) id in the
+// sysObjectID database, mirroring Hardware.pm::getManufacturerIDInfo (which is
+// just `$sysobjectid{$manufacturer_id}`).
+func manufacturerIDInfo(id string) (classification, bool) {
+	m, ok := sysobjectDatabase()[id]
+	return m, ok
+}
+
 // enterprisePrefixes are the textual forms a sysObjectID may carry before the
 // enterprise arc, mirroring the prefix regex in Hardware.pm::_getSysObjectIDInfo.
 var enterprisePrefixes = []string{
