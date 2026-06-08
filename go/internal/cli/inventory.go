@@ -79,8 +79,14 @@ func runInventory(ctx *Context, args []string) int {
 		fmt.Fprintf(stderr, "failed to encode inventory: %v\n", err)
 		return 1
 	}
-	data = append(data, '\n')
 
+	// When a server is configured (a global option), send the inventory there
+	// via the GLPI protocol instead of writing it locally.
+	if server := ctx.Cfg.String("server"); server != "" {
+		return sendToServer(ctx, server, inv.DeviceID, data, tagValue)
+	}
+
+	data = append(data, '\n')
 	if *out == "-" || *out == "" {
 		_, _ = stdout.Write(data)
 		return 0
