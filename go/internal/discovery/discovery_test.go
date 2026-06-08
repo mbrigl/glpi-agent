@@ -75,15 +75,19 @@ func TestScan(t *testing.T) {
 		return nil, errUnreachable
 	}
 
-	devices, err := Scan([]string{"192.0.2.0/29"}, dial)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(devices) != 1 {
-		t.Fatalf("found %d devices, want 1", len(devices))
-	}
-	if devices[0]["IP"] != answering || devices[0]["SNMPHOSTNAME"] != "sw-a" {
-		t.Errorf("device = %v", devices[0])
+	// Both the sequential (threads=1) and concurrent (threads>1) paths must find
+	// exactly the one answering host.
+	for _, threads := range []int{1, 4} {
+		devices, err := Scan([]string{"192.0.2.0/29"}, dial, threads)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(devices) != 1 {
+			t.Fatalf("threads=%d: found %d devices, want 1", threads, len(devices))
+		}
+		if devices[0]["IP"] != answering || devices[0]["SNMPHOSTNAME"] != "sw-a" {
+			t.Errorf("threads=%d: device = %v", threads, devices[0])
+		}
 	}
 }
 

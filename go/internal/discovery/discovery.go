@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 )
 
 // Device is a discovered device, keyed by the canonical UPPERCASE DEVICE field
@@ -55,30 +56,78 @@ func Probe(ip string, getter SNMPGetter) (Device, error) {
 // without real network access.
 type Dialer func(host string) (SNMPGetter, error)
 
-// Scan probes every address in the given ranges and returns the SNMP-capable
-// devices found. Addresses that do not answer are skipped. The scan is
-// sequential; concurrent workers (the --threads option) are follow-on.
-func Scan(ranges []string, dial Dialer) ([]Device, error) {
-	var devices []Device
+// Scan probes every address in the given ranges with up to `threads` concurrent
+// workers and returns the SNMP-capable devices found. Addresses that do not
+// answer are skipped. threads <= 1 scans sequentially. Mirrors the
+// Parallel::ForkManager worker pool of NetDiscovery.pm.
+func Scan(ranges []string, dial Dialer, threads int) ([]Device, error) {
+	var ips []string
 	for _, spec := range ranges {
-		ips, err := ParseRange(spec)
+		expanded, err := ParseRange(spec)
 		if err != nil {
 			return nil, err
 		}
+		ips = append(ips, expanded...)
+	}
+	if threads < 1 {
+		threads = 1
+	}
+	if threads > len(ips) {
+		threads = len(ips)
+	}
+	if threads <= 1 {
+		var devices []Device
 		for _, ip := range ips {
-			getter, err := dial(ip)
-			if err != nil {
-				continue // host unreachable / no SNMP
+			if d := probeOne(ip, dial); d != nil {
+				devices = append(devices, d)
 			}
-			device, err := Probe(ip, getter)
-			_ = getter.Close()
-			if err != nil || device == nil {
-				continue
-			}
-			devices = append(devices, device)
 		}
+		return devices, nil
+	}
+
+	jobs := make(chan string)
+	results := make(chan Device)
+	var wg sync.WaitGroup
+	for i := 0; i < threads; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for ip := range jobs {
+				if d := probeOne(ip, dial); d != nil {
+					results <- d
+				}
+			}
+		}()
+	}
+	go func() {
+		for _, ip := range ips {
+			jobs <- ip
+		}
+		close(jobs)
+		wg.Wait()
+		close(results)
+	}()
+
+	var devices []Device
+	for d := range results {
+		devices = append(devices, d)
 	}
 	return devices, nil
+}
+
+// probeOne dials and probes a single address, returning nil when it is
+// unreachable or not SNMP-capable.
+func probeOne(ip string, dial Dialer) Device {
+	getter, err := dial(ip)
+	if err != nil {
+		return nil
+	}
+	defer getter.Close()
+	device, err := Probe(ip, getter)
+	if err != nil {
+		return nil
+	}
+	return device
 }
 
 // ParseRange expands an IPv4 spec into addresses. It accepts a single IP, a CIDR

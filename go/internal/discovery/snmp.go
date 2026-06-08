@@ -45,12 +45,20 @@ type SNMPGetter interface {
 	Close() error
 }
 
-// Credential is an SNMP credential, mirroring the subset of the GLPI credentials
-// NetDiscovery uses (v1/v2c community; v3 is follow-on).
+// Credential is an SNMP credential, mirroring the GLPI credentials NetDiscovery
+// uses: v1/v2c community, or v3 USM (username + optional auth/priv), as in
+// GLPI::Agent::SNMP::Live.
 type Credential struct {
 	ID        int
-	Version   string // "1" or "2c"
+	Version   string // "1", "2c" or "3"
 	Community string
+
+	// SNMPv3 (USM). AuthProtocol/PrivProtocol are names like "sha"/"aes".
+	Username     string
+	AuthProtocol string
+	AuthPassword string
+	PrivProtocol string
+	PrivPassword string
 }
 
 // gosnmpClient is the gosnmp-backed SNMPGetter.
@@ -61,26 +69,116 @@ type gosnmpClient struct {
 // Dial opens an SNMP session to host:port with the given credential, mirroring
 // the connection setup in NetDiscovery.
 func Dial(host string, port uint16, cred Credential, timeout time.Duration) (SNMPGetter, error) {
-	version := gosnmp.Version2c
-	if cred.Version == "1" {
-		version = gosnmp.Version1
-	}
-	community := cred.Community
-	if community == "" {
-		community = "public"
-	}
 	client := &gosnmp.GoSNMP{
-		Target:    host,
-		Port:      port,
-		Community: community,
-		Version:   version,
-		Timeout:   timeout,
-		Retries:   0, // snmp-retries default is 0 (Config.pm)
+		Target:  host,
+		Port:    port,
+		Timeout: timeout,
+		Retries: 0, // snmp-retries default is 0 (Config.pm)
 	}
+
+	if cred.Version == "3" {
+		if err := configureV3(client, cred); err != nil {
+			return nil, err
+		}
+	} else {
+		client.Version = gosnmp.Version2c
+		if cred.Version == "1" {
+			client.Version = gosnmp.Version1
+		}
+		client.Community = cred.Community
+		if client.Community == "" {
+			client.Community = "public"
+		}
+	}
+
 	if err := client.Connect(); err != nil {
 		return nil, fmt.Errorf("snmp connect to %s failed: %w", host, err)
 	}
 	return &gosnmpClient{snmp: client}, nil
+}
+
+// configureV3 sets up an SNMPv3 USM session, mirroring the snmpv3 branch of
+// SNMP/Live.pm: only the username is mandatory; the message flags follow from
+// which of auth/priv are provided.
+func configureV3(client *gosnmp.GoSNMP, cred Credential) error {
+	if cred.Username == "" {
+		return fmt.Errorf("snmpv3 requires a username")
+	}
+	client.Version = gosnmp.Version3
+	client.SecurityModel = gosnmp.UserSecurityModel
+
+	usm := &gosnmp.UsmSecurityParameters{UserName: cred.Username}
+	hasAuth := cred.AuthPassword != ""
+	hasPriv := cred.PrivPassword != ""
+
+	switch {
+	case hasAuth && hasPriv:
+		client.MsgFlags = gosnmp.AuthPriv
+	case hasAuth:
+		client.MsgFlags = gosnmp.AuthNoPriv
+	default:
+		client.MsgFlags = gosnmp.NoAuthNoPriv
+	}
+
+	if hasAuth {
+		proto, err := authProtocol(cred.AuthProtocol)
+		if err != nil {
+			return err
+		}
+		usm.AuthenticationProtocol = proto
+		usm.AuthenticationPassphrase = cred.AuthPassword
+	}
+	if hasPriv {
+		proto, err := privProtocol(cred.PrivProtocol)
+		if err != nil {
+			return err
+		}
+		usm.PrivacyProtocol = proto
+		usm.PrivacyPassphrase = cred.PrivPassword
+	}
+	client.SecurityParameters = usm
+	return nil
+}
+
+// authProtocol maps an SNMPv3 auth protocol name to gosnmp (SNMP/Live.pm
+// supports md5 and the sha family).
+func authProtocol(name string) (gosnmp.SnmpV3AuthProtocol, error) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", "md5":
+		return gosnmp.MD5, nil
+	case "sha", "sha1":
+		return gosnmp.SHA, nil
+	case "sha224":
+		return gosnmp.SHA224, nil
+	case "sha256":
+		return gosnmp.SHA256, nil
+	case "sha384":
+		return gosnmp.SHA384, nil
+	case "sha512":
+		return gosnmp.SHA512, nil
+	default:
+		return 0, fmt.Errorf("unknown SNMPv3 auth protocol %q", name)
+	}
+}
+
+// privProtocol maps an SNMPv3 privacy protocol name to gosnmp.
+func privProtocol(name string) (gosnmp.SnmpV3PrivProtocol, error) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", "des":
+		return gosnmp.DES, nil
+	case "aes", "aes128":
+		return gosnmp.AES, nil
+	case "aes192":
+		return gosnmp.AES192, nil
+	case "aes256":
+		return gosnmp.AES256, nil
+	case "aes192c":
+		return gosnmp.AES192C, nil
+	case "aes256c":
+		return gosnmp.AES256C, nil
+	default:
+		return 0, fmt.Errorf("unknown SNMPv3 privacy protocol %q", name)
+	}
 }
 
 func (c *gosnmpClient) Get(oids []string) (map[string]string, error) {
