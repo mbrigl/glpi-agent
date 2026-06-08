@@ -395,6 +395,137 @@ func TestNetgearStackSerials(t *testing.T) {
 	}
 }
 
+// TestEMCMibSupport checks the FCMGMT connUnit table drives TYPE/SERIAL/MODEL,
+// keyed by the lowest connUnit index.
+func TestEMCMibSupport(t *testing.T) {
+	getter := &fakeGetter{
+		values: map[string]string{
+			oidSysDescr:              "EMC storage",
+			oidSysObjectID:           ".1.3.6.1.4.1.674.11000",
+			"1.3.6.1.3.94.1.6.1.8.1": "EMC-SN-001", // connUnitSn.1
+			"1.3.6.1.3.94.1.6.1.7.1": "VNX5400",    // connUnitProduct.1
+		},
+		walks: map[string]map[string]string{
+			"1.3.6.1.3.94.1.6.1.1": {"1": "unit-a", "2": "unit-b"}, // connUnitId
+		},
+	}
+	d, err := GetInventory("192.0.2.90", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d["TYPE"] != "NETWORKING" || d["SERIAL"] != "EMC-SN-001" || d["MODEL"] != "VNX5400" {
+		t.Errorf("emc = %v", d)
+	}
+}
+
+// TestForce10Components checks the stack-unit + port + root component build.
+func TestForce10Components(t *testing.T) {
+	getter := &fakeGetter{
+		values: map[string]string{
+			oidSysDescr:    "Force10 S4810",
+			oidSysObjectID: ".1.3.6.1.4.1.6027.1.3.10",
+		},
+		walks: map[string]map[string]string{
+			"1.3.6.1.4.1.6027.3.10.1.2.2.1": entWalk(map[string]map[string]string{
+				"1": {"2": "1", "7": "S4810", "12": "FORCE-SN-1"},
+			}),
+			"1.3.6.1.4.1.6027.3.10.1.2.5.1.5": {"1.0": "101"}, // suffix .stack(1).port(0) -> ifIndex 101
+		},
+	}
+	d, err := GetInventory("192.0.2.91", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	comps := d["COMPONENTS"].(map[string]any)["COMPONENT"].([]map[string]any)
+	// chassis + port + root stack.
+	if len(comps) != 3 {
+		t.Fatalf("components = %v", comps)
+	}
+	if comps[0]["TYPE"] != "chassis" || comps[0]["MODEL"] != "S4810" || comps[0]["NAME"] != "0" {
+		t.Errorf("chassis = %v", comps[0])
+	}
+	if comps[1]["TYPE"] != "port" || comps[1]["INDEX"] != "101" || comps[1]["CONTAINEDININDEX"] != "1" {
+		t.Errorf("port = %v", comps[1])
+	}
+	if comps[2]["TYPE"] != "stack" || comps[2]["INDEX"] != "-1" {
+		t.Errorf("root = %v", comps[2])
+	}
+}
+
+// TestPanasasSerial checks the cluster member serial is selected by the device IP.
+func TestPanasasSerial(t *testing.T) {
+	getter := &fakeGetter{
+		values: map[string]string{
+			oidSysDescr:                         "Panasas",
+			oidSysObjectID:                      ".1.3.6.1.4.1.10159.1.3.0",
+			"1.3.6.1.4.1.10159.1.3.2.1.1.0":     "panfs-cluster", // cluster name
+			"1.3.6.1.4.1.10159.1.3.2.1.3.1.3.7": "BLADE-SN-7",    // blade SN at index 7
+		},
+		walks: map[string]map[string]string{
+			"1.3.6.1.4.1.10159.1.3.2.1.3.1.2": {"5": "10.0.0.1", "7": "192.0.2.92"}, // repset IPs
+		},
+	}
+	d, err := GetInventory("192.0.2.92", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d["SERIAL"] != "BLADE-SN-7" {
+		t.Errorf("SERIAL = %v, want BLADE-SN-7 (matched by IP)", d["SERIAL"])
+	}
+	if d["NAME"] != "panfs-cluster" {
+		t.Errorf("NAME = %v", d["NAME"])
+	}
+}
+
+// TestSiemensModule checks the MLFB model map and the MAC-derived serial fallback.
+func TestSiemensModule(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:                              "Siemens AS-i",
+		oidSysObjectID:                           ".1.3.6.1.4.1.4196.1.1",
+		"1.3.6.1.4.1.4196.1.1.8.3.100.1.8.26.0":  "6GK1 411-2AB10",    // MLFB -> known model
+		"1.3.6.1.4.1.4196.1.1.8.3.100.1.10.10.0": "AA:BB:CC:DD:EE:FF", // mac base
+	}}
+	d, err := GetInventory("192.0.2.93", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d["TYPE"] != "NETWORKING" || d["MANUFACTURER"] != "Siemens" {
+		t.Errorf("type/manufacturer = %v/%v", d["TYPE"], d["MANUFACTURER"])
+	}
+	if d["MODEL"] != "IE/AS-i LINK PN IO" {
+		t.Errorf("MODEL = %v", d["MODEL"])
+	}
+	// No serial OID -> MAC without colons.
+	if d["SERIAL"] != "aabbccddeeff" {
+		t.Errorf("SERIAL = %v, want the MAC fallback", d["SERIAL"])
+	}
+}
+
+// TestFreeBSDStormshield checks the Stormshield-gated identity accessors.
+func TestFreeBSDStormshield(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:                 "FreeBSD firewall",
+		oidSysObjectID:              ".1.3.6.1.4.1.8072.3.2.8",
+		"1.3.6.1.4.1.11256.1.0.1.0": "SN-3100",    // model -> is_stormshield
+		"1.3.6.1.4.1.11256.1.0.2.0": "4.3.5",      // firmware
+		"1.3.6.1.4.1.11256.1.0.3.0": "STORM-SN-1", // serial
+		"1.3.6.1.4.1.11256.1.0.4.0": "fw-paris",   // name
+	}}
+	d, err := GetInventory("192.0.2.94", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d["TYPE"] != "NETWORKING" || d["MANUFACTURER"] != "StormShield" {
+		t.Errorf("type/manufacturer = %v/%v", d["TYPE"], d["MANUFACTURER"])
+	}
+	if d["MODEL"] != "SN-3100" || d["FIRMWARE"] != "4.3.5" || d["SERIAL"] != "STORM-SN-1" {
+		t.Errorf("freebsd = %v", d)
+	}
+	if d["NAME"] != "fw-paris" {
+		t.Errorf("NAME = %v", d["NAME"])
+	}
+}
+
 func containsModule(mods []MibModule, name string) bool {
 	for _, m := range mods {
 		if m.Name == name {
