@@ -56,11 +56,16 @@ func Probe(ip string, getter SNMPGetter) (Device, error) {
 // without real network access.
 type Dialer func(host string) (SNMPGetter, error)
 
+// HostProbe returns the non-SNMP discovery fields (arp/netbios) for an address,
+// or an empty HostInfo when nothing is found. It may be nil.
+type HostProbe func(ip string) HostInfo
+
 // Scan probes every address in the given ranges with up to `threads` concurrent
-// workers and returns the SNMP-capable devices found. Addresses that do not
-// answer are skipped. threads <= 1 scans sequentially. Mirrors the
-// Parallel::ForkManager worker pool of NetDiscovery.pm.
-func Scan(ranges []string, dial Dialer, threads int) ([]Device, error) {
+// workers and returns the discovered devices. A device is reported when it
+// answers SNMP or when hostProbe yields an identifying field (MAC / DNS /
+// NetBIOS name), mirroring the multi-method _scanAddress of NetDiscovery.pm.
+// threads <= 1 scans sequentially. Mirrors the Parallel::ForkManager worker pool.
+func Scan(ranges []string, dial Dialer, threads int, hostProbe HostProbe) ([]Device, error) {
 	var ips []string
 	for _, spec := range ranges {
 		expanded, err := ParseRange(spec)
@@ -78,7 +83,7 @@ func Scan(ranges []string, dial Dialer, threads int) ([]Device, error) {
 	if threads <= 1 {
 		var devices []Device
 		for _, ip := range ips {
-			if d := probeOne(ip, dial); d != nil {
+			if d := probeOne(ip, dial, hostProbe); d != nil {
 				devices = append(devices, d)
 			}
 		}
@@ -93,7 +98,7 @@ func Scan(ranges []string, dial Dialer, threads int) ([]Device, error) {
 		go func() {
 			defer wg.Done()
 			for ip := range jobs {
-				if d := probeOne(ip, dial); d != nil {
+				if d := probeOne(ip, dial, hostProbe); d != nil {
 					results <- d
 				}
 			}
@@ -115,19 +120,42 @@ func Scan(ranges []string, dial Dialer, threads int) ([]Device, error) {
 	return devices, nil
 }
 
-// probeOne dials and probes a single address, returning nil when it is
-// unreachable or not SNMP-capable.
-func probeOne(ip string, dial Dialer) Device {
-	getter, err := dial(ip)
-	if err != nil {
-		return nil
+// probeOne probes one address over SNMP and merges any non-SNMP discovery
+// fields. It returns nil when neither SNMP nor the host probe identifies a
+// device, mirroring the "keep if MAC/DNS/NetBIOS/IP/SNMP" rule of _scanAddress.
+func probeOne(ip string, dial Dialer, hostProbe HostProbe) Device {
+	var device Device
+	if getter, err := dial(ip); err == nil {
+		device, _ = Probe(ip, getter)
+		getter.Close()
 	}
-	defer getter.Close()
-	device, err := Probe(ip, getter)
-	if err != nil {
-		return nil
+
+	var host HostInfo
+	if hostProbe != nil {
+		host = hostProbe(ip)
 	}
+
+	if device == nil {
+		if !host.Any() {
+			return nil
+		}
+		device = Device{"IP": ip}
+	}
+	// Fill fields the SNMP probe did not provide.
+	setHostField(device, "MAC", host.MAC)
+	setHostField(device, "DNSHOSTNAME", host.DNSHostname)
+	setHostField(device, "NETBIOSNAME", host.NetbiosName)
+	setHostField(device, "WORKGROUP", host.Workgroup)
 	return device
+}
+
+func setHostField(d Device, key, val string) {
+	if val == "" {
+		return
+	}
+	if _, ok := d[key]; !ok {
+		d[key] = val
+	}
 }
 
 // ParseRange expands an IPv4 spec into addresses. It accepts a single IP, a CIDR

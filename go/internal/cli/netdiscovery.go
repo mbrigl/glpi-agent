@@ -33,6 +33,7 @@ func runNetDiscovery(ctx *Context, args []string) int {
 		authPass  = fs.String("snmp-authpassword", "", "SNMPv3 auth password")
 		privProto = fs.String("snmp-privprotocol", "", "SNMPv3 privacy protocol: des | aes | aes256 | …")
 		privPass  = fs.String("snmp-privpassword", "", "SNMPv3 privacy password")
+		netbios   = fs.Bool("netbios", true, "also discover hosts via ARP cache and NetBIOS (NBSTAT)")
 	)
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: glpi-agent netdiscovery --range <CIDR|a-b|ip> [--community public] [--threads N]")
@@ -56,9 +57,14 @@ func runNetDiscovery(ctx *Context, args []string) int {
 		return discovery.Dial(host, uint16(*port), cred, to)
 	}
 
+	var hostProbe discovery.HostProbe
+	if *netbios {
+		hostProbe = discovery.NewHostProbe(to)
+	}
+
 	specs := splitNonEmpty(*ranges)
 	ctx.Logger.Info(fmt.Sprintf("scanning %d range(s) over SNMP v%s with %d worker(s)", len(specs), *version, *threads))
-	devices, err := discovery.Scan(specs, dial, *threads)
+	devices, err := discovery.Scan(specs, dial, *threads, hostProbe)
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 2

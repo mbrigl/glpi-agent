@@ -78,7 +78,7 @@ func TestScan(t *testing.T) {
 	// Both the sequential (threads=1) and concurrent (threads>1) paths must find
 	// exactly the one answering host.
 	for _, threads := range []int{1, 4} {
-		devices, err := Scan([]string{"192.0.2.0/29"}, dial, threads)
+		devices, err := Scan([]string{"192.0.2.0/29"}, dial, threads, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
