@@ -115,19 +115,19 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 
 ## Platform inventory coverage
 
-> **Go:** Linux 🟡 (28 sections + 3 partial via `//go:build linux` collectors — see the local
-> inventory sections table); Windows/macOS ⬜ (a non-Linux stub collects only the
-> hostname).
+The **Rust** and **Go** columns track each track's per-OS collector coverage
+(`cfg(target_os)` in Rust, `//go:build` tags in Go). Linux Go detail is in the
+local inventory sections table above.
 
-| OS | Upstream | Rust (`cfg(target_os)`) | Status |
+| OS | Upstream | Rust | Go |
 | --- | --- | --- | --- |
-| Linux | `Inventory/Linux/**` | `linux` | ✅ |
-| Windows | `Inventory/Win32/**` | `windows` | 🟡 implemented; some detail fields best-effort |
-| macOS | `Inventory/MacOS/**` | `macos` | 🟡 implemented; some detail fields best-effort |
-| Solaris | `Inventory/Solaris/**` (11) | — | ⬜ fehlt |
-| AIX | `Inventory/AIX/**` (15) | — | ⬜ fehlt |
-| HP-UX | `Inventory/HPUX/**` (13) | — | ⬜ fehlt |
-| *BSD | `Inventory/BSD/**` (13) | — | ⬜ fehlt |
+| Linux | `Inventory/Linux/**` | ✅ (`linux`) | 🟡 28 sections + 3 partial (`//go:build linux`) |
+| Windows | `Inventory/Win32/**` (28) | 🟡 implemented; some detail fields best-effort (`windows`) | ⬜ non-Linux stub: hostname only |
+| macOS | `Inventory/MacOS/**` (25) | 🟡 implemented; some detail fields best-effort (`macos`) | ⬜ non-Linux stub: hostname only |
+| Solaris | `Inventory/Solaris/**` (11) | ⬜ fehlt | ⬜ fehlt |
+| AIX | `Inventory/AIX/**` (15) | ⬜ fehlt | ⬜ fehlt |
+| HP-UX | `Inventory/HPUX/**` (13) | ⬜ fehlt | ⬜ fehlt |
+| *BSD | `Inventory/BSD/**` (13) | ⬜ fehlt | ⬜ fehlt |
 
 ## SNMP — standard MIBs
 
@@ -253,17 +253,17 @@ MIBs, 9 missing.) This table is generated — see "Keeping this current".
 
 ## HTTP control server
 
-> **Go:** ⬜ not started (Phase 5, `internal/httpd`).
+The whole control server is **Phase 5** in Go (`internal/httpd`) — not started.
 
-| Upstream `HTTP/Server/` | Rust `glpi-http` | Status |
-| --- | --- | --- |
-| `Proxy.pm` | `proxy.rs` | 🟡 ported; `GLPI-Proxy-ID` hop header not forwarded ([proxy.rs](../crates/glpi-http/src/proxy.rs)) |
-| `SSL.pm` | `tls.rs` | ✅ |
-| `Inventory.pm` | `server.rs` (control endpoints) | ✅ |
-| `BasicAuthentication.pm` | — (only IP trust in `trust.rs`) | ⬜ fehlt |
-| `SecondaryProxy.pm` | — | ⬜ fehlt |
-| `Test.pm` | — | ⬜ minor |
-| `ToolBox.pm` | — | 🚫 web GUI, intentionally dropped |
+| Upstream `HTTP/Server/` | Rust `glpi-http` | Rust | Go |
+| --- | --- | --- | --- |
+| `Proxy.pm` | `proxy.rs` | 🟡 ported; `GLPI-Proxy-ID` hop header not forwarded ([proxy.rs](../crates/glpi-http/src/proxy.rs)) | ⬜ Phase 5 |
+| `SSL.pm` | `tls.rs` | ✅ | ⬜ Phase 5 |
+| `Inventory.pm` | `server.rs` (control endpoints) | ✅ | ⬜ Phase 5 |
+| `BasicAuthentication.pm` | — (only IP trust in `trust.rs`) | ⬜ fehlt | ⬜ Phase 5 |
+| `SecondaryProxy.pm` | — | ⬜ fehlt | ⬜ Phase 5 |
+| `Test.pm` | — | ⬜ minor | ⬜ minor |
+| `ToolBox.pm` | — | 🚫 web GUI, intentionally dropped | 🚫 web GUI, intentionally dropped |
 
 ## Configuration sources
 
