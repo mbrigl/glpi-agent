@@ -61,6 +61,12 @@ func GetInventory(ip string, getter SNMPGetter) (Device, error) {
 		}
 	}
 
+	// Networking devices get their ports enriched (trunk / aggregation / known
+	// MACs), mirroring _setNetworkingProperties which runs only for TYPE NETWORKING.
+	if t, _ := device["TYPE"].(string); t == "NETWORKING" {
+		setNetworkingProperties(getter, device)
+	}
+
 	// setComponents() then runMibSupport(), in that order (SNMP/Hardware.pm), so
 	// a run hook can fix up components produced earlier. setComponents itself
 	// first walks the generic ENTITY-MIB table, then the MibSupport getComponents

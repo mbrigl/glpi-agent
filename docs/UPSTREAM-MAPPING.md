@@ -46,7 +46,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 | --- | --- | --- | --- | --- |
 | `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 28 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices, controllers, videos, sounds, slots, ports, monitors, physical_volumes, volume_groups, logical_volumes, users, printers, firewall) (virtualmachines: all mainstream Linux hypervisors; antivirus: all 8 detectors; remote_mgmt 🟡 TeamViewer+AnyDesk+RustDesk; videos 🟡 lspci); see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | ✅ SNMP probe (system-MIB device properties + sysObjectID classification) + IPv4 range scan via gosnmp, SNMPv3 (USM auth/priv), a threaded worker pool, and non-SNMP host discovery via the ARP cache (`/proc/net/arp`) + NetBIOS NBSTAT (UDP/137) merged per address (`_scanAddress`) |
-| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS + generic ENTITY-MIB COMPONENTS (incl. Dell/Cisco fix-ups) via gosnmp + MibSupport (all 78 device/OS vendor modules + the SnmpFramework engine-id fallback classifier, incl. the run/getComponents device-mutation hooks; only ConfigurationPlugin — a config-time plugin loader — is unported) |
+| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS + generic ENTITY-MIB COMPONENTS (incl. Dell/Cisco fix-ups) + NETWORKING port enrichment (TRUNK, AGGREGATE via LACP/PAgP, known-MAC FDB connections) via gosnmp + MibSupport (all 78 device/OS vendor modules + the SnmpFramework engine-id fallback classifier, incl. the run/getComponents device-mutation hooks; only ConfigurationPlugin — a config-time plugin loader — is unported). VLANs and CDP/LLDP/EDP neighbour discovery are the remaining port enrichments |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
 | `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ | `internal/remote` | 🟡 SSH connect/exec + remote document (host/OS/arch); WinRM and full collectors pending |
 | `Collect.pm` | `glpi-collect` | ✅ | `internal/collect` | ⬜ Phase 9 |
@@ -134,16 +134,17 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 > **Go:** 🟡 (`gosnmp`). The **system MIB** (generic device properties), the
 > **IF-MIB** interface table (PORTS, via SNMP walk), the **device
 > classification** (sysObjectID matched against the embedded `sysobject.ids`),
-> and the Entity/Printer SERIAL/FIRMWARE/MODEL OIDs are read by
-> `internal/discovery`. ip/bridge/LLDP/CDP and the per-vendor MibSupport
-> overrides are ⬜ pending.
+> the Entity/Printer SERIAL/FIRMWARE/MODEL OIDs, the ENTITY-MIB COMPONENTS and
+> the full per-vendor MibSupport overrides are read by `internal/discovery`,
+> along with the NETWORKING port enrichment (TRUNK, AGGREGATE, known-MAC FDB
+> connections). VLANs and the LLDP/CDP/EDP neighbour discovery are ⬜ pending.
 
 | Area | Rust | Go | Status |
 | --- | --- | --- | --- |
 | system | `mib/system_mib.rs` | `discovery` generic properties | ✅ Go |
 | interfaces (IF-MIB) | `mib/if_mib.rs` | `discovery` PORTS (walk) | 🟡 Go core columns |
 | ip | `mib/ip_mib.rs` | — | ⬜ Go |
-| bridge / LLDP / CDP | `mib/{bridge_mib,lldp_mib,cdp_mib}.rs` | — | ⬜ Go |
+| bridge / LLDP / CDP | `mib/{bridge_mib,lldp_mib,cdp_mib}.rs` | `discovery/netports.go` (TRUNK / AGGREGATE / known-MAC FDB) | 🟡 Go port enrichment; VLANs + LLDP/CDP/EDP pending |
 | entity / printer | `mib/{entity_mib,printer_mib}.rs` | `discovery` SERIAL/FIRMWARE/MODEL (entPhysical*, prt*) + `components.go` COMPONENTS | ✅ Go device fields + ENTITY-MIB physical components |
 | device classification | `mib/device.rs` | `discovery/classify` + `mibsupport` | ✅ Go (sysObjectID DB); MibSupport overrides 🟡 (framework, incl. run/getComponents hooks, + all 78 device/OS modules + SnmpFramework fallback) |
 
