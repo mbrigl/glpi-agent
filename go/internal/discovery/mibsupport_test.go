@@ -526,6 +526,102 @@ func TestFreeBSDStormshield(t *testing.T) {
 	}
 }
 
+// TestCiscoPortSecurity checks the run hook attaches the per-port secure MAC as
+// a PORT connection when the feature is enabled.
+func TestCiscoPortSecurity(t *testing.T) {
+	const cps = "1.3.6.1.4.1.9.9.315"
+	getter := &fakeGetter{
+		values: map[string]string{
+			oidSysDescr:       "Cisco IOS Switch",
+			oidSysObjectID:    ".1.3.6.1.4.1.9.1.1208",
+			cps + ".1.1.3.0":  "1", // global port security enabled (privateoid match)
+			oidIfDescr + ".1": "GigabitEthernet0/1",
+		},
+		walks: map[string]map[string]string{
+			oidIfDescr:          {"1": "GigabitEthernet0/1"},
+			cps + ".1.2.1.1.10": {"1": "aa:bb:cc:dd:ee:ff"},
+		},
+	}
+	d, err := GetInventory("192.0.2.110", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ports, _ := d["PORTS"].([]map[string]any)
+	if len(ports) == 0 {
+		t.Fatal("no PORTS")
+	}
+	conns, _ := ports[0]["CONNECTIONS"].(map[string]any)
+	conn, _ := conns["CONNECTION"].(map[string]any)
+	macs, _ := conn["MAC"].([]string)
+	if len(macs) != 1 || macs[0] != "aa:bb:cc:dd:ee:ff" {
+		t.Errorf("port connection MAC = %v", ports[0]["CONNECTIONS"])
+	}
+}
+
+// TestCiscoPortSecurityDisabled verifies no connections are added when the
+// feature OID is absent (so the module does not even match).
+func TestCiscoPortSecurityDisabled(t *testing.T) {
+	getter := &fakeGetter{
+		values: map[string]string{oidSysDescr: "Cisco", oidSysObjectID: ".1.3.6.1.4.1.9.1.1"},
+		walks:  map[string]map[string]string{oidIfDescr: {"1": "Gi0/1"}},
+	}
+	d, _ := GetInventory("192.0.2.111", getter)
+	ports, _ := d["PORTS"].([]map[string]any)
+	if len(ports) > 0 {
+		if _, ok := ports[0]["CONNECTIONS"]; ok {
+			t.Error("unexpected CONNECTIONS without port security")
+		}
+	}
+}
+
+// TestIEEE802dot11FillsEmpty checks the dot11 resource table fills the empty
+// identity fields (matched via the sysORID table) and the Ubnt version extract.
+func TestIEEE802dot11FillsEmpty(t *testing.T) {
+	const entry = "1.2.840.10036.3.1.2.1"
+	getter := &fakeGetter{
+		values: map[string]string{
+			oidSysDescr:    "Wireless AP",
+			oidSysObjectID: ".1.3.6.1.4.1.99999.1", // unknown -> no generic identity
+		},
+		walks: map[string]map[string]string{
+			sysORID:      {"1": ".1.2.840.10036"}, // advertise the dot11 mib
+			entry + ".2": {"1": "Ubiquiti"},
+			entry + ".3": {"1": "UAP-AC-PRO"},
+			entry + ".4": {"1": "WA.atheros.v4.3.20.11298"},
+		},
+	}
+	d, err := GetInventory("192.0.2.112", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d["MANUFACTURER"] != "Ubiquiti" || d["MODEL"] != "UAP-AC-PRO" {
+		t.Errorf("identity = %v", d)
+	}
+	if d["FIRMWARE"] != "v4.3.20 (WA)" {
+		t.Errorf("FIRMWARE = %v, want the extracted Ubnt version", d["FIRMWARE"])
+	}
+}
+
+// TestIEEE802dot11KeepsExisting verifies it does not override a value the generic
+// classification already provided.
+func TestIEEE802dot11KeepsExisting(t *testing.T) {
+	const entry = "1.2.840.10036.3.1.2.1"
+	getter := &fakeGetter{
+		values: map[string]string{
+			oidSysDescr:    "AP",
+			oidSysObjectID: ".1.3.6.1.4.1.41112.1", // Ubiquiti -> generic MANUFACTURER
+		},
+		walks: map[string]map[string]string{
+			sysORID:      {"1": ".1.2.840.10036"},
+			entry + ".2": {"1": "SomethingElse"},
+		},
+	}
+	d, _ := GetInventory("192.0.2.113", getter)
+	if d["MANUFACTURER"] == "SomethingElse" {
+		t.Errorf("IEEE802dot11 should not override an existing MANUFACTURER: %v", d["MANUFACTURER"])
+	}
+}
+
 func containsModule(mods []MibModule, name string) bool {
 	for _, m := range mods {
 		if m.Name == name {

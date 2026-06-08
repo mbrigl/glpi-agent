@@ -46,7 +46,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 | --- | --- | --- | --- | --- |
 | `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 28 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices, controllers, videos, sounds, slots, ports, monitors, physical_volumes, volume_groups, logical_volumes, users, printers, firewall) (virtualmachines: all mainstream Linux hypervisors; antivirus: all 8 detectors; remote_mgmt 🟡 TeamViewer+AnyDesk+RustDesk; videos 🟡 lspci); see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | ✅ SNMP probe (system-MIB device properties + sysObjectID classification) + IPv4 range scan via gosnmp, SNMPv3 (USM auth/priv), a threaded worker pool, and non-SNMP host discovery via the ARP cache (`/proc/net/arp`) + NetBIOS NBSTAT (UDP/137) merged per address (`_scanAddress`) |
-| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS + generic ENTITY-MIB COMPONENTS (incl. Dell/Cisco fix-ups) via gosnmp + MibSupport (78/80 vendor modules, incl. the run/getComponents device-mutation hooks; remaining 2: CiscoPortSecurity, IEEE802dot11) |
+| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS + generic ENTITY-MIB COMPONENTS (incl. Dell/Cisco fix-ups) via gosnmp + MibSupport (all 78 device/OS vendor modules, incl. the run/getComponents device-mutation hooks; the 2 framework modules SnmpFramework/ConfigurationPlugin are infra handled differently) |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
 | `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ | `internal/remote` | 🟡 SSH connect/exec + remote document (host/OS/arch); WinRM and full collectors pending |
 | `Collect.pm` | `glpi-collect` | ✅ | `internal/collect` | ⬜ Phase 9 |
@@ -145,7 +145,7 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 | ip | `mib/ip_mib.rs` | — | ⬜ Go |
 | bridge / LLDP / CDP | `mib/{bridge_mib,lldp_mib,cdp_mib}.rs` | — | ⬜ Go |
 | entity / printer | `mib/{entity_mib,printer_mib}.rs` | `discovery` SERIAL/FIRMWARE/MODEL (entPhysical*, prt*) + `components.go` COMPONENTS | ✅ Go device fields + ENTITY-MIB physical components |
-| device classification | `mib/device.rs` | `discovery/classify` + `mibsupport` | ✅ Go (sysObjectID DB); MibSupport overrides 🟡 (framework, incl. run/getComponents hooks, + 78 vendors) |
+| device classification | `mib/device.rs` | `discovery/classify` + `mibsupport` | ✅ Go (sysObjectID DB); MibSupport overrides 🟡 (framework, incl. run/getComponents hooks, + all 78 device/OS vendor modules) |
 
 ## SNMP — vendor `MibSupport`
 
@@ -157,7 +157,7 @@ the Rust SNMP core handles differently. This table is generated — see
 > **Go:** 🟡 **in progress**. `internal/discovery/mibsupport.go` ports the
 > MibSupport dispatcher (sysObjectID + sysORID + privateoid matching, priority, per-field
 > override). Ported so far (mib_vendors*.go): Mikrotik, Ubnt, Dell, Fortinet, Cisco, Juniper,
-> HP, Brother, Canon, Epson, Konica, Ricoh, Kyocera, Lexmark, Zebra, Aruba, Avaya, Brocade, CheckPoint, Dlink, Hikvision, iLO, iDRAC, Nokia, SonicWall, Sophos, TpLink, Zyxel, OKI, Qnap, Ruckus, CiscoMeraki, Eaton, Raritan, Snom, Htek, WatchGuard, WyseThinOS, Intelbras, Pantum, Toshiba, Hwg, Meinberg, Avocent, Bachmann, CiscoUCS, DefensePro, DigiPower, FoxGate, Hitachi, HP-HTTP, Infortrend, Multitech, Quantum, Radware, UPS(APC/Riello/std), Voltronic, Aerohive, Akcp, NetScaler, Dlink-DGS1210, Digi, HP-Citizen, RNX, Telco, Tiesse, Voltaire, SiemensSicam, Xerox, Netgear, EMC, Force10S, Panasas, Siemens, FreeBSD/Stormshield, LinuxAppliance **(78/80)**,
+> HP, Brother, Canon, Epson, Konica, Ricoh, Kyocera, Lexmark, Zebra, Aruba, Avaya, Brocade, CheckPoint, Dlink, Hikvision, iLO, iDRAC, Nokia, SonicWall, Sophos, TpLink, Zyxel, OKI, Qnap, Ruckus, CiscoMeraki, Eaton, Raritan, Snom, Htek, WatchGuard, WyseThinOS, Intelbras, Pantum, Toshiba, Hwg, Meinberg, Avocent, Bachmann, CiscoUCS, DefensePro, DigiPower, FoxGate, Hitachi, HP-HTTP, Infortrend, Multitech, Quantum, Radware, UPS(APC/Riello/std), Voltronic, Aerohive, Akcp, NetScaler, Dlink-DGS1210, Digi, HP-Citizen, RNX, Telco, Tiesse, Voltaire, SiemensSicam, Xerox, Netgear, EMC, Force10S, Panasas, Siemens, FreeBSD/Stormshield, LinuxAppliance, CiscoPortSecurity, IEEE802dot11 **(all 78 device/OS modules)**,
 > each verbatim from the upstream `MibSupport/**` OIDs (not the Rust files).
 > Matching covers sysObjectID, sysORID and privateoid rules. The framework now also
 > ports the device-mutation hooks: `Components` (getComponents → COMPONENTS, with a
@@ -177,8 +177,14 @@ the Rust SNMP core handles differently. This table is generated — see
 > decode — reusing the embedded sysobject.ids DB as `getManufacturerIDInfo` — and
 > the run enrichment (Synology disks→STORAGES / volumes→DRIVES, per-vendor
 > firmware). Detection state is stashed under a private `_appliance` device key
-> that GetInventory strips before output. The remaining 2 are follow-on: the
-> CiscoPortSecurity / IEEE802dot11 port-/WLAN enrichment modules.
+> that GetInventory strips before output. The final two enrichment modules are
+> also done: CiscoPortSecurity (a run hook attaching each port's secure MAC as a
+> PORT connection) and IEEE802dot11 (a priority-50 module filling
+> MANUFACTURER/MODEL/FIRMWARE from the dot11 resource table only when the generic
+> classification left them empty, incl. the Ubnt version extract). That completes
+> all 78 device/OS MibSupport modules; only the 2 framework modules
+> (SnmpFramework, ConfigurationPlugin) remain, and those are infra the Go core
+> handles differently rather than 1:1 ports.
 
 | Upstream `MibSupport/` | Rust `…/mib/vendor/` | Status |
 | --- | --- | --- |
