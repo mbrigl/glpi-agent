@@ -155,6 +155,37 @@ func TestEatonEpduMibSupport(t *testing.T) {
 	}
 }
 
+// TestInfortrendMibSupport checks a STORAGE module with composed firmware.
+func TestInfortrendMibSupport(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:                     "Infortrend",
+		oidSysObjectID:                  ".1.3.6.1.4.1.1714.1.1.1",
+		"1.3.6.1.4.1.1714.1.1.1.1.4.0":  "3",  // fw major
+		"1.3.6.1.4.1.1714.1.1.1.1.5.0":  "88", // fw minor
+		"1.3.6.1.4.1.1714.1.1.1.1.10.0": "SN-INF-001",
+		"1.3.6.1.4.1.1714.1.1.1.1.15.0": "EonStor GS",
+	}}
+	d, _ := GetInventory("192.0.2.50", getter)
+	if d["TYPE"] != "STORAGE" || d["FIRMWARE"] != "3.88" || d["SERIAL"] != "SN-INF-001" || d["MODEL"] != "EonStor GS" {
+		t.Errorf("infortrend = %v", d)
+	}
+}
+
+// TestUpsApcSerialFallback checks the APC UPS serial fallback chain.
+func TestUpsApcSerialFallback(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:                   "APC Web/SNMP",
+		oidSysObjectID:                ".1.3.6.1.4.1.318.1.3",
+		"1.3.6.1.4.1.318.1.1.4.1.4.0": "AP7921",    // model
+		"1.3.6.1.4.1.318.1.1.4.1.5.0": "ZA1234567", // sPDU serial (fallback)
+		"1.3.6.1.4.1.318.1.1.4.1.2.0": "v3.7.3",    // firmware
+	}}
+	d, _ := GetInventory("192.0.2.51", getter)
+	if d["MODEL"] != "AP7921" || d["SERIAL"] != "ZA1234567" || d["FIRMWARE"] != "v3.7.3" {
+		t.Errorf("apc = %v", d)
+	}
+}
+
 func containsModule(mods []MibModule, name string) bool {
 	for _, m := range mods {
 		if m.Name == name {
