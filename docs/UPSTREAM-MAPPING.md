@@ -68,7 +68,10 @@ How `RemoteInventory` reaches a host. Upstream supports SSH (system `ssh`,
 
 How the agent talks to a GLPI server: the modern GLPI Agent protocol (CONTACT
 handshake + JSON inventory submission). The legacy OCS XML PROLOG/SEND path is
-intentionally not ported to Go. In progress (`inventory --server`).
+intentionally not ported to Go. ✅ working end to end via `inventory --server`
+(covered by an httptest integration test of the CONTACT + submit dialog). The
+daemon/scheduling loop (PROLOG_FREQ) and server-driven Collect/Deploy tasks are
+out of scope here.
 
 | Upstream | Go | Go status |
 | --- | --- | --- |
