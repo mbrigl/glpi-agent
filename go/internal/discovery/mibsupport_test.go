@@ -125,6 +125,36 @@ func TestCheckPointFirmwareCompose(t *testing.T) {
 	}
 }
 
+// TestQnapMibSupport checks a STORAGE module that matches by privateoid and sets
+// a constant Type/Manufacturer.
+func TestQnapMibSupport(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:                    "Linux NAS 5.10",
+		oidSysObjectID:                 ".1.3.6.1.4.1.8072.3.2.10", // generic net-snmp
+		"1.3.6.1.4.1.24681.2.2.2.12.0": "TS-873A",                  // es_ModelName -> privateoid match
+		"1.3.6.1.4.1.24681.2.2.2.13.0": "nas01",
+	}}
+	d, _ := GetInventory("192.0.2.40", getter)
+	if d["TYPE"] != "STORAGE" || d["MANUFACTURER"] != "Qnap" || d["MODEL"] != "TS-873A" {
+		t.Errorf("qnap = %v", d)
+	}
+}
+
+// TestEatonEpduMibSupport checks an ePDU module (scalar OIDs).
+func TestEatonEpduMibSupport(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:                       "Eaton ePDU",
+		oidSysObjectID:                    ".1.3.6.1.4.1.534.6.6.7.1",
+		"1.3.6.1.4.1.534.6.6.7.1.2.1.3.0": "EMAT10-10",
+		"1.3.6.1.4.1.534.6.6.7.1.2.1.4.0": "WA123456",
+		"1.3.6.1.4.1.534.6.6.7.1.2.1.5.0": "2.0.5",
+	}}
+	d, _ := GetInventory("192.0.2.41", getter)
+	if d["MODEL"] != "EMAT10-10" || d["SERIAL"] != "WA123456" || d["FIRMWARE"] != "2.0.5" {
+		t.Errorf("eaton = %v", d)
+	}
+}
+
 func containsModule(mods []MibModule, name string) bool {
 	for _, m := range mods {
 		if m.Name == name {
