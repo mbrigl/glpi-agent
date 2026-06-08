@@ -35,7 +35,16 @@ func GetInventory(ip string, getter SNMPGetter) (Device, error) {
 		return nil, nil
 	}
 
-	setIdentity(getter, device)
+	// Match the vendor MibSupport modules once and reuse them for the identity
+	// overrides, the components and the run hooks (MibSupport->new is built once
+	// per device in SNMP/Hardware.pm).
+	sysoid, _ := device["SYSOBJECTID"].(string)
+	var modules []MibModule
+	if sysoid != "" {
+		modules = matchMibModules(sysoid, walkSysORIDSet(getter), getter)
+	}
+
+	setIdentity(getter, device, modules)
 
 	ports, err := buildPorts(getter)
 	if err != nil {
@@ -51,6 +60,11 @@ func GetInventory(ip string, getter SNMPGetter) (Device, error) {
 			device["MAC"] = mac
 		}
 	}
+
+	// setComponents() then runMibSupport(), in that order (SNMP/Hardware.pm), so
+	// a run hook can fix up components produced by a Components accessor.
+	setComponentsByMib(device, getter, modules)
+	runMibSupport(device, getter, modules)
 	return device, nil
 }
 
@@ -85,7 +99,7 @@ var vendorFirmwareOIDs = []string{
 // setIdentity fills TYPE/MANUFACTURER/MODEL (from the sysObjectID database) and
 // the device SERIAL/FIRMWARE/MAC, mirroring the generic (non-MibSupport) path of
 // SNMP/Device.pm. The per-vendor MibSupport refinements are follow-on.
-func setIdentity(getter SNMPGetter, device Device) {
+func setIdentity(getter SNMPGetter, device Device, modules []MibModule) {
 	if sysoid, ok := device["SYSOBJECTID"].(string); ok && sysoid != "" {
 		if c, ok := classifyBySysObjectID(sysoid); ok {
 			if c.Type != "" {
@@ -127,9 +141,7 @@ func setIdentity(getter SNMPGetter, device Device) {
 
 	// Vendor MibSupport refinements override the generic classification (the
 	// getXByMibSupport precedence in SNMP/Device.pm).
-	if sysoid, ok := device["SYSOBJECTID"].(string); ok && sysoid != "" {
-		applyMibSupport(device, getter, sysoid)
-	}
+	applyMibSupportFields(device, getter, modules)
 
 	// MODEL fallback when the database had none.
 	if _, ok := device["MODEL"]; !ok {

@@ -286,6 +286,115 @@ func TestSiemensSicamMibSupport(t *testing.T) {
 	}
 }
 
+// TestXeroxPageCounters checks the run hook sums the XEROX-HOST-RESOURCES-EXT
+// counters into PAGECOUNTERS and derives COPYTOTAL.
+func TestXeroxPageCounters(t *testing.T) {
+	const detail = "1.3.6.1.4.1.253.8.53.13.2.1"
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:            "Xerox WorkCentre",
+		oidSysObjectID:         ".1.3.6.1.4.1.253.8.62.1",
+		detail + ".6.1.20.1":   "1500", // PRINTTOTAL
+		detail + ".6.1.20.33":  "400",  // PRINTCOLOR
+		detail + ".6.1.20.34":  "1100", // PRINTBLACK
+		detail + ".6.11.20.25": "200",  // COPYCOLOR
+		detail + ".6.11.20.3":  "300",  // COPYBLACK
+		detail + ".6.10.20.11": "10",   // scan by email
+		detail + ".6.10.20.12": "5",    // scan on network
+	}}
+	d, err := GetInventory("192.0.2.80", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc, ok := d["PAGECOUNTERS"].(map[string]any)
+	if !ok {
+		t.Fatalf("no PAGECOUNTERS: %v", d)
+	}
+	if pc["PRINTTOTAL"] != 1500 || pc["PRINTCOLOR"] != 400 || pc["PRINTBLACK"] != 1100 {
+		t.Errorf("print counters = %v", pc)
+	}
+	if pc["SCANNED"] != 15 {
+		t.Errorf("SCANNED = %v, want 15 (10+5)", pc["SCANNED"])
+	}
+	if pc["COPYTOTAL"] != 500 {
+		t.Errorf("COPYTOTAL = %v, want 500 (300+200)", pc["COPYTOTAL"])
+	}
+}
+
+// TestSiemensSicamComponents checks the DGPI product-component walk builds
+// COMPONENTS and rewrites FIRMWARES.
+func TestSiemensSicamComponents(t *testing.T) {
+	const entry = "1.3.6.1.4.1.22638.11.1.2.1.1"
+	getter := &fakeGetter{
+		values: map[string]string{
+			oidSysDescr:    "Siemens AG, SICAM A8000, CP-8050, HW1, FW: 4.50, SN: VPV1234567",
+			oidSysObjectID: ".1.3.6.1.4.1.22638.1",
+		},
+		walks: map[string]map[string]string{
+			entry + ".2": {"1": "0", "2": "1"},               // containedIn
+			entry + ".3": {"1": "3", "2": "6"},               // class -> mainHwComponent, mainFwSwComponent
+			entry + ".4": {"1": "CP-8050", "2": "Firmware"},  // name
+			entry + ".5": {"1": "Master module", "2": "App"}, // description
+			entry + ".7": {"1": "SN-CP-8050"},                // serial (unit 1 only)
+			entry + ".8": {"2": "4.50"},                      // version (unit 2 only)
+			entry + ".9": {"1": "X1"},                        // hw slot
+		},
+	}
+	d, err := GetInventory("192.0.2.81", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	container, _ := d["COMPONENTS"].(map[string]any)
+	comps, _ := container["COMPONENT"].([]map[string]any)
+	if len(comps) != 2 {
+		t.Fatalf("COMPONENTS = %v", container)
+	}
+	if comps[0]["NAME"] != "CP-8050" || comps[0]["SERIAL"] != "SN-CP-8050" || comps[0]["TYPE"] != "mainHwComponent" {
+		t.Errorf("component[0] = %v", comps[0])
+	}
+	if comps[1]["FIRMWARE"] != "4.50" {
+		t.Errorf("component[1] firmware = %v", comps[1])
+	}
+	fws, _ := d["FIRMWARES"].([]map[string]any)
+	if len(fws) != 1 || fws[0]["VERSION"] != "4.50" || fws[0]["MANUFACTURER"] != "Siemens" {
+		t.Errorf("FIRMWARES = %v", fws)
+	}
+}
+
+// TestNetgearStackSerials checks the run hook fills per-unit chassis serials
+// when a stack exposes more than one chassis component.
+func TestNetgearStackSerials(t *testing.T) {
+	const status = "1.3.6.1.4.1.4526.10.13.2.2.1.11"
+	const serial = "1.3.6.1.4.1.4526.10.13.2.2.1.19"
+	getter := &fakeGetter{
+		values: map[string]string{
+			oidSysDescr:    "Netgear Switch",
+			oidSysObjectID: ".1.3.6.1.4.1.4526.100.1",
+		},
+		walks: map[string]map[string]string{
+			sysORID: {"1": ".1.3.6.1.4.1.4526.10.13"}, // advertise the inventory mib
+			status:  {"1": "1", "2": "1"},
+			serial:  {"1": "SER-UNIT-1", "2": "SER-UNIT-2"},
+		},
+	}
+	d, err := GetInventory("192.0.2.82", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Seed two chassis components (as the generic ENTITY-MIB step would).
+	addComponent(d, map[string]any{"TYPE": "chassis", "NAME": "Unit 1"})
+	addComponent(d, map[string]any{"TYPE": "chassis", "NAME": "Unit 2"})
+	mods := matchMibModules(".1.3.6.1.4.1.4526.100.1", map[string]bool{"1.3.6.1.4.1.4526.10.13": true}, getter)
+	runMibSupport(d, getter, mods)
+
+	comps := d["COMPONENTS"].(map[string]any)["COMPONENT"].([]map[string]any)
+	if comps[0]["SERIAL"] != "SER-UNIT-1" || comps[0]["STACK_NUMBER"] != "1" {
+		t.Errorf("unit 1 = %v", comps[0])
+	}
+	if comps[1]["SERIAL"] != "SER-UNIT-2" || comps[1]["STACK_NUMBER"] != "2" {
+		t.Errorf("unit 2 = %v", comps[1])
+	}
+}
+
 func containsModule(mods []MibModule, name string) bool {
 	for _, m := range mods {
 		if m.Name == name {

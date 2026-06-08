@@ -33,6 +33,15 @@ type MibModule struct {
 	Firmware     func(g SNMPGetter, d Device) string
 	Mac          func(g SNMPGetter, d Device) string
 	SnmpHostname func(g SNMPGetter, d Device) string
+
+	// Components mirrors getComponents: it returns extra COMPONENTS entries to
+	// append to the device (and may populate FIRMWARES as a side effect, like
+	// SiemensSicam). Called during setComponents, before Run.
+	Components func(g SNMPGetter, d Device) []map[string]any
+	// Run mirrors a module's run(): a device-mutation hook invoked after the
+	// identity fields, ports and components are assembled (runMibSupport). Use it
+	// for PAGECOUNTERS, firmware rewrites or component fix-ups.
+	Run func(g SNMPGetter, d Device)
 }
 
 // mibRegistry holds every registered vendor module.
@@ -72,12 +81,19 @@ func matchMibModules(sysObjectID string, sysorid map[string]bool, getter SNMPGet
 	return matched
 }
 
-// applyMibSupport refines a device's identity fields using the matching vendor
-// modules, mirroring the getXByMibSupport precedence in SNMP/Device.pm. The
-// first matching module to provide a field wins, overriding the generic
-// sysObjectID-database classification.
+// applyMibSupport matches the vendor modules for a device and refines its
+// identity fields. It is the entry point used where the matched module set is
+// not reused (and by tests); GetInventory matches once and calls
+// applyMibSupportFields / setComponentsByMib / runMibSupport directly.
 func applyMibSupport(device Device, getter SNMPGetter, sysObjectID string) {
-	modules := matchMibModules(sysObjectID, walkSysORIDSet(getter), getter)
+	applyMibSupportFields(device, getter, matchMibModules(sysObjectID, walkSysORIDSet(getter), getter))
+}
+
+// applyMibSupportFields refines a device's identity fields using the given
+// matching vendor modules, mirroring the getXByMibSupport precedence in
+// SNMP/Device.pm. The first matching module to provide a field wins, overriding
+// the generic sysObjectID-database classification.
+func applyMibSupportFields(device Device, getter SNMPGetter, modules []MibModule) {
 	if len(modules) == 0 {
 		return
 	}
@@ -122,4 +138,64 @@ func walkSysORIDSet(getter SNMPGetter) map[string]bool {
 		set[strings.TrimPrefix(strings.TrimSpace(v), ".")] = true
 	}
 	return set
+}
+
+// setComponentsByMib appends the COMPONENTS produced by each matching module's
+// Components accessor, mirroring SNMP/Device.pm setComponents' MibSupport branch
+// (run before runMibSupport). Modules are consulted in priority order.
+func setComponentsByMib(device Device, getter SNMPGetter, modules []MibModule) {
+	for _, m := range modules {
+		if m.Components == nil {
+			continue
+		}
+		for _, comp := range m.Components(getter, device) {
+			addComponent(device, comp)
+		}
+	}
+}
+
+// runMibSupport invokes each matching module's Run hook in priority order,
+// mirroring MibSupport::run / Device::runMibSupport.
+func runMibSupport(device Device, getter SNMPGetter, modules []MibModule) {
+	for _, m := range modules {
+		if m.Run != nil {
+			m.Run(getter, device)
+		}
+	}
+}
+
+// addComponent appends a component to device.COMPONENTS.COMPONENT, mirroring
+// Device::addComponent. Empty components are dropped.
+func addComponent(device Device, comp map[string]any) {
+	if len(comp) == 0 {
+		return
+	}
+	container, _ := device["COMPONENTS"].(map[string]any)
+	if container == nil {
+		container = map[string]any{}
+		device["COMPONENTS"] = container
+	}
+	list, _ := container["COMPONENT"].([]map[string]any)
+	container["COMPONENT"] = append(list, comp)
+}
+
+// addFirmware appends a firmware entry to device.FIRMWARES, mirroring
+// Device::addFirmware.
+func addFirmware(device Device, fw map[string]any) {
+	if len(fw) == 0 {
+		return
+	}
+	list, _ := device["FIRMWARES"].([]map[string]any)
+	device["FIRMWARES"] = append(list, fw)
+}
+
+// setPageCounter sets device.PAGECOUNTERS.<name>, mirroring the
+// $device->{PAGECOUNTERS}->{NAME} assignment used by the printer run hooks.
+func setPageCounter(device Device, name string, value int) {
+	counters, _ := device["PAGECOUNTERS"].(map[string]any)
+	if counters == nil {
+		counters = map[string]any{}
+		device["PAGECOUNTERS"] = counters
+	}
+	counters[name] = value
 }
