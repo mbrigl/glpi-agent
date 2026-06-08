@@ -90,6 +90,41 @@ func TestHpPrivateOidMatch(t *testing.T) {
 	}
 }
 
+// TestSonicWallMibSupport checks a firewall vendor module (scalar OIDs).
+func TestSonicWallMibSupport(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:                  "SonicWALL",
+		oidSysObjectID:               ".1.3.6.1.4.1.8741.1",
+		"1.3.6.1.4.1.8741.2.1.1.1.0": "TZ470",
+		"1.3.6.1.4.1.8741.2.1.1.2.0": "18B1690ABC00",
+		"1.3.6.1.4.1.8741.2.1.1.3.0": "7.0.1-5083",
+	}}
+	d, _ := GetInventory("192.0.2.30", getter)
+	if d["MODEL"] != "TZ470" || d["SERIAL"] != "18B1690ABC00" || d["FIRMWARE"] != "7.0.1-5083" {
+		t.Errorf("sonicwall = %v", d)
+	}
+}
+
+// TestCheckPointFirmwareCompose checks the composed "version (build N)" firmware
+// and the appliance manufacturer override.
+func TestCheckPointFirmwareCompose(t *testing.T) {
+	getter := &fakeGetter{values: map[string]string{
+		oidSysDescr:                   "Check Point",
+		oidSysObjectID:                ".1.3.6.1.4.1.2620.1.1",
+		"1.3.6.1.4.1.2620.1.6.4.1.0":  "R81.20",
+		"1.3.6.1.4.1.2620.1.6.4.2.0":  "631",
+		"1.3.6.1.4.1.2620.1.6.16.3.0": "1809BX1234",
+		"1.3.6.1.4.1.2620.1.6.16.9.0": "Check Point",
+	}}
+	d, _ := GetInventory("192.0.2.31", getter)
+	if d["FIRMWARE"] != "R81.20 (build 631)" {
+		t.Errorf("FIRMWARE = %v, want 'R81.20 (build 631)'", d["FIRMWARE"])
+	}
+	if d["SERIAL"] != "1809BX1234" || d["MANUFACTURER"] != "Check Point" {
+		t.Errorf("checkpoint = %v", d)
+	}
+}
+
 func containsModule(mods []MibModule, name string) bool {
 	for _, m := range mods {
 		if m.Name == name {
