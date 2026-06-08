@@ -64,6 +64,19 @@ How `RemoteInventory` reaches a host. Upstream supports SSH (system `ssh`,
 | `Ssh.pm` | `glpi-inventory-remote` (russh) | `internal/remote/ssh.go` (`x/crypto/ssh`) | 🟡 connect (password + identity), `LANG=C` exec, OSName/hostname/FQDN/CanRun/ReadFile, host-key policy from `stricthostkeychecking` (strict/accept-new/no) |
 | `Winrm.pm` | `glpi-inventory-remote` | `internal/remote` | ⬜ pending (`masterzen/winrm`) |
 
+## Server communication (GLPI protocol)
+
+How the agent talks to a GLPI server: the modern GLPI Agent protocol (CONTACT
+handshake + JSON inventory submission). The legacy OCS XML PROLOG/SEND path is
+intentionally not ported to Go. In progress (`inventory --server`).
+
+| Upstream | Go | Go status |
+| --- | --- | --- |
+| `Protocol/{Message,Contact}.pm` | `internal/protocol` | ✅ CONTACT request encode + answer parse (status / expiration / tasks); modern protocol only |
+| `HTTP/Client{,/GLPI}.pm` | `internal/transport/glpi.go` | ⬜ Phase 2 (POST + zlib + GLPI-Agent-ID + full TLS/auth/proxy) |
+| `Target/Server.pm`, `Storage.pm` | `internal/target`, `internal/state` | ⬜ Phase 3 (URL canon, persistent agentid, isGlpiServer) |
+| `Agent.pm` getContact + `Task/Inventory.pm` submit | `internal/cli` (`inventory --server`) | ⬜ Phase 4 |
+
 ## Local inventory sections
 
 Upstream organises inventory modules by OS (`Task/Inventory/{Generic,Linux,Win32,
