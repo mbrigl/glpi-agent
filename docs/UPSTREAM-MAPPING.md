@@ -46,7 +46,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 | --- | --- | --- | --- | --- |
 | `Inventory.pm` | `glpi-inventory-local` | ✅ | `internal/{content,inventory}` | 🟡 document model + 28 Linux sections (bios, hardware, os, cpus, memories, networks, drives, storages, softwares, local_users/groups, envs, batteries, inputs, processes, usbdevices, controllers, videos, sounds, slots, ports, monitors, physical_volumes, volume_groups, logical_volumes, users, printers, firewall) (virtualmachines: all mainstream Linux hypervisors; antivirus: all 8 detectors; remote_mgmt 🟡 TeamViewer+AnyDesk+RustDesk; videos 🟡 lspci); see the local-sections table. dmidecode/lspci/lvm-based categories and Windows/macOS pending |
 | `NetDiscovery.pm` | `glpi-discovery` | ✅ | `internal/discovery` | ✅ SNMP probe (system-MIB device properties + sysObjectID classification) + IPv4 range scan via gosnmp, SNMPv3 (USM auth/priv), a threaded worker pool, and non-SNMP host discovery via the ARP cache (`/proc/net/arp`) + NetBIOS NBSTAT (UDP/137) merged per address (`_scanAddress`) |
-| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS + generic ENTITY-MIB COMPONENTS (incl. Dell/Cisco fix-ups) via gosnmp + MibSupport (all 78 device/OS vendor modules, incl. the run/getComponents device-mutation hooks; the 2 framework modules SnmpFramework/ConfigurationPlugin are infra handled differently) |
+| `NetInventory.pm` | `glpi-discovery` | ✅ | `internal/discovery` | 🟡 generic properties + sysObjectID classification (embedded `sysobject.ids`) + SERIAL/FIRMWARE/MAC + IF-MIB PORTS + generic ENTITY-MIB COMPONENTS (incl. Dell/Cisco fix-ups) via gosnmp + MibSupport (all 78 device/OS vendor modules + the SnmpFramework engine-id fallback classifier, incl. the run/getComponents device-mutation hooks; only ConfigurationPlugin — a config-time plugin loader — is unported) |
 | `ESX.pm` | `glpi-vsphere` | ✅ | `internal/vsphere` | ✅ via govmomi |
 | `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ | `internal/remote` | 🟡 SSH connect/exec + remote document (host/OS/arch); WinRM and full collectors pending |
 | `Collect.pm` | `glpi-collect` | ✅ | `internal/collect` | ⬜ Phase 9 |
@@ -145,7 +145,7 @@ emitted via [`content.rs`](../crates/glpi-inventory-local/src/content.rs)) is or
 | ip | `mib/ip_mib.rs` | — | ⬜ Go |
 | bridge / LLDP / CDP | `mib/{bridge_mib,lldp_mib,cdp_mib}.rs` | — | ⬜ Go |
 | entity / printer | `mib/{entity_mib,printer_mib}.rs` | `discovery` SERIAL/FIRMWARE/MODEL (entPhysical*, prt*) + `components.go` COMPONENTS | ✅ Go device fields + ENTITY-MIB physical components |
-| device classification | `mib/device.rs` | `discovery/classify` + `mibsupport` | ✅ Go (sysObjectID DB); MibSupport overrides 🟡 (framework, incl. run/getComponents hooks, + all 78 device/OS vendor modules) |
+| device classification | `mib/device.rs` | `discovery/classify` + `mibsupport` | ✅ Go (sysObjectID DB); MibSupport overrides 🟡 (framework, incl. run/getComponents hooks, + all 78 device/OS modules + SnmpFramework fallback) |
 
 ## SNMP — vendor `MibSupport`
 
@@ -182,9 +182,12 @@ the Rust SNMP core handles differently. This table is generated — see
 > PORT connection) and IEEE802dot11 (a priority-50 module filling
 > MANUFACTURER/MODEL/FIRMWARE from the dot11 resource table only when the generic
 > classification left them empty, incl. the Ubnt version extract). That completes
-> all 78 device/OS MibSupport modules; only the 2 framework modules
-> (SnmpFramework, ConfigurationPlugin) remain, and those are infra the Go core
-> handles differently rather than 1:1 ports.
+> all 78 device/OS MibSupport modules. SnmpFramework is also ported
+> (`mib_vendors9.go`): a priority-100 last-resort classifier that fills
+> MANUFACTURER/MODEL/SERIAL from the IANA manufacturer id decoded out of the
+> snmpEngineID (sharing `snmpEngineIDInfo` with LinuxAppliance), only when nothing
+> more specific provided them. Only ConfigurationPlugin remains unported — it is a
+> config-time plugin loader, not a device MIB, so it has no inventory effect.
 
 | Upstream `MibSupport/` | Rust `…/mib/vendor/` | Status |
 | --- | --- | --- |

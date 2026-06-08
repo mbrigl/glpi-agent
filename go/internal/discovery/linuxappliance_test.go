@@ -129,6 +129,52 @@ func TestLinuxApplianceNoMatch(t *testing.T) {
 	}
 }
 
+// TestSnmpFrameworkFallback checks the generic engine-id classifier fills the
+// empty identity from the snmpEngineID manufacturer id (9 = Cisco) plus the
+// embedded MAC serial, matched via the framework compliance sysORID entry.
+func TestSnmpFrameworkFallback(t *testing.T) {
+	getter := &fakeGetter{
+		values: map[string]string{
+			oidSysDescr:    "Generic SNMP device",
+			oidSysObjectID: ".1.3.6.1.4.1.99999.7", // unknown -> no generic identity
+			// engineID: 0x80 (high bit) + manuf id 9 + format 3 (MAC) + MAC bytes.
+			laSnmpEngineID: "80:00:00:09:03:aa:bb:cc:dd:ee:ff",
+		},
+		walks: map[string]map[string]string{
+			sysORID: {"1": ".1.3.6.1.6.3.10.3.1.1"},
+		},
+	}
+	d, err := GetInventory("192.0.2.120", getter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d["MANUFACTURER"] != "Cisco" {
+		t.Errorf("MANUFACTURER = %v, want Cisco", d["MANUFACTURER"])
+	}
+	if d["SERIAL"] != "aa:bb:cc:dd:ee:ff" {
+		t.Errorf("SERIAL = %v, want the engine-id MAC", d["SERIAL"])
+	}
+}
+
+// TestSnmpFrameworkKeepsExisting verifies the fallback does not override an
+// identity the generic classification already provided.
+func TestSnmpFrameworkKeepsExisting(t *testing.T) {
+	getter := &fakeGetter{
+		values: map[string]string{
+			oidSysDescr:    "Mikrotik",
+			oidSysObjectID: ".1.3.6.1.4.1.14988.2", // Mikrotik -> generic MANUFACTURER
+			laSnmpEngineID: "80:00:00:09:03:aa:bb:cc:dd:ee:ff",
+		},
+		walks: map[string]map[string]string{
+			sysORID: {"1": ".1.3.6.1.6.3.10.3.1.1"},
+		},
+	}
+	d, _ := GetInventory("192.0.2.121", getter)
+	if d["MANUFACTURER"] == "Cisco" {
+		t.Errorf("snmp-framework should not override the generic manufacturer: %v", d["MANUFACTURER"])
+	}
+}
+
 // TestCanonicalDiskManufacturer covers a few disk-model prefixes.
 func TestCanonicalDiskManufacturer(t *testing.T) {
 	cases := map[string]string{

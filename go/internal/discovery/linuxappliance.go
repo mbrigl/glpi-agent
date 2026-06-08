@@ -174,28 +174,13 @@ func laDetect(g SNMPGetter, d Device) (map[string]any, string) {
 // laDetectByEngineID decodes the snmpEngineID for the IANA manufacturer id and
 // the embedded unique identifier, then refines via process/installed lookups.
 func laDetectByEngineID(g SNMPGetter, sysDescr string) (map[string]any, string) {
-	engine := laEngineBytes(mibGet(g, laSnmpEngineID))
-	if len(engine) < 4 {
-		return nil, ""
-	}
-	manufacturerID := (int(engine[0]&0x7f) << 24) | (int(engine[1]) << 16) | (int(engine[2]) << 8) | int(engine[3])
-	match, ok := manufacturerIDInfo(strconv.Itoa(manufacturerID))
-	if !ok || match.Manufacturer == "" || match.Type == "" {
+	match, serial, ok := snmpEngineIDInfo(g)
+	if !ok {
 		return nil, ""
 	}
 	info := map[string]any{"MODEL": match.Model, "MANUFACTURER": match.Manufacturer}
-
-	// A unique identifier may follow when the high bit of the first byte is set.
-	if engine[0]&0x80 != 0 && len(engine) >= 5 {
-		remaining := engine[5:]
-		switch {
-		case engine[4] == 3:
-			info["SERIAL"] = canonicalMAC(hexColon(remaining))
-		case engine[4] == 4:
-			info["SERIAL"] = strings.TrimSpace(string(remaining))
-		case engine[4] == 5 || engine[4] >= 128:
-			info["SERIAL"] = hex.EncodeToString(remaining)
-		}
+	if serial != "" {
+		info["SERIAL"] = serial
 	}
 
 	// Try to identify the device more precisely.
@@ -389,6 +374,39 @@ func anyValueMatch(walk map[string]string, re *regexp.Regexp) bool {
 		}
 	}
 	return false
+}
+
+// snmpEngineIDInfo decodes the SNMP-FRAMEWORK-MIB snmpEngineID into the IANA
+// manufacturer classification (via the embedded sysobject.ids DB) and the
+// embedded unique identifier rendered as a serial. It is the shared base of the
+// LinuxAppliance and SnmpFramework engine-id analysis. ok is false when there is
+// no engine id or no manufacturer match. The returned serial is "" when the
+// engine id carries no administratively-assigned identifier.
+func snmpEngineIDInfo(g SNMPGetter) (info classification, serial string, ok bool) {
+	engine := laEngineBytes(mibGet(g, laSnmpEngineID))
+	if len(engine) < 4 {
+		return classification{}, "", false
+	}
+	manufacturerID := (int(engine[0]&0x7f) << 24) | (int(engine[1]) << 16) | (int(engine[2]) << 8) | int(engine[3])
+	match, found := manufacturerIDInfo(strconv.Itoa(manufacturerID))
+	if !found || match.Manufacturer == "" || match.Type == "" {
+		return classification{}, "", false
+	}
+
+	// A unique identifier may follow when the high bit of the first byte is set.
+	if engine[0]&0x80 != 0 && len(engine) >= 5 {
+		if remaining := engine[5:]; len(remaining) > 0 {
+			switch {
+			case engine[4] == 3:
+				serial = canonicalMAC(hexColon(remaining))
+			case engine[4] == 4:
+				serial = strings.TrimSpace(string(remaining))
+			case engine[4] == 5 || engine[4] >= 128:
+				serial = hex.EncodeToString(remaining)
+			}
+		}
+	}
+	return match, serial, true
 }
 
 // laEngineBytes turns the snmpEngineID SNMP value into its bytes, mirroring the

@@ -16,6 +16,55 @@ import (
 func init() {
 	registerCiscoPortSecurity()
 	registerIEEE802dot11()
+	registerSnmpFramework()
+}
+
+// --- SNMP-FRAMEWORK-MIB (generic snmpEngineID fallback classifier) ---
+// Priority 100 (last resort): fills MANUFACTURER/MODEL/SERIAL from the IANA
+// manufacturer id decoded out of the snmpEngineID, only when nothing more
+// specific (generic classification or a vendor module) provided them.
+func registerSnmpFramework() {
+	// snmpFrameworkMIBCompliance, advertised in the sysORID table.
+	const snmpFrameworkCompliance = "1.3.6.1.6.3.10.3.1.1"
+	registerMib(MibModule{
+		Name:     "snmp-framework",
+		OID:      snmpFrameworkCompliance,
+		Priority: 100,
+		Manufacturer: func(g SNMPGetter, d Device) string {
+			if s, _ := d["MANUFACTURER"].(string); strings.TrimSpace(s) != "" {
+				return ""
+			}
+			info, _, ok := snmpEngineIDInfo(g)
+			if !ok {
+				return ""
+			}
+			return info.Manufacturer
+		},
+		Model: func(g SNMPGetter, d Device) string {
+			if s, _ := d["MODEL"].(string); strings.TrimSpace(s) != "" {
+				return ""
+			}
+			info, _, ok := snmpEngineIDInfo(g)
+			if !ok {
+				return ""
+			}
+			return info.Model
+		},
+		Serial: func(g SNMPGetter, d Device) string {
+			if s, _ := d["SERIAL"].(string); strings.TrimSpace(s) != "" {
+				return ""
+			}
+			_, serial, ok := snmpEngineIDInfo(g)
+			if !ok || serial == "" {
+				return ""
+			}
+			// An entity- or printer-MIB serial still takes precedence.
+			if s := firstNonEmpty(walkFirst(g, oidEntPhysicalSerialNum), walkFirst(g, oidPrtGeneralSerialNum)); s != "" {
+				return s
+			}
+			return serial
+		},
+	})
 }
 
 // --- Cisco Port Security (CISCO-PORT-SECURITY-MIB) ---
