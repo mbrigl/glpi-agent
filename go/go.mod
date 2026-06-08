@@ -8,12 +8,10 @@ module github.com/glpi-project/glpi-agent/go
 go 1.25.0
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/gosnmp/gosnmp v1.43.2
 	github.com/vmware/govmomi v0.54.1
 	golang.org/x/crypto v0.52.0
 )
 
-require (
-	github.com/google/uuid v1.6.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-)
+require golang.org/x/sys v0.45.0 // indirect

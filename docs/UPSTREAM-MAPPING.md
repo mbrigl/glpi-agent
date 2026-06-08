@@ -74,7 +74,7 @@ intentionally not ported to Go. In progress (`inventory --server`).
 | --- | --- | --- |
 | `Protocol/{Message,Contact}.pm` | `internal/protocol` | ✅ CONTACT request encode + answer parse (status / expiration / tasks); modern protocol only |
 | `HTTP/Client{,/GLPI}.pm` | `internal/transport/glpi.go` | ✅ POST + zlib compress/decompress (zlib/gzip by content-type) + GLPI-Agent-ID; full TLS (no-ssl-check, ca-cert-file/dir, client cert ssl-cert/key), basic auth, proxy (none/explicit/env), timeout. OAuth2/Win-KeyStore out of scope |
-| `Target/Server.pm`, `Storage.pm` | `internal/target`, `internal/state` | ⬜ Phase 3 (URL canon, persistent agentid, isGlpiServer) |
+| `Target/Server.pm`, `Storage.pm` | `internal/target`, `internal/state` | ✅ server target URL canonicalisation (bare host → http, scheme check) + per-URL subdir; persistent agent id (UUID) in a JSON state file under the vardir. isGlpiServer is decided per run from the CONTACT answer (no daemon persistence) |
 | `Agent.pm` getContact + `Task/Inventory.pm` submit | `internal/cli` (`inventory --server`) | ⬜ Phase 4 |
 
 ## Local inventory sections
