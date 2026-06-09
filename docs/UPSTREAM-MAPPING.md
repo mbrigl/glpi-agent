@@ -292,7 +292,7 @@ CORS/event machinery on `/now`, and the ToolBox web GUI are not ported.
 | --- | --- | --- | --- |
 | `Server.pm` `/status`, `/now`, `/` + trust | `server.rs` | ✅ | ✅ `internal/httpd`: /status (text), /now (run-now if trusted), root status page; httpd-trust IP/CIDR allowlist. Served by the `daemon` on httpd-ip:httpd-port (default 62354) unless `--no-httpd`; graceful shutdown with the daemon |
 | `Proxy.pm` | `proxy.rs` | 🟡 ported; `GLPI-Proxy-ID` hop header not forwarded ([proxy.rs](../crates/glpi-http/src/proxy.rs)) | ⬜ not ported |
-| `SSL.pm` | `tls.rs` | ✅ | ⬜ HTTPS listener pending (HTTP listener only) |
+| `SSL.pm` | `tls.rs` | ✅ | ✅ HTTPS listener: a server cert via `httpd-ssl-cert-file`/`httpd-ssl-key-file` upgrades the control server to TLS (else plain HTTP) |
 | `BasicAuthentication.pm` | — (only IP trust in `trust.rs`) | ⬜ fehlt | ⬜ IP trust only |
 | `SecondaryProxy.pm` | — | ⬜ fehlt | ⬜ not ported |
 | `Test.pm` | — | ⬜ minor | ⬜ minor |

@@ -8,6 +8,7 @@ package httpd
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"html"
@@ -42,8 +43,12 @@ func New(ctrl Controller, log *logging.Logger, trust []string) *Server {
 }
 
 // Serve runs the control server on the listener until ctx is cancelled, then
-// shuts it down gracefully. ErrServerClosed is treated as a clean stop.
-func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+// shuts it down gracefully. When tlsConfig is non-nil the listener is wrapped in
+// TLS (HTTPS). ErrServerClosed is treated as a clean stop.
+func (s *Server) Serve(ctx context.Context, ln net.Listener, tlsConfig *tls.Config) error {
+	if tlsConfig != nil {
+		ln = tls.NewListener(ln, tlsConfig)
+	}
 	srv := &http.Server{Handler: s}
 	go func() {
 		<-ctx.Done()

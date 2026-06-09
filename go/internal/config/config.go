@@ -64,6 +64,8 @@ func defaults() map[string]any {
 		"httpd-ip":                nil,
 		"httpd-port":              62354,
 		"httpd-trust":             []string{},
+		"httpd-ssl-cert-file":     nil,
+		"httpd-ssl-key-file":      nil,
 		"listen":                  nil,
 		"remote":                  nil,
 		"scan-homedirs":           nil,

@@ -4,6 +4,7 @@ package cli
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"net"
@@ -136,14 +137,41 @@ func startControlServer(rootCtx context.Context, ctx *Context, ag *agent.Agent) 
 	if err != nil {
 		return fmt.Errorf("control server cannot listen on %s: %w", addr, err)
 	}
+	tlsConfig, err := controlServerTLS(ctx)
+	if err != nil {
+		return err
+	}
 	srv := httpd.New(ag, ctx.Logger, ctx.Cfg.List("httpd-trust"))
-	ctx.Logger.Info("control server listening on " + ln.Addr().String())
+	scheme := "http"
+	if tlsConfig != nil {
+		scheme = "https"
+	}
+	ctx.Logger.Info("control server listening on " + scheme + "://" + ln.Addr().String())
 	go func() {
-		if err := srv.Serve(rootCtx, ln); err != nil {
+		if err := srv.Serve(rootCtx, ln, tlsConfig); err != nil {
 			ctx.Logger.Error("control server stopped: " + err.Error())
 		}
 	}()
 	return nil
+}
+
+// controlServerTLS builds the TLS config for the control server from the
+// httpd-ssl-cert-file / httpd-ssl-key-file options, or returns nil for plain
+// HTTP when no server certificate is configured.
+func controlServerTLS(ctx *Context) (*tls.Config, error) {
+	certFile := ctx.Cfg.String("httpd-ssl-cert-file")
+	keyFile := ctx.Cfg.String("httpd-ssl-key-file")
+	if certFile == "" && keyFile == "" {
+		return nil, nil
+	}
+	if certFile == "" || keyFile == "" {
+		return nil, fmt.Errorf("both httpd-ssl-cert-file and httpd-ssl-key-file are required for HTTPS")
+	}
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("loading control-server certificate: %w", err)
+	}
+	return &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, nil
 }
 
 // daemonSleeper sleeps until the earliest next-run time (capped by maxPoll),
