@@ -66,21 +66,29 @@ func runDaemon(ctx *Context, args []string) int {
 		return 1
 	}
 
+	ag := agent.NewAgent(ctx.Logger, targets)
+
 	// Shutdown on SIGINT/SIGTERM, "run now" on SIGUSR1.
 	rootCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	wake := make(chan os.Signal, 1)
-	notifyRunNow(wake) // SIGUSR1 on unix; no-op on Windows
 	go func() {
 		<-stop
 		ctx.Logger.Info("received shutdown signal")
 		cancel()
 	}()
+	runNow := make(chan os.Signal, 1)
+	notifyRunNow(runNow) // SIGUSR1 on unix; no-op on Windows
+	go func() {
+		for range runNow {
+			ctx.Logger.Info("received run-now signal")
+			ag.RunNow()
+		}
+	}()
 
 	ctx.Logger.Info(fmt.Sprintf("daemon started with %d server target(s)", len(targets)))
-	agent.RunLoop(rootCtx, ctx.Logger, targets, daemonSleeper(targets, wake))
+	ag.Loop(rootCtx, daemonSleeper(ag))
 	return 0
 }
 
@@ -110,14 +118,14 @@ func buildServerTargets(ctx *Context, servers []string, assetName, tag string, d
 }
 
 // daemonSleeper sleeps until the earliest next-run time (capped by maxPoll),
-// waking early on SIGUSR1 (which triggers an immediate run of all targets) and
+// waking early when the agent is asked to run now (via RunNow, e.g. SIGUSR1) and
 // returning false on context cancellation.
-func daemonSleeper(targets []*agent.ScheduledTarget, wake <-chan os.Signal) func(context.Context) bool {
+func daemonSleeper(ag *agent.Agent) func(context.Context) bool {
 	return func(ctx context.Context) bool {
 		wait := maxPoll
 		now := time.Now()
-		for _, t := range targets {
-			if d := t.Sched.NextRunDate().Sub(now); d < wait {
+		for _, t := range ag.Targets() {
+			if d := t.NextRun.Sub(now); d < wait {
 				wait = d
 			}
 		}
@@ -129,10 +137,7 @@ func daemonSleeper(targets []*agent.ScheduledTarget, wake <-chan os.Signal) func
 		select {
 		case <-ctx.Done():
 			return false
-		case <-wake:
-			for _, t := range targets {
-				t.Sched.Trigger()
-			}
+		case <-ag.Wake():
 			return true
 		case <-timer.C:
 			return true

@@ -48,7 +48,7 @@ func TestRunLoopHonorsExpiration(t *testing.T) {
 		return true
 	}
 
-	RunLoop(context.Background(), testLogger(t), []*ScheduledTarget{target}, sleep)
+	NewAgent(testLogger(t), []*ScheduledTarget{target}).Loop(context.Background(), sleep)
 
 	if runs != 4 { // initial run + 3 due ticks
 		t.Errorf("runs = %d, want 4", runs)
@@ -74,7 +74,7 @@ func TestRunLoopBackoffOnError(t *testing.T) {
 	}
 
 	sleep := func(context.Context) bool { return false } // stop after the first pass
-	RunLoop(context.Background(), testLogger(t), []*ScheduledTarget{target}, sleep)
+	NewAgent(testLogger(t), []*ScheduledTarget{target}).Loop(context.Background(), sleep)
 
 	if runs != 1 {
 		t.Fatalf("runs = %d, want 1", runs)
@@ -96,10 +96,45 @@ func TestRunLoopSkipsNotDue(t *testing.T) {
 	target := &ScheduledTarget{Name: "srv", Sched: s, Run: func() (time.Duration, error) { runs++; return 0, nil }}
 
 	sleep := func(context.Context) bool { return false }
-	RunLoop(context.Background(), testLogger(t), []*ScheduledTarget{target}, sleep)
+	NewAgent(testLogger(t), []*ScheduledTarget{target}).Loop(context.Background(), sleep)
 
 	if runs != 0 {
 		t.Errorf("runs = %d, want 0 (not due)", runs)
+	}
+}
+
+// TestAgentRunNowAndStatus checks RunNow makes targets due, Status reflects the
+// idle state, and Targets exposes the next-run snapshot.
+func TestAgentRunNowAndStatus(t *testing.T) {
+	now := loopBase
+	// A schedule far in the future -> not due until RunNow.
+	s := scheduler.New(time.Hour, 0,
+		scheduler.WithClock(func() time.Time { return now }),
+		scheduler.WithRand(func(int64) int64 { return 0 }),
+	)
+	target := &ScheduledTarget{Name: "srv", Sched: s, Run: func() (time.Duration, error) { return 0, nil }}
+	ag := NewAgent(testLogger(t), []*ScheduledTarget{target})
+
+	if ag.Status() != "waiting" {
+		t.Errorf("initial status = %q, want waiting", ag.Status())
+	}
+	infos := ag.Targets()
+	if len(infos) != 1 || infos[0].Name != "srv" || !infos[0].NextRun.Equal(loopBase.Add(time.Hour)) {
+		t.Errorf("targets snapshot = %v", infos)
+	}
+
+	// Before RunNow the target is not due; after RunNow it is, and the wake fires.
+	if s.Due() {
+		t.Fatal("should not be due before RunNow")
+	}
+	ag.RunNow()
+	if !s.Due() {
+		t.Error("RunNow should make the target due")
+	}
+	select {
+	case <-ag.Wake():
+	default:
+		t.Error("RunNow should signal the wake channel")
 	}
 }
 
@@ -107,7 +142,7 @@ func TestRunLoopSkipsNotDue(t *testing.T) {
 func TestRunLoopStops(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
-		RunLoop(context.Background(), testLogger(t), nil, func(context.Context) bool { return false })
+		NewAgent(testLogger(t), nil).Loop(context.Background(), func(context.Context) bool { return false })
 		close(done)
 	}()
 	select {
