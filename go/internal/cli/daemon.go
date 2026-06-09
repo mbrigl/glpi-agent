@@ -108,14 +108,27 @@ func runDaemon(ctx *Context, args []string) int {
 func buildServerTargets(ctx *Context, servers []string, assetName, tag string, delay time.Duration) ([]*agent.ScheduledTarget, error) {
 	var targets []*agent.ScheduledTarget
 	for _, url := range servers {
-		srv, client, err := newServerClient(ctx, url)
+		srv, client, st, err := newServerClient(ctx, url)
 		if err != nil {
 			return nil, err
 		}
 		serverURL := srv.URL
+
+		// Restore the persisted schedule so the cadence survives a restart.
+		sched := scheduler.New(delay, delay)
+		sched.Restore(scheduler.State{NextRun: st.NextRun, BaseRun: st.BaseRun, Backoff: st.Backoff})
+		persist := func() {
+			snap := sched.Snapshot()
+			if err := st.SaveSchedule(snap.NextRun, snap.BaseRun, snap.Backoff); err != nil {
+				ctx.Logger.Debug("could not persist schedule for " + serverURL + ": " + err.Error())
+			}
+		}
+		persist() // record the (possibly restored) initial schedule
+
 		targets = append(targets, &agent.ScheduledTarget{
-			Name:  serverURL,
-			Sched: scheduler.New(delay, delay),
+			Name:    serverURL,
+			Sched:   sched,
+			Persist: persist,
 			Run: func() (time.Duration, error) {
 				inv := agent.BuildInventory(assetName, tag, time.Now())
 				data, err := inv.JSON()

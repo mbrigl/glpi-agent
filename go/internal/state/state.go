@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -19,11 +20,17 @@ import (
 // stateFile is the on-disk name of the agent state, under the vardir.
 const stateFile = "agent-state.json"
 
-// Agent is the persisted agent state.
+// Agent is the persisted per-target agent state.
 type Agent struct {
 	// AgentID is the stable UUID sent as the GLPI-Agent-ID header. Created once
 	// and reused (GLPI::Agent create_uuid + storage).
 	AgentID string `json:"agentid"`
+
+	// The persisted schedule (Target.pm nextRunDate / baseRunDate / backoff), so
+	// the run cadence survives a restart. Zero when never scheduled.
+	NextRun time.Time     `json:"nextrun,omitempty"`
+	BaseRun time.Time     `json:"baserun,omitempty"`
+	Backoff time.Duration `json:"backoff,omitempty"`
 
 	dir string // the vardir this state was loaded from
 }
@@ -55,6 +62,15 @@ func LoadOrCreate(dir string) (*Agent, error) {
 		}
 	}
 	return a, nil
+}
+
+// SaveSchedule persists the schedule timing (next run / base run / backoff) and
+// writes the state back to disk.
+func (a *Agent) SaveSchedule(nextRun, baseRun time.Time, backoff time.Duration) error {
+	a.NextRun = nextRun
+	a.BaseRun = baseRun
+	a.Backoff = backoff
+	return a.save()
 }
 
 // save writes the state back to disk.

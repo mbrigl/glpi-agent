@@ -114,6 +114,36 @@ func TestDue(t *testing.T) {
 	}
 }
 
+// TestSnapshotRestoreRoundtrip checks Snapshot captures the timing and Restore
+// adopts a recent stored next-run date.
+func TestSnapshotRestoreRoundtrip(t *testing.T) {
+	s := fixed(time.Hour, 10*time.Minute, nil)
+	// A stored next-run 45m out is within the last maxDelay -> kept on restore,
+	// and the startup stagger is cancelled.
+	stored := State{NextRun: base.Add(45 * time.Minute), BaseRun: base.Add(90 * time.Minute), Backoff: 30 * time.Second}
+
+	fresh := fixed(time.Hour, 10*time.Minute, nil)
+	fresh.Restore(stored)
+	if !fresh.NextRunDate().Equal(base.Add(45 * time.Minute)) {
+		t.Errorf("restored next run = %v, want base+45m", fresh.NextRunDate())
+	}
+	snap := fresh.Snapshot()
+	if !snap.NextRun.Equal(stored.NextRun) || snap.Backoff != stored.Backoff {
+		t.Errorf("snapshot = %+v, want %+v", snap, stored)
+	}
+	_ = s
+}
+
+// TestRestoreIgnoresStaleNextRun checks a stored next-run older than maxDelay is
+// not adopted (the freshly computed schedule stands).
+func TestRestoreIgnoresStaleNextRun(t *testing.T) {
+	s := fixed(time.Hour, 0, nil) // fresh next run = base + 1h
+	s.Restore(State{NextRun: base.Add(-2 * time.Hour)})
+	if !s.NextRunDate().Equal(base.Add(time.Hour)) {
+		t.Errorf("stale stored next run was adopted: %v", s.NextRunDate())
+	}
+}
+
 // TestMaxDelayDefault checks a non-positive maxDelay falls back to one hour.
 func TestMaxDelayDefault(t *testing.T) {
 	s := fixed(0, 0, nil)

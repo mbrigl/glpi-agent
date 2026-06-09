@@ -79,6 +79,35 @@ func New(maxDelay, delaytime time.Duration, opts ...Option) *Schedule {
 // NextRunDate returns the scheduled next run time.
 func (s *Schedule) NextRunDate() time.Time { return s.nextRunDate }
 
+// State is the persistable timing state of a schedule (Target.pm's saved
+// nextRunDate / baseRunDate / backoff).
+type State struct {
+	NextRun time.Time     `json:"nextrun"`
+	BaseRun time.Time     `json:"baserun"`
+	Backoff time.Duration `json:"backoff"`
+}
+
+// Snapshot returns the schedule's persistable state.
+func (s *Schedule) Snapshot() State {
+	return State{NextRun: s.nextRunDate, BaseRun: s.baseRunDate, Backoff: s.nextRunDelay}
+}
+
+// Restore adopts a previously persisted state, mirroring the _init logic that
+// keeps a stored run date planned within the last maxDelay (and otherwise lets
+// the freshly computed schedule stand). A kept next-run date also cancels the
+// one-shot startup stagger so a restarted agent does not re-defer a due run.
+func (s *Schedule) Restore(st State) {
+	limit := s.now().Add(-s.maxDelay)
+	if !st.NextRun.IsZero() && !st.NextRun.Before(limit) {
+		s.nextRunDate = st.NextRun
+		s.initialDelay = 0
+	}
+	if !st.BaseRun.IsZero() && st.BaseRun.After(limit) {
+		s.baseRunDate = st.BaseRun
+	}
+	s.nextRunDelay = st.Backoff
+}
+
 // Due reports whether the target is due to run at the current time.
 func (s *Schedule) Due() bool { return !s.now().Before(s.nextRunDate) }
 

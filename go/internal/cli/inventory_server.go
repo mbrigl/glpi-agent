@@ -16,7 +16,7 @@ import (
 func sendToServer(ctx *Context, serverURL, deviceID string, inventoryJSON []byte, tag string) int {
 	stderr := ctx.Stderr
 
-	srv, client, err := newServerClient(ctx, serverURL)
+	srv, client, _, err := newServerClient(ctx, serverURL)
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1

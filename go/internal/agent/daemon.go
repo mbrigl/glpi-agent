@@ -22,6 +22,9 @@ type ScheduledTarget struct {
 	Name  string
 	Sched *scheduler.Schedule
 	Run   func() (expiration time.Duration, err error)
+	// Persist, when set, is called after every reschedule to save the new
+	// timing so the cadence survives a restart.
+	Persist func()
 }
 
 // TargetInfo is a read-only snapshot of a target for the control server.
@@ -137,4 +140,7 @@ func (a *Agent) reschedule(t *ScheduledTarget, expiration time.Duration, err err
 		t.Sched.ResetNextRunDate()
 	}
 	a.log.Info("next run for " + t.Name + " at " + t.Sched.NextRunDate().Format(time.RFC3339))
+	if t.Persist != nil {
+		t.Persist()
+	}
 }

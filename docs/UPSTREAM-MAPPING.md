@@ -77,7 +77,7 @@ out of scope here.
 | --- | --- | --- |
 | `Protocol/{Message,Contact}.pm` | `internal/protocol` | ✅ CONTACT request encode + answer parse (status / expiration / tasks); modern protocol only |
 | `HTTP/Client{,/GLPI}.pm` | `internal/transport/glpi.go` | ✅ POST + zlib compress/decompress (zlib/gzip by content-type) + GLPI-Agent-ID; full TLS (no-ssl-check, ca-cert-file/dir, client cert ssl-cert/key), basic auth, proxy (none/explicit/env), timeout. OAuth2/Win-KeyStore out of scope |
-| `Target/Server.pm`, `Storage.pm` | `internal/target`, `internal/state` | ✅ server target URL canonicalisation (bare host → http, scheme check) + per-URL subdir; persistent agent id (UUID) in a JSON state file under the vardir. isGlpiServer is decided per run from the CONTACT answer (no daemon persistence) |
+| `Target/Server.pm`, `Storage.pm` | `internal/target`, `internal/state` | ✅ server target URL canonicalisation (bare host → http, scheme check) + per-URL subdir; persistent agent id (UUID) **and schedule** (nextRunDate/baseRunDate/backoff) in a JSON state file under the per-server vardir. isGlpiServer is decided per run from the CONTACT answer |
 | `Agent.pm` getContact + `Task/Inventory.pm` submit | `internal/cli` (`inventory --server`) | ✅ `glpi-agent --server <url> inventory`: CONTACT handshake → (if inventory enabled) submit the inventory; reads server/TLS/auth/proxy/tag from the global config; clear error when the server is not a modern GLPI server |
 
 ## Daemon / scheduling
@@ -90,7 +90,7 @@ subcommand.
 
 | Upstream | Go | Go status |
 | --- | --- | --- |
-| `Target.pm` (nextRunDate / maxDelay / delaytime / expiration / backoff) | `internal/scheduler` | ✅ run timing: jittered computeNextRunDate, ResetNextRunDate, SetNextRunOnExpiration, exponential BackOff, Trigger (run-now); clock/rng injectable. State persistence across restarts deferred |
+| `Target.pm` (nextRunDate / maxDelay / delaytime / expiration / backoff) | `internal/scheduler` | ✅ run timing: jittered computeNextRunDate, ResetNextRunDate, SetNextRunOnExpiration, exponential BackOff, Trigger (run-now); clock/rng injectable. Snapshot/Restore persists nextRunDate/baseRunDate/backoff across restarts (kept when planned within the last maxDelay) |
 | target execution (`Task/Inventory` + `getContact`) | `internal/agent` | ✅ `BuildInventory` (collect + tag) and `RunServerTarget` (CONTACT + submit, returns the server expiration); shared by `inventory --server` and the daemon |
 | `Daemon.pm` run-loop + `GLPI::Agent` (getTargets/getStatus/run-now) | `internal/agent` (`Agent`) + `internal/cli` (`daemon`) | ✅ `glpi-agent --server <url>[,...] daemon`: the `Agent` owns the targets, run state (Status) and run-now trigger (thread-safe for the control server); one scheduled target per server, run when due, reschedule by expiration / backoff / interval; sleeps until the earliest next run; SIGINT/SIGTERM stop, SIGUSR1 run-now (unix). No fork/PID/IPC/daemonize |
 

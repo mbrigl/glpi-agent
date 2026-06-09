@@ -32,19 +32,20 @@ func glpiOptionsFromConfig(ctx *Context, agentID string) transport.GLPIOptions {
 }
 
 // newServerClient resolves a server target, loads or creates its persistent
-// agent id under the per-server vardir, and builds a GLPI client for it.
-func newServerClient(ctx *Context, serverURL string) (*target.Server, *transport.GLPIClient, error) {
+// state (agent id + schedule) under the per-server vardir, and builds a GLPI
+// client for it.
+func newServerClient(ctx *Context, serverURL string) (*target.Server, *transport.GLPIClient, *state.Agent, error) {
 	srv, err := target.NewServer(serverURL)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	st, err := state.LoadOrCreate(filepath.Join(agentVarDir(ctx), srv.Subdir()))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	client, err := transport.NewGLPIClient(glpiOptionsFromConfig(ctx, st.AgentID))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return srv, client, nil
+	return srv, client, st, nil
 }

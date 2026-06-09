@@ -138,6 +138,24 @@ func TestAgentRunNowAndStatus(t *testing.T) {
 	}
 }
 
+// TestRunLoopPersists checks the Persist hook is called after a run so the
+// schedule can be saved.
+func TestRunLoopPersists(t *testing.T) {
+	now := loopBase
+	var persisted int
+	target := &ScheduledTarget{
+		Name:    "srv",
+		Sched:   dueSchedule(&now, time.Hour),
+		Run:     func() (time.Duration, error) { return time.Hour, nil },
+		Persist: func() { persisted++ },
+	}
+	sleep := func(context.Context) bool { return false } // one pass
+	NewAgent(testLogger(t), []*ScheduledTarget{target}).Loop(context.Background(), sleep)
+	if persisted != 1 {
+		t.Errorf("Persist called %d times, want 1", persisted)
+	}
+}
+
 // TestRunLoopStops checks the loop returns when sleep reports termination.
 func TestRunLoopStops(t *testing.T) {
 	done := make(chan struct{})
