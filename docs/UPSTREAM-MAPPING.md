@@ -90,7 +90,8 @@ daemonize, syslog) is intentionally not ported. In progress.
 | Upstream | Go | Go status |
 | --- | --- | --- |
 | `Target.pm` (nextRunDate / maxDelay / delaytime / expiration / backoff) | `internal/scheduler` | ✅ run timing: jittered computeNextRunDate, ResetNextRunDate, SetNextRunOnExpiration, exponential BackOff; clock/rng injectable. State persistence across restarts deferred |
-| `Daemon.pm` run-loop + target execution | `internal/cli` (`daemon`) + `internal/agent` | ⬜ Phase 2–3 (reusable target run, run-loop, signals) |
+| target execution (`Task/Inventory` + `getContact`) | `internal/agent` | ✅ `BuildInventory` (collect + tag) and `RunServerTarget` (CONTACT + submit, returns the server expiration); shared by `inventory --server` and the daemon |
+| `Daemon.pm` run-loop | `internal/cli` (`daemon`) | ⬜ Phase 3 (build targets, run-loop, sleep, signals) |
 
 ## Local inventory sections
 
