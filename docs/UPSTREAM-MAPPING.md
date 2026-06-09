@@ -290,7 +290,7 @@ CORS/event machinery on `/now`, and the ToolBox web GUI are not ported.
 
 | Upstream `HTTP/Server{,.pm}` | Rust `glpi-http` | Rust | Go |
 | --- | --- | --- | --- |
-| `Server.pm` `/status`, `/now`, `/` + trust | `server.rs` | ✅ | ✅ `internal/httpd`: /status (text), /now (run-now if trusted), root status page; httpd-trust IP/CIDR allowlist |
+| `Server.pm` `/status`, `/now`, `/` + trust | `server.rs` | ✅ | ✅ `internal/httpd`: /status (text), /now (run-now if trusted), root status page; httpd-trust IP/CIDR allowlist. Served by the `daemon` on httpd-ip:httpd-port (default 62354) unless `--no-httpd`; graceful shutdown with the daemon |
 | `Proxy.pm` | `proxy.rs` | 🟡 ported; `GLPI-Proxy-ID` hop header not forwarded ([proxy.rs](../crates/glpi-http/src/proxy.rs)) | ⬜ not ported |
 | `SSL.pm` | `tls.rs` | ✅ | ⬜ HTTPS listener pending (HTTP listener only) |
 | `BasicAuthentication.pm` | — (only IP trust in `trust.rs`) | ⬜ fehlt | ⬜ IP trust only |

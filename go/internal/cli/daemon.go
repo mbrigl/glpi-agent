@@ -6,12 +6,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/glpi-project/glpi-agent/go/internal/agent"
+	"github.com/glpi-project/glpi-agent/go/internal/httpd"
 	"github.com/glpi-project/glpi-agent/go/internal/scheduler"
 )
 
@@ -71,6 +74,14 @@ func runDaemon(ctx *Context, args []string) int {
 	// Shutdown on SIGINT/SIGTERM, "run now" on SIGUSR1.
 	rootCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Start the HTTP control server unless disabled.
+	if !ctx.Cfg.Bool("no-httpd") {
+		if err := startControlServer(rootCtx, ctx, ag); err != nil {
+			fmt.Fprintf(stderr, "ERROR: %v\n", err)
+			return 1
+		}
+	}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -115,6 +126,24 @@ func buildServerTargets(ctx *Context, servers []string, assetName, tag string, d
 		})
 	}
 	return targets, nil
+}
+
+// startControlServer binds the HTTP control server to httpd-ip:httpd-port and
+// serves it in the background until rootCtx is cancelled.
+func startControlServer(rootCtx context.Context, ctx *Context, ag *agent.Agent) error {
+	addr := net.JoinHostPort(ctx.Cfg.String("httpd-ip"), strconv.Itoa(ctx.Cfg.Int("httpd-port")))
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("control server cannot listen on %s: %w", addr, err)
+	}
+	srv := httpd.New(ag, ctx.Logger, ctx.Cfg.List("httpd-trust"))
+	ctx.Logger.Info("control server listening on " + ln.Addr().String())
+	go func() {
+		if err := srv.Serve(rootCtx, ln); err != nil {
+			ctx.Logger.Error("control server stopped: " + err.Error())
+		}
+	}()
+	return nil
 }
 
 // daemonSleeper sleeps until the earliest next-run time (capped by maxPoll),

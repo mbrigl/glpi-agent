@@ -7,6 +7,8 @@
 package httpd
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"html"
 	"net"
@@ -37,6 +39,22 @@ type Server struct {
 // (single IPs or CIDR ranges; hostnames are skipped with a warning).
 func New(ctrl Controller, log *logging.Logger, trust []string) *Server {
 	return &Server{agent: ctrl, log: log, trust: parseTrust(trust, log)}
+}
+
+// Serve runs the control server on the listener until ctx is cancelled, then
+// shuts it down gracefully. ErrServerClosed is treated as a clean stop.
+func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	srv := &http.Server{Handler: s}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 // ServeHTTP dispatches the supported control endpoints, mirroring the SWITCH of
