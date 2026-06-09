@@ -1,0 +1,141 @@
+// SPDX-License-Identifier: GPL-2.0-only
+
+package cli
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/glpi-project/glpi-agent/go/internal/agent"
+	"github.com/glpi-project/glpi-agent/go/internal/scheduler"
+)
+
+// maxPoll caps how long the daemon sleeps between schedule checks, so a "run
+// now" signal or shutdown is still reasonably responsive even with far-future
+// next-run dates.
+const maxPoll = time.Hour
+
+// runDaemon implements the `daemon` subcommand: a foreground scheduling loop
+// that periodically sends an inventory to each configured GLPI server,
+// honouring the server's expiration and backing off on errors. Derived from the
+// run-loop of GLPI::Agent::Daemon (without the Perl process machinery — fork,
+// PID files, IPC, daemonize).
+func runDaemon(ctx *Context, args []string) int {
+	stderr := ctx.Stderr
+	fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	var (
+		name = fs.String("assetname", "", "asset name for the device id (default: hostname)")
+	)
+	fs.Usage = func() {
+		fmt.Fprintln(stderr, "Usage: glpi-agent --server <url>[,<url>...] [--delaytime <s>] daemon")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	servers := splitNonEmpty(ctx.Cfg.String("server"))
+	if len(servers) == 0 {
+		fmt.Fprintln(stderr, "the daemon needs at least one --server, aborting")
+		return 2
+	}
+
+	assetName := *name
+	if assetName == "" {
+		host, err := os.Hostname()
+		if err != nil || host == "" {
+			host = "localhost"
+		}
+		assetName = host
+	}
+	tag := ctx.Cfg.String("tag")
+
+	// delaytime drives the initial run stagger, the nominal interval before the
+	// first server contact, and the backoff cap (Config.pm default 3600s).
+	delay := time.Duration(ctx.Cfg.Int("delaytime")) * time.Second
+
+	targets, err := buildServerTargets(ctx, servers, assetName, tag, delay)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+
+	// Shutdown on SIGINT/SIGTERM, "run now" on SIGUSR1.
+	rootCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	wake := make(chan os.Signal, 1)
+	notifyRunNow(wake) // SIGUSR1 on unix; no-op on Windows
+	go func() {
+		<-stop
+		ctx.Logger.Info("received shutdown signal")
+		cancel()
+	}()
+
+	ctx.Logger.Info(fmt.Sprintf("daemon started with %d server target(s)", len(targets)))
+	agent.RunLoop(rootCtx, ctx.Logger, targets, daemonSleeper(targets, wake))
+	return 0
+}
+
+// buildServerTargets creates one scheduled target per server URL.
+func buildServerTargets(ctx *Context, servers []string, assetName, tag string, delay time.Duration) ([]*agent.ScheduledTarget, error) {
+	var targets []*agent.ScheduledTarget
+	for _, url := range servers {
+		srv, client, err := newServerClient(ctx, url)
+		if err != nil {
+			return nil, err
+		}
+		serverURL := srv.URL
+		targets = append(targets, &agent.ScheduledTarget{
+			Name:  serverURL,
+			Sched: scheduler.New(delay, delay),
+			Run: func() (time.Duration, error) {
+				inv := agent.BuildInventory(assetName, tag, time.Now())
+				data, err := inv.JSON()
+				if err != nil {
+					return 0, err
+				}
+				return agent.RunServerTarget(ctx.Logger, client, serverURL, inv.DeviceID, data, tag)
+			},
+		})
+	}
+	return targets, nil
+}
+
+// daemonSleeper sleeps until the earliest next-run time (capped by maxPoll),
+// waking early on SIGUSR1 (which triggers an immediate run of all targets) and
+// returning false on context cancellation.
+func daemonSleeper(targets []*agent.ScheduledTarget, wake <-chan os.Signal) func(context.Context) bool {
+	return func(ctx context.Context) bool {
+		wait := maxPoll
+		now := time.Now()
+		for _, t := range targets {
+			if d := t.Sched.NextRunDate().Sub(now); d < wait {
+				wait = d
+			}
+		}
+		if wait < 0 {
+			wait = 0
+		}
+		timer := time.NewTimer(wait)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return false
+		case <-wake:
+			for _, t := range targets {
+				t.Sched.Trigger()
+			}
+			return true
+		case <-timer.C:
+			return true
+		}
+	}
+}

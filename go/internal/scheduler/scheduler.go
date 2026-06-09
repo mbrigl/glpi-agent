@@ -82,6 +82,10 @@ func (s *Schedule) NextRunDate() time.Time { return s.nextRunDate }
 // Due reports whether the target is due to run at the current time.
 func (s *Schedule) Due() bool { return !s.now().Before(s.nextRunDate) }
 
+// Trigger forces the target to be due now (used for a "run now" signal). The
+// regular schedule resumes after the next run via ResetNextRunDate.
+func (s *Schedule) Trigger() { s.nextRunDate = s.now() }
+
 // computeNextRunDate returns timeref advanced by the (jittered) delay, mirroring
 // Target.pm::computeNextRunDate. The initial delay, when present, is used once
 // and then cleared.

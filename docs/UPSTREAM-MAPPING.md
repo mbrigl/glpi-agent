@@ -85,13 +85,14 @@ out of scope here.
 The periodic agent: a run-loop scheduling each target, honouring the GLPI
 server's `expiration` and backing off on network errors. The Go daemon is a
 foreground run-loop; the Perl process machinery (fork, PID files, IPC,
-daemonize, syslog) is intentionally not ported. In progress.
+daemonize, syslog) is intentionally not ported. ✅ working via the `daemon`
+subcommand.
 
 | Upstream | Go | Go status |
 | --- | --- | --- |
-| `Target.pm` (nextRunDate / maxDelay / delaytime / expiration / backoff) | `internal/scheduler` | ✅ run timing: jittered computeNextRunDate, ResetNextRunDate, SetNextRunOnExpiration, exponential BackOff; clock/rng injectable. State persistence across restarts deferred |
+| `Target.pm` (nextRunDate / maxDelay / delaytime / expiration / backoff) | `internal/scheduler` | ✅ run timing: jittered computeNextRunDate, ResetNextRunDate, SetNextRunOnExpiration, exponential BackOff, Trigger (run-now); clock/rng injectable. State persistence across restarts deferred |
 | target execution (`Task/Inventory` + `getContact`) | `internal/agent` | ✅ `BuildInventory` (collect + tag) and `RunServerTarget` (CONTACT + submit, returns the server expiration); shared by `inventory --server` and the daemon |
-| `Daemon.pm` run-loop | `internal/cli` (`daemon`) | ⬜ Phase 3 (build targets, run-loop, sleep, signals) |
+| `Daemon.pm` run-loop | `internal/agent` (`RunLoop`) + `internal/cli` (`daemon`) | ✅ `glpi-agent --server <url>[,...] daemon`: one scheduled target per server, run when due, reschedule by expiration / backoff / interval; sleeps until the earliest next run; SIGINT/SIGTERM stop, SIGUSR1 run-now (unix). No fork/PID/IPC/daemonize |
 
 ## Local inventory sections
 

@@ -52,6 +52,7 @@ func subcommands() []subcommand {
 		{"netinventory", "SNMP inventory of network devices (bin/glpi-netinventory)", runNetInventory},
 		{"esx", "inventory VMware ESX/vCenter (bin/glpi-esx)", runESX},
 		{"remote", "remote inventory over SSH/WinRM (bin/glpi-remote)", runRemote},
+		{"daemon", "run as a scheduling daemon, sending inventories periodically", runDaemon},
 	}
 }
 
