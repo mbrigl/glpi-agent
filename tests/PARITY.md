@@ -15,75 +15,79 @@ covers shipping functionality.
 Legend: ✅ migrated · 🟡 partial (platform/feature gap tracked) · ⬜ pending ·
 🚫 intentionally dropped.
 
-> **Scope.** This audit currently maps the upstream `t/` families to the **Rust**
-> track. The parallel **Go** track ([ADR-011](../docs/adr/ADR-011-go-dual-track-evaluation.md))
-> ships its own unit/end-to-end tests (e.g. the `vcsim` ESX test, the in-process
-> SSH-server test) but has **not** yet migrated the upstream `t/` families; its
-> per-module status lives in the Go column/notes of
-> [docs/UPSTREAM-MAPPING.md](../docs/UPSTREAM-MAPPING.md). When the Go track begins
-> replaying upstream `t/`+`resources/**` fixtures, add a Go column here.
+> **Scope.** This audit maps the upstream `t/` families to both the **Rust** and
+> the **Go** track ([ADR-011](../docs/adr/ADR-011-go-dual-track-evaluation.md)).
+> The Go track mostly ships its **own** unit/end-to-end tests with **synthetic**
+> fixtures (e.g. the `vcsim` ESX test, the in-process SSH-server test, the
+> httptest GLPI-server dialog) rather than replaying the upstream `t/` cases. The
+> Go column records that honestly per family. Replaying the real upstream
+> `resources/**` captures has **begun**: the local-inventory dmidecode parser is
+> now pinned against vendored upstream captures
+> (`go/internal/inventory/testdata/dmidecode/`); other families follow. Go-column
+> legend: ✅ own tests cover it · 🟡 own tests, partial / `resources/**` not yet
+> replayed · ⬜ not tested / not implemented · 📦 real upstream fixtures vendored.
 
 ## Agent core
 
-| Perl source | Rust target | Status | Notes |
-| ----------- | ----------- | ------ | ----- |
-| `t/agent/config*.t` | `glpi-core` `config::{options,sources,mod}` tests | ✅ | layered precedence, `conf.d`, `GLPI_AGENT_*`. Windows-registry source 🟡 (deferred to Phase 6b). |
-| `t/agent/inventory.t` | `glpi-inventory-local::content` + `tests/glpi_schema.rs` | ✅ | content assembly + schema parity. |
-| `t/agent/http/*` | `glpi-http` server tests | ✅ | `/status`, `/now` query parsing, `httpd-trust`. ToolBox UI pages ⬜ (Phase 5 tail). |
-| `t/agent/tools/*.t` | parser unit tests across `glpi-core` / `glpi-inventory-local` | ✅ | normalization helpers live next to their consumers. |
-| `t/agent/protocol*.t` | `glpi-core::protocol` + `tests/golden.rs` | ✅ | native JSON `contact`/`inventory`; FusionInventory XML round-trip. |
+| Perl source | Rust target | Rust | Go | Notes |
+| ----------- | ----------- | ---- | -- | ----- |
+| `t/agent/config*.t` | `glpi-core` `config::{options,sources,mod}` tests | ✅ | 🟡 | Go `internal/config` own tests (layered precedence, `conf.d` include, `_checkContent`); env layer + Windows registry ⬜. |
+| `t/agent/inventory.t` | `glpi-inventory-local::content` + `tests/glpi_schema.rs` | ✅ | 🟡 | Go `internal/content` own tests (envelope, lowercasing); JSON-schema parity validation ⬜. |
+| `t/agent/http/*` | `glpi-http` server tests | ✅ | ✅ | Go `internal/httpd` own tests: `/status`, `/now` (trust), root page, TLS serve. CORS/event query parsing ⬜. |
+| `t/agent/tools/*.t` | parser unit tests across `glpi-core` / `glpi-inventory-local` | ✅ | 🟡 | Go helpers tested next to their consumers; synthetic inputs. |
+| `t/agent/protocol*.t` | `glpi-core::protocol` + `tests/golden.rs` | ✅ | 🟡 | Go `internal/protocol` own tests (CONTACT encode, answer/expiration parse); no OCS XML; golden `resources/**` not replayed. |
 
 ## NetDiscovery / NetInventory / SNMP
 
-| Perl source | Rust target | Status | Notes |
-| ----------- | ----------- | ------ | ----- |
-| `t/agent/snmp/*.t`, `mock.t` | `glpi-discovery::snmp::walk` tests + `tests/scanner.rs` | ✅ | `WalkSession` replays `snmpwalk -On` captures. |
-| `t/tasks/netdiscovery*.t` | `glpi-discovery::tasks::net_discovery` tests | ✅ | range expansion, probe merge, classification. |
-| `t/tasks/netinventory*.t` | `glpi-discovery::tasks::net_inventory` + `glpi-agent-tests` | ✅ | registry-driven device build; SNMP+IEC 61850 merge. |
-| per-vendor MIB device cases | `glpi-discovery::snmp::mib::vendor::*` module tests | 🟡 | 8 standard + 69 vendor MIBs shipped; the long vendor tail keeps growing (a MIB is not merged without its walk fixture + golden output). |
-| SNMPv3 RFC 3414/7860 crypto vectors | delegated to `snmp2`; agent-side live v3 round-trip | ⬜ | needs a v3 target; see plan §0.1 risk note. |
+| Perl source | Rust target | Rust | Go | Notes |
+| ----------- | ----------- | ---- | -- | ----- |
+| `t/agent/snmp/*.t`, `mock.t` | `glpi-discovery::snmp::walk` tests + `tests/scanner.rs` | ✅ | 🟡 | Go tests via an in-memory `fakeGetter` with synthetic OIDs; **replaying `resources/walks/*` snmpwalk captures is the top Go fixture gap**. |
+| `t/tasks/netdiscovery*.t` | `glpi-discovery::tasks::net_discovery` tests | ✅ | ✅ | Go own tests: range expansion, probe merge, ARP/NetBIOS parse, threaded scan. |
+| `t/tasks/netinventory*.t` | `glpi-discovery::tasks::net_inventory` + `glpi-agent-tests` | ✅ | 🟡 | Go own tests: device build, ENTITY-MIB components, port enrichment; synthetic walks. |
+| per-vendor MIB device cases | `glpi-discovery::snmp::mib::vendor::*` module tests | 🟡 | 🟡 | Go ships all 78 device modules + SnmpFramework, each with a synthetic end-to-end test; per-vendor **walk fixtures not replayed**. |
+| SNMPv3 RFC 3414/7860 crypto vectors | delegated to `snmp2`; agent-side live v3 round-trip | ⬜ | 🟡 | Go `configureV3` USM mapping unit-tested; no live v3 round-trip. |
 
 ## IEC 61850
 
-| Perl source | Rust target | Status | Notes |
-| ----------- | ----------- | ------ | ----- |
-| `GLPI::Agent::IEC61850::{Protocol,Device}` cases | `glpi-iec61850` device/mock tests | ✅ | mock IED responses; nameplate scan. |
-| SNMP + IEC 61850 merge output | `glpi-discovery::tasks::net_inventory::merge_ied_identity` tests | ✅ | golden merge (SNMP precedence + IED firmwares). |
+| Perl source | Rust target | Rust | Go | Notes |
+| ----------- | ----------- | ---- | -- | ----- |
+| `GLPI::Agent::IEC61850::{Protocol,Device}` cases | `glpi-iec61850` device/mock tests | ✅ | ⬜ | IEC 61850 is a Rust addition; not ported to Go. |
+| SNMP + IEC 61850 merge output | `glpi-discovery::tasks::net_inventory::merge_ied_identity` tests | ✅ | ⬜ | n/a in Go (no IEC 61850). |
 
 ## Local inventory
 
-| Perl source | Rust target | Status | Notes |
-| ----------- | ----------- | ------ | ----- |
-| `t/tasks/inventory/generic/**` | `glpi-inventory-local` category tests + `tests/fixtures.rs` | ✅ | dmidecode, EDID, CUPS printers, … |
-| `t/tasks/inventory/linux/**` | `glpi-inventory-local` `categories::*` tests | ✅ | networks, storage, distro, packages. |
-| `t/tasks/inventory/win32/**` | all `…/categories/*` (Windows path) | 🟡 | Via `Get-CimInstance … \| ConvertTo-Json`, registry uninstall + EDID keys, `Win32_PnPEntity`, SecurityCenter2 (parsers tested on Linux); some detail fields best-effort. |
-| `t/tasks/inventory/macos/**` | all `…/categories/*` (macOS path) | 🟡 | Via `sw_vers`/`sysctl`/`system_profiler -json`/`ifconfig`/`ioreg`/`ps`/`who`/CUPS; some detail fields best-effort. |
-| `t/tasks/inventory/{hpux,aix,solaris}/**` | exotic-platform collectors | ⬜ | Phase 6c. |
-| `t/tasks/inventory/virtualization/**` | virtualization detection | ⬜ | Phase 6 (medium). |
+| Perl source | Rust target | Rust | Go | Notes |
+| ----------- | ----------- | ---- | -- | ----- |
+| `t/tasks/inventory/generic/**` | `glpi-inventory-local` category tests + `tests/fixtures.rs` | ✅ | 📦 | **dmidecode now replays real upstream captures** (`testdata/dmidecode/`, exact memory/slot/port counts + field values across servers/laptop/VM/BSD/Windows). EDID/lspci/CUPS still on synthetic samples. |
+| `t/tasks/inventory/linux/**` | `glpi-inventory-local` `categories::*` tests | ✅ | 🟡 | Go ~28 Linux collectors with own parser tests (synthetic inputs); `resources/linux/**` not yet replayed. |
+| `t/tasks/inventory/win32/**` | all `…/categories/*` (Windows path) | 🟡 | ⬜ | Windows inventory not implemented in Go (hostname stub only). |
+| `t/tasks/inventory/macos/**` | all `…/categories/*` (macOS path) | 🟡 | ⬜ | macOS inventory not implemented in Go. |
+| `t/tasks/inventory/{hpux,aix,solaris}/**` | exotic-platform collectors | ⬜ | ⬜ | Not implemented in Go. |
+| `t/tasks/inventory/virtualization/**` | virtualization detection | ⬜ | 🟡 | Go virtualization detectors (Linux hypervisors) with own tests. |
 
 ## Remote / vSphere
 
-| Perl source | Rust target | Status | Notes |
-| ----------- | ----------- | ------ | ----- |
-| `t/tasks/remoteinventory.t` | `glpi-inventory-remote` tests (`MockSession`) | ✅ | SSH modes 1–3, WinRM (incl. Windows WMI via PowerShell), delta state files + 30-day cleanup. |
-| ESX `*-hostfullinfo.dump` cases | `glpi-vsphere` tests + `glpi-agent-tests` | ✅ | `--dumpfile` offline replay; mock SOAP flow; golden JSON. Uses a typed dump (no Perl `Data::Dumper` fixtures available). |
+| Perl source | Rust target | Rust | Go | Notes |
+| ----------- | ----------- | ---- | -- | ----- |
+| `t/tasks/remoteinventory.t` | `glpi-inventory-remote` tests (`MockSession`) | ✅ | 🟡 | Go has an in-process SSH-server test (connect/exec/host basics); full remote inventory + WinRM ⬜. |
+| ESX `*-hostfullinfo.dump` cases | `glpi-vsphere` tests + `glpi-agent-tests` | ✅ | ✅ | Go `internal/vsphere` test runs against the `vcsim` simulator (connect → retrieve → build). |
 
 ## Collect / Deploy / WakeOnLan
 
-| Perl source | Rust target | Status | Notes |
-| ----------- | ----------- | ------ | ----- |
-| `t/tasks/deploy/**` (incl. CheckProcessor `FileSHA512`/`FileSHA512Mismatch`) | `glpi-deploy::checks` tests | ✅ | also multipart SHA-512 assembly, executor ret-code/output matching, P2P peer enumeration. |
-| Collect file/registry/WMI checks | `glpi-collect` tests | ✅ | `findFile`, checksum filters, registry/WMI seams. |
-| WakeOnLan packet construction | `glpi-wakeonlan::magic_packet` tests | ✅ | 102-byte magic packet byte assertion. |
+| Perl source | Rust target | Rust | Go | Notes |
+| ----------- | ----------- | ---- | -- | ----- |
+| `t/tasks/deploy/**` (incl. CheckProcessor `FileSHA512`/`FileSHA512Mismatch`) | `glpi-deploy::checks` tests | ✅ | ⬜ | Deploy task not ported to Go. |
+| Collect file/registry/WMI checks | `glpi-collect` tests | ✅ | ⬜ | Collect task not ported to Go. |
+| WakeOnLan packet construction | `glpi-wakeonlan::magic_packet` tests | ✅ | 🟡 | Go own test for the UDP magic packet; ethernet (raw L2) ⬜. |
 
 ## Cross-cutting (Phase 10)
 
-| Area | Rust target | Status | Notes |
-| ---- | ----------- | ------ | ----- |
-| Mock GLPI server round-trip | `glpi-transport/tests/client.rs`, `glpi-agent-tests` | ✅ | `contact`/`inventory` via wiremock. |
-| Mock vSphere SOAP flow | `glpi-vsphere` + `glpi-agent-tests` | ✅ | connect → login → retrieve → logout → submit. |
-| JSON/XML schema parity | golden tests across crates | ✅ | normalized `serde_json::Value` diffs against committed fixtures. |
-| Performance (scan speed, RAM) | `glpi-agent-tests/tests/performance.rs` | 🟡 | CPU-bound throughput smoke test; the ≥2× and <50 MB targets need a live NetDiscovery benchmark against a real network. |
+| Area | Rust target | Rust | Go | Notes |
+| ---- | ----------- | ---- | -- | ----- |
+| Mock GLPI server round-trip | `glpi-transport/tests/client.rs`, `glpi-agent-tests` | ✅ | ✅ | Go httptest integration: CONTACT + inventory submit, agent-id persistence, zlib, error/disabled paths. |
+| Mock vSphere SOAP flow | `glpi-vsphere` + `glpi-agent-tests` | ✅ | ✅ | Go runs against `vcsim`. |
+| JSON/XML schema parity | golden tests across crates | ✅ | ⬜ | Go has no committed golden/schema diffs yet. |
+| Performance (scan speed, RAM) | `glpi-agent-tests/tests/performance.rs` | 🟡 | ⬜ | No Go performance harness. |
 
 ## Intentionally dropped
 
