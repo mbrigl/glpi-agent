@@ -80,6 +80,18 @@ out of scope here.
 | `Target/Server.pm`, `Storage.pm` | `internal/target`, `internal/state` | ✅ server target URL canonicalisation (bare host → http, scheme check) + per-URL subdir; persistent agent id (UUID) in a JSON state file under the vardir. isGlpiServer is decided per run from the CONTACT answer (no daemon persistence) |
 | `Agent.pm` getContact + `Task/Inventory.pm` submit | `internal/cli` (`inventory --server`) | ✅ `glpi-agent --server <url> inventory`: CONTACT handshake → (if inventory enabled) submit the inventory; reads server/TLS/auth/proxy/tag from the global config; clear error when the server is not a modern GLPI server |
 
+## Daemon / scheduling
+
+The periodic agent: a run-loop scheduling each target, honouring the GLPI
+server's `expiration` and backing off on network errors. The Go daemon is a
+foreground run-loop; the Perl process machinery (fork, PID files, IPC,
+daemonize, syslog) is intentionally not ported. In progress.
+
+| Upstream | Go | Go status |
+| --- | --- | --- |
+| `Target.pm` (nextRunDate / maxDelay / delaytime / expiration / backoff) | `internal/scheduler` | ✅ run timing: jittered computeNextRunDate, ResetNextRunDate, SetNextRunOnExpiration, exponential BackOff; clock/rng injectable. State persistence across restarts deferred |
+| `Daemon.pm` run-loop + target execution | `internal/cli` (`daemon`) + `internal/agent` | ⬜ Phase 2–3 (reusable target run, run-loop, signals) |
+
 ## Local inventory sections
 
 Upstream organises inventory modules by OS (`Task/Inventory/{Generic,Linux,Win32,
