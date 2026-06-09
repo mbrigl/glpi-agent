@@ -283,15 +283,18 @@ MIBs, 9 missing.) This table is generated — see "Keeping this current".
 
 ## HTTP control server
 
-The whole control server is **Phase 5** in Go (`internal/httpd`) — not started.
+The core control endpoints are ported in Go (`internal/httpd`, served by the
+daemon): the `/status`, `/now` (run-now, gated by the httpd-trust IP allowlist)
+and root status page, querying the `agent.Agent`. The proxy/deploy plugins, the
+CORS/event machinery on `/now`, and the ToolBox web GUI are not ported.
 
-| Upstream `HTTP/Server/` | Rust `glpi-http` | Rust | Go |
+| Upstream `HTTP/Server{,.pm}` | Rust `glpi-http` | Rust | Go |
 | --- | --- | --- | --- |
-| `Proxy.pm` | `proxy.rs` | 🟡 ported; `GLPI-Proxy-ID` hop header not forwarded ([proxy.rs](../crates/glpi-http/src/proxy.rs)) | ⬜ Phase 5 |
-| `SSL.pm` | `tls.rs` | ✅ | ⬜ Phase 5 |
-| `Inventory.pm` | `server.rs` (control endpoints) | ✅ | ⬜ Phase 5 |
-| `BasicAuthentication.pm` | — (only IP trust in `trust.rs`) | ⬜ fehlt | ⬜ Phase 5 |
-| `SecondaryProxy.pm` | — | ⬜ fehlt | ⬜ Phase 5 |
+| `Server.pm` `/status`, `/now`, `/` + trust | `server.rs` | ✅ | ✅ `internal/httpd`: /status (text), /now (run-now if trusted), root status page; httpd-trust IP/CIDR allowlist |
+| `Proxy.pm` | `proxy.rs` | 🟡 ported; `GLPI-Proxy-ID` hop header not forwarded ([proxy.rs](../crates/glpi-http/src/proxy.rs)) | ⬜ not ported |
+| `SSL.pm` | `tls.rs` | ✅ | ⬜ HTTPS listener pending (HTTP listener only) |
+| `BasicAuthentication.pm` | — (only IP trust in `trust.rs`) | ⬜ fehlt | ⬜ IP trust only |
+| `SecondaryProxy.pm` | — | ⬜ fehlt | ⬜ not ported |
 | `Test.pm` | — | ⬜ minor | ⬜ minor |
 | `ToolBox.pm` | — | 🚫 web GUI, intentionally dropped | 🚫 web GUI, intentionally dropped |
 
