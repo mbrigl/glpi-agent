@@ -152,7 +152,7 @@ local inventory sections table above.
 | OS | Upstream | Rust | Go |
 | --- | --- | --- | --- |
 | Linux | `Inventory/Linux/**` | ✅ (`linux`) | 🟡 28 sections + 3 partial (`//go:build linux`) |
-| Windows | `Inventory/Win32/**` (28) | 🟡 implemented; some detail fields best-effort (`windows`) | ⬜ non-Linux stub: hostname only |
+| Windows | `Inventory/Win32/**` (28) | 🟡 implemented; some detail fields best-effort (`windows`) | 🟡 started: WMI/CIM via PowerShell `Get-CimInstance \| ConvertTo-Json` (`collect_windows.go`), pure mappers unit-tested on Linux against CIM-JSON fixtures. operatingsystem done; more categories in progress |
 | macOS | `Inventory/MacOS/**` (25) | 🟡 implemented; some detail fields best-effort (`macos`) | ⬜ non-Linux stub: hostname only |
 | Solaris | `Inventory/Solaris/**` (11) | ⬜ fehlt | ⬜ fehlt |
 | AIX | `Inventory/AIX/**` (15) | ⬜ fehlt | ⬜ fehlt |

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//go:build !linux
+//go:build !linux && !windows
 
 package inventory
 
-// Collect gathers the local inventory on non-Linux platforms. Only the
-// host-identifying basics are collected for now; the Windows and macOS category
-// collectors are later Phase 6 work (internal/inventory/{windows,macos}).
+// Collect gathers the local inventory on the platforms without a dedicated
+// collector yet (macOS, *BSD, …). Only the host-identifying basics are
+// collected; full collectors are later work.
 func Collect() Sections {
 	s := Sections{}
 	s.mergeHardware(map[string]any{"NAME": hostname()})
