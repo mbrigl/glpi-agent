@@ -38,7 +38,9 @@ func ParseLVS(out string) []map[string]any {
 func ParsePVS(out string) []map[string]any {
 	var volumes []map[string]any
 	eachFields(out, func(f []string) {
-		if len(f) < 8 {
+		// vg_uuid (the last column) is empty for a PV not assigned to any volume
+		// group, so the row may carry only 7 fields.
+		if len(f) < 7 {
 			return
 		}
 		size := truncMB(f[3])
@@ -51,7 +53,9 @@ func ParsePVS(out string) []map[string]any {
 			"FREE":        truncMB(f[4]),
 			"PV_UUID":     f[5],
 			"PV_PE_COUNT": f[6],
-			"VG_UUID":     f[7],
+		}
+		if len(f) >= 8 {
+			v["VG_UUID"] = f[7]
 		}
 		if peCount > 0 {
 			v["PE_SIZE"] = size / peCount
