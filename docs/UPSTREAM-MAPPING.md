@@ -192,7 +192,9 @@ MIBs, 9 missing.) This table is generated — see "Keeping this current".
 > wired into `GetInventory` in the upstream order (setComponents → runMibSupport).
 > All **78 device/OS modules** are ported verbatim from the upstream
 > `MibSupport/**` OIDs (`mib_vendors*.go`, `linuxappliance.go`), as is the
-> SnmpFramework engine-id fallback classifier. The generic ENTITY-MIB
+> SnmpFramework engine-id fallback classifier. Vendor `Run` hooks include Xerox
+> (PAGECOUNTERS), Netgear (stacked-chassis serials), Cisco port-security MACs and
+> Ubnt (WiFi radio ports → IFTYPE 71, IFALIAS, IFNAME = SSID + band/VLAN). The generic ENTITY-MIB
 > physical-components walk (`SNMP/Device/Components.pm` → `components.go`) backs the
 > getComponents hooks. The only unported file is `ConfigurationPlugin.pm` — a
 > config-time loader for user-supplied MIB modules, not a device MIB, so it has no

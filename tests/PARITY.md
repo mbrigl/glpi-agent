@@ -44,7 +44,7 @@ Legend: ✅ migrated · 🟡 partial (platform/feature gap tracked) · ⬜ pendi
 | `t/agent/snmp/*.t`, `mock.t` | `glpi-discovery::snmp::walk` tests + `tests/scanner.rs` | ✅ | 📦 | Go has a `.walk` loader (`parseWalk` + `walkGetter`, mirroring the live SNMP rendering) replaying upstream `resources/walks/*` captures (`testdata/walks/`); also a synthetic `fakeGetter` for module unit tests. More vendor walks to follow. |
 | `t/tasks/netdiscovery*.t` | `glpi-discovery::tasks::net_discovery` tests | ✅ | ✅ | Go own tests: range expansion, probe merge, ARP/NetBIOS parse, threaded scan. |
 | `t/tasks/netinventory*.t` | `glpi-discovery::tasks::net_inventory` + `glpi-agent-tests` | ✅ | 🟡 | Go own tests: device build, ENTITY-MIB components, port enrichment; synthetic walks. |
-| per-vendor MIB device cases | `glpi-discovery::snmp::mib::vendor::*` module tests | 🟡 | 🟡 | Go ships all 78 device modules + SnmpFramework, each with a synthetic end-to-end test; **Force10S is now also pinned against its real `force10s.walk` capture** (33 components, matching `force10s.t`); the other vendor walks are still to be replayed. |
+| per-vendor MIB device cases | `glpi-discovery::snmp::mib::vendor::*` module tests | 🟡 | 🟡 | Go ships all 78 device modules + SnmpFramework, each with a synthetic end-to-end test; **Force10S** (`force10s.walk`, 33 components vs `force10s.t`) and **Ubnt** (`sample7.walk`, WiFi radio-port SSID/band/VLAN enrichment vs `ubnt.t`) are now pinned against their real captures; the other vendor walks are still to be replayed. |
 | SNMPv3 RFC 3414/7860 crypto vectors | delegated to `snmp2`; agent-side live v3 round-trip | ⬜ | 🟡 | Go `configureV3` USM mapping unit-tested; no live v3 round-trip. |
 
 ## IEC 61850

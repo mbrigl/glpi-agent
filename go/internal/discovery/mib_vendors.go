@@ -39,6 +39,8 @@ func init() {
 	const ubntWlStatApMac = ubnt + ".1.4.5.1.4.1"
 	const unifiApSystemVersion = ubnt + ".1.6.3.6.0"
 	const unifiApSystemModel = ubnt + ".1.6.3.3.0"
+	const unifiVapEssid = ubnt + ".1.6.1.2.1.6"
+	const unifiVapName = ubnt + ".1.6.1.2.1.7"
 	registerMib(MibModule{
 		Name:        "ubnt",
 		OID:         ubnt,
@@ -53,6 +55,7 @@ func init() {
 			}
 			return strings.ReplaceAll(serial, ":", "")
 		},
+		Run: func(g SNMPGetter, d Device) { ubntEnrichRadioPorts(g, d, unifiVapEssid, unifiVapName) },
 	})
 
 	// --- Dell (PowerConnect / OS10) ---
@@ -98,4 +101,70 @@ func init() {
 		Serial:      func(g SNMPGetter, _ Device) string { return mibGet(g, fnFortiAPMib+".1.2.0") },
 		Firmware:    func(g SNMPGetter, _ Device) string { return mibGet(g, fnFortiAPMib+".1.1.0") },
 	})
+}
+
+// UBNT radio-port enrichment regexes (Ubnt::run).
+var (
+	ubntRadioRE = regexp.MustCompile(`^(?:ra\d+|rai\d+|wifi\d+ap\d+)(?:\.\d+)?$`)
+	ubntVlanRE  = regexp.MustCompile(`^(.+)\.(\d+)$`)
+	ubnt24RE    = regexp.MustCompile(`^(?:ra|wifi0ap)\d+$`)
+	ubnt5RE     = regexp.MustCompile(`^(?:rai|wifi1ap)\d+$`)
+)
+
+// ubntEnrichRadioPorts ports Ubnt::run: for each WiFi radio port (raX / raiX /
+// wifiNapX, optionally a .VLAN sub-interface) it fixes the bogus Ethernet
+// iftype (6 -> 71 WiFi), sets IFALIAS to the interface name, and replaces IFNAME
+// with the SSID annotated by radio band and any VLAN id. The radio<->SSID
+// correlation comes from the unifiVapName / unifiVapEssid tables by shared index.
+func ubntEnrichRadioPorts(g SNMPGetter, d Device, essidOID, nameOID string) {
+	ports, _ := d["PORTS"].([]map[string]any)
+	if len(ports) == 0 {
+		return
+	}
+	essids, _ := g.Walk(essidOID)
+	names, _ := g.Walk(nameOID)
+
+	for _, p := range ports {
+		ifdescr, _ := p["IFDESCR"].(string)
+		if !ubntRadioRE.MatchString(ifdescr) {
+			continue
+		}
+		// UBNT APs misreport WiFi interfaces as Ethernet(6); fix to WiFi(71).
+		if t, _ := p["IFTYPE"].(string); t == "6" {
+			p["IFTYPE"] = "71"
+		}
+
+		parent, vlan := ifdescr, ""
+		if m := ubntVlanRE.FindStringSubmatch(ifdescr); m != nil {
+			parent, vlan = m[1], m[2]
+		}
+
+		for idx, vapName := range names {
+			if strings.TrimSpace(vapName) != parent {
+				continue
+			}
+			p["IFALIAS"] = ifdescr
+			ssid := strings.TrimSpace(essids[idx])
+			if ssid == "" {
+				break
+			}
+			band := ""
+			switch {
+			case ubnt24RE.MatchString(parent):
+				band = "2.4GHz"
+			case ubnt5RE.MatchString(parent):
+				band = "5GHz"
+			}
+			switch {
+			case band != "" && vlan != "":
+				ssid += " (" + band + ", VLAN " + vlan + ")"
+			case band != "":
+				ssid += " (" + band + ")"
+			case vlan != "":
+				ssid += " (VLAN " + vlan + ")"
+			}
+			p["IFNAME"] = ssid
+			break
+		}
+	}
 }

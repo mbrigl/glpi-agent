@@ -103,6 +103,57 @@ func TestForce10SRealWalk(t *testing.T) {
 	}
 }
 
+// TestUbntRealWalk replays the upstream sample7.walk (a UniFi AP) through the
+// full GetInventory path and asserts the Ubnt run hook annotates the WiFi radio
+// ports the same way t/tasks/netinventory/mibsupport/ubnt.t expects: IFTYPE
+// fixed to 71, IFALIAS = interface name, IFNAME = SSID + band/VLAN.
+func TestUbntRealWalk(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "walks", "sample7.walk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := &walkGetter{values: parseWalk(string(data))}
+
+	device, err := GetInventory("10.0.0.1", g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if device == nil {
+		t.Fatal("no device built from the UniFi AP walk")
+	}
+
+	ports, _ := device["PORTS"].([]map[string]any)
+	byNum := map[string]map[string]any{}
+	for _, p := range ports {
+		byNum[p["IFNUMBER"].(string)] = p
+	}
+
+	want := map[string]struct{ ifdescr, ifname, ifalias string }{
+		"6":  {"wifi0ap0", "TestNet - Visitantes_2.4Ghz (2.4GHz)", "wifi0ap0"},
+		"10": {"wifi1ap4", "TestNet - Visitantes_5Ghz (5GHz)", "wifi1ap4"},
+		"25": {"wifi1ap5.620", "TestNet_Corp (5GHz, VLAN 620)", "wifi1ap5.620"},
+	}
+	for num, w := range want {
+		p := byNum[num]
+		if p == nil {
+			t.Errorf("port %s missing", num)
+			continue
+		}
+		if p["IFDESCR"] != w.ifdescr {
+			t.Errorf("port %s IFDESCR = %v, want %s", num, p["IFDESCR"], w.ifdescr)
+		}
+		if p["IFTYPE"] != "71" {
+			t.Errorf("port %s IFTYPE = %v, want 71 (WiFi)", num, p["IFTYPE"])
+		}
+		if p["IFNAME"] != w.ifname {
+			t.Errorf("port %s IFNAME = %v, want %q", num, p["IFNAME"], w.ifname)
+		}
+		if p["IFALIAS"] != w.ifalias {
+			t.Errorf("port %s IFALIAS = %v, want %s", num, p["IFALIAS"], w.ifalias)
+		}
+	}
+}
+
 // TestParseWalkValues unit-tests the value rendering against the snmpwalk forms.
 func TestParseWalkValues(t *testing.T) {
 	walk := parseWalk(`.1.3.6.1.2.1.1.1.0 = STRING: "Force10 Networks"
