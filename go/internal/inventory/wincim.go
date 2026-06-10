@@ -85,6 +85,7 @@ var winOSProperties = []string{
 	"Caption", "Version", "CSDVersion", "LastBootUpTime", "InstallDate",
 	"BuildNumber", "OSArchitecture",
 	"OSLanguage", "SerialNumber", "Organization", "RegisteredUser", "TotalSwapSpaceSize",
+	"SystemDrive",
 }
 
 // buildWinOS maps a Win32_OperatingSystem CIM object to the OPERATINGSYSTEM

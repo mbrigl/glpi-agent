@@ -47,6 +47,16 @@ func Collect() Sections {
 		s["MEMORIES"] = buildWinMemories(mems)
 	}
 
+	// drives (Win32_LogicalDisk volumes).
+	if disks, err := powershellCIM("Win32_LogicalDisk", winLogicalDiskProperties); err == nil && len(disks) > 0 {
+		s["DRIVES"] = buildWinDrives(disks, cimString(osObj, "SystemDrive"))
+	}
+
+	// storages (Win32_DiskDrive physical disks).
+	if disks, err := powershellCIM("Win32_DiskDrive", winDiskDriveProperties); err == nil && len(disks) > 0 {
+		s["STORAGES"] = buildWinStorages(disks)
+	}
+
 	return s
 }
 
