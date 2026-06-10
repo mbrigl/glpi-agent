@@ -24,7 +24,9 @@ type PCIDevice struct {
 }
 
 var (
-	pciHeaderRE = regexp.MustCompile(`(?i)^(\S+)\s+(.+?)\s+\[([0-9a-f]+)\]:\s+(.+)\s+\[([0-9a-f]{4}:[0-9a-f]{4})\](?:\s+\(rev\s+([0-9a-f]+)\))?\s*$`)
+	// The line may carry trailing annotations after the optional "(rev X)", e.g.
+	// "(prog-if 00 [VGA controller])", so anything is allowed to follow.
+	pciHeaderRE = regexp.MustCompile(`(?i)^(\S+)\s+(.+?)\s+\[([0-9a-f]+)\]:\s+(.+)\s+\[([0-9a-f]{4}:[0-9a-f]{4})\](?:\s+\(rev\s+([0-9a-f]+)\))?.*$`)
 	pciDriverRE = regexp.MustCompile(`^\s+Kernel driver in use:\s+(\w+)`)
 	pciSubsysRE = regexp.MustCompile(`(?i)^\s+Subsystem:.*\[?([0-9a-f]{4}:[0-9a-f]{4})\]?`)
 	pciMemRE    = regexp.MustCompile(`(?i)^\s+Memory.*\sprefetchable.*\[size=([^\]]+)\]`)

@@ -58,7 +58,7 @@ Legend: ✅ migrated · 🟡 partial (platform/feature gap tracked) · ⬜ pendi
 
 | Perl source | Rust target | Rust | Go | Notes |
 | ----------- | ----------- | ---- | -- | ----- |
-| `t/tasks/inventory/generic/**` | `glpi-inventory-local` category tests + `tests/fixtures.rs` | ✅ | 📦 | **dmidecode now replays real upstream captures** (`testdata/dmidecode/`, exact memory/slot/port counts + field values across servers/laptop/VM/BSD/Windows). EDID/lspci/CUPS still on synthetic samples. |
+| `t/tasks/inventory/generic/**` | `glpi-inventory-local` category tests + `tests/fixtures.rs` | ✅ | 📦 | **dmidecode and lspci now replay real upstream captures** (`testdata/{dmidecode,lspci}/`, exact device/memory/slot/port counts + field values). Replaying lspci caught a real parser bug (header regex dropped lines with a trailing `(prog-if …)` annotation — ~⅔ of devices on some hosts). EDID/CUPS still on synthetic samples. |
 | `t/tasks/inventory/linux/**` | `glpi-inventory-local` `categories::*` tests | ✅ | 🟡 | Go ~28 Linux collectors with own parser tests (synthetic inputs); `resources/linux/**` not yet replayed. |
 | `t/tasks/inventory/win32/**` | all `…/categories/*` (Windows path) | 🟡 | ⬜ | Windows inventory not implemented in Go (hostname stub only). |
 | `t/tasks/inventory/macos/**` | all `…/categories/*` (macOS path) | 🟡 | ⬜ | macOS inventory not implemented in Go. |
