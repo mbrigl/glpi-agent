@@ -79,10 +79,12 @@ func wmiDateTime(s string) string {
 	return m[1] + "-" + m[2] + "-" + m[3] + " " + m[4] + ":" + m[5] + ":" + m[6]
 }
 
-// winOSProperties are the Win32_OperatingSystem properties the OS section needs.
+// winOSProperties are the Win32_OperatingSystem properties the operatingsystem
+// and hardware sections need (fetched in one query).
 var winOSProperties = []string{
 	"Caption", "Version", "CSDVersion", "LastBootUpTime", "InstallDate",
 	"BuildNumber", "OSArchitecture",
+	"OSLanguage", "SerialNumber", "Organization", "RegisteredUser", "TotalSwapSpaceSize",
 }
 
 // buildWinOS maps a Win32_OperatingSystem CIM object to the OPERATINGSYSTEM

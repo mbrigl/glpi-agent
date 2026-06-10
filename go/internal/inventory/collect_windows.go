@@ -17,11 +17,36 @@ func Collect() Sections {
 	s := Sections{}
 	s.mergeHardware(map[string]any{"NAME": hostname()})
 
-	if objs, err := powershellCIM("Win32_OperatingSystem", winOSProperties); err == nil && len(objs) > 0 {
-		s["OPERATINGSYSTEM"] = buildWinOS(objs[0])
+	// Query each CIM class once and reuse the first object across categories.
+	osObj := firstCIM("Win32_OperatingSystem", winOSProperties)
+	cs := firstCIM("Win32_ComputerSystem", winCSProperties)
+
+	if osObj != nil {
+		s["OPERATINGSYSTEM"] = buildWinOS(osObj)
 	}
 
+	// hardware (Win32_OperatingSystem + Win32_ComputerSystem + product UUID).
+	csProduct := firstCIM("Win32_ComputerSystemProduct", winCSProductProperties)
+	s.mergeHardware(buildWinHardware(osObj, cs, csProduct))
+
+	// bios (Win32_Bios + ComputerSystem + SystemEnclosure + BaseBoard).
+	s["BIOS"] = buildWinBios(
+		firstCIM("Win32_Bios", winBiosProperties),
+		cs,
+		firstCIM("Win32_SystemEnclosure", winEnclosureProperties),
+		firstCIM("Win32_BaseBoard", winBaseBoardProperties),
+	)
+
 	return s
+}
+
+// firstCIM runs a CIM query and returns the first object, or nil on error/empty.
+func firstCIM(class string, props []string) map[string]any {
+	objs, err := powershellCIM(class, props)
+	if err != nil || len(objs) == 0 {
+		return nil
+	}
+	return objs[0]
 }
 
 // powershellCIM runs `Get-CimInstance <class> | Select <props> | ConvertTo-Json`
