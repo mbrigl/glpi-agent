@@ -37,6 +37,16 @@ func Collect() Sections {
 		firstCIM("Win32_BaseBoard", winBaseBoardProperties),
 	)
 
+	// cpus (one entry per Win32_Processor).
+	if procs, err := powershellCIM("Win32_Processor", winProcessorProperties); err == nil && len(procs) > 0 {
+		s["CPUS"] = buildWinCPUs(procs)
+	}
+
+	// memories (one entry per Win32_PhysicalMemory).
+	if mems, err := powershellCIM("Win32_PhysicalMemory", winMemoryProperties); err == nil && len(mems) > 0 {
+		s["MEMORIES"] = buildWinMemories(mems)
+	}
+
 	return s
 }
 
