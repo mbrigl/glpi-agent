@@ -58,7 +58,7 @@ Legend: ✅ migrated · 🟡 partial (platform/feature gap tracked) · ⬜ pendi
 
 | Perl source | Rust target | Rust | Go | Notes |
 | ----------- | ----------- | ---- | -- | ----- |
-| `t/tasks/inventory/generic/**` | `glpi-inventory-local` category tests + `tests/fixtures.rs` | ✅ | 📦 | **dmidecode and lspci now replay real upstream captures** (`testdata/{dmidecode,lspci}/`, exact device/memory/slot/port counts + field values). Replaying lspci caught a real parser bug (header regex dropped lines with a trailing `(prog-if …)` annotation — ~⅔ of devices on some hosts). EDID/CUPS still on synthetic samples. |
+| `t/tasks/inventory/generic/**` | `glpi-inventory-local` category tests + `tests/fixtures.rs` | ✅ | 📦 | **dmidecode, lspci and EDID now replay real upstream captures** (`testdata/{dmidecode,lspci,edid}/`, exact counts/fields vs `screen.t`/Memory/Slots expectations). Replaying lspci caught a real parser bug (header regex dropped lines with a trailing `(prog-if …)` annotation — ~⅔ of devices on some hosts). EDID pins manufacturer/caption/week-year across 6 vendors (Parse::EDID combined-serial is a noted divergence). CUPS still on synthetic samples. |
 | `t/tasks/inventory/linux/**` | `glpi-inventory-local` `categories::*` tests | ✅ | 🟡 | Go ~28 Linux collectors with own parser tests (synthetic inputs); `resources/linux/**` not yet replayed. |
 | `t/tasks/inventory/win32/**` | all `…/categories/*` (Windows path) | 🟡 | ⬜ | Windows inventory not implemented in Go (hostname stub only). |
 | `t/tasks/inventory/macos/**` | all `…/categories/*` (macOS path) | 🟡 | ⬜ | macOS inventory not implemented in Go. |
