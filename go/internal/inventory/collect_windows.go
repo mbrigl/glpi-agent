@@ -57,6 +57,17 @@ func Collect() Sections {
 		s["STORAGES"] = buildWinStorages(disks)
 	}
 
+	// controllers (PCI devices across the PnP/controller WMI classes).
+	var controllerObjs []map[string]any
+	for _, class := range winControllerClasses {
+		if objs, err := powershellCIM(class, winControllerProperties); err == nil {
+			controllerObjs = append(controllerObjs, objs...)
+		}
+	}
+	if c := buildWinControllers(controllerObjs); len(c) > 0 {
+		s["CONTROLLERS"] = c
+	}
+
 	return s
 }
 
