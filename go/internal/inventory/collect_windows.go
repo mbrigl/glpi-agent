@@ -197,6 +197,11 @@ func Collect() Sections {
 		s["MONITORS"] = m
 	}
 
+	// firewall (per-profile EnableFirewall registry DWORD -> FIREWALL).
+	if fw := collectWinFirewall(); len(fw) > 0 {
+		s["FIREWALL"] = fw
+	}
+
 	return s
 }
 
