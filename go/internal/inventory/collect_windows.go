@@ -213,6 +213,13 @@ func Collect() Sections {
 		s["USBDEVICES"] = u
 	}
 
+	// licenses (SoftwareLicensingProduct -> LICENSEINFOS).
+	if objs, err := powershellCIM("SoftwareLicensingProduct", winLicenseProperties); err == nil {
+		if l := buildWinLicenses(objs); len(l) > 0 {
+			s["LICENSEINFOS"] = l
+		}
+	}
+
 	return s
 }
 
