@@ -192,6 +192,11 @@ func Collect() Sections {
 		s["BATTERIES"] = b
 	}
 
+	// monitors (Win32_DesktopMonitor + root/wmi + registry EDID -> MONITORS).
+	if m := collectWinMonitors(); len(m) > 0 {
+		s["MONITORS"] = m
+	}
+
 	return s
 }
 
