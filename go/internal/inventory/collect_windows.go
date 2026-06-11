@@ -202,6 +202,11 @@ func Collect() Sections {
 		s["FIREWALL"] = fw
 	}
 
+	// usb devices (CIM_LogicalDevice + embedded usb.ids -> USBDEVICES).
+	if u := collectWinUSB(); len(u) > 0 {
+		s["USBDEVICES"] = u
+	}
+
 	return s
 }
 
