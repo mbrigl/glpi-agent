@@ -147,6 +147,26 @@ func Collect() Sections {
 		}
 	}
 
+	// local users + groups (Win32_UserAccount / Win32_Group).
+	if objs, err := powershellCIM("Win32_UserAccount", winLocalUserProperties); err == nil {
+		if u := buildWinLocalUsers(objs); len(u) > 0 {
+			s["LOCAL_USERS"] = u
+		}
+	}
+	if objs, err := powershellCIM("Win32_Group", winLocalGroupProperties); err == nil {
+		if g := buildWinLocalGroups(objs); len(g) > 0 {
+			s["LOCAL_GROUPS"] = g
+		}
+	}
+
+	// last logged-in user (Win32_ComputerSystem.UserName -> USERS + hardware).
+	if lu := firstCIM("Win32_ComputerSystem", winLastUserProperties); lu != nil {
+		if entry, login := buildWinLastUser(lu); entry != nil {
+			s["USERS"] = []map[string]any{entry}
+			s.mergeHardware(map[string]any{"LASTLOGGEDUSER": login})
+		}
+	}
+
 	return s
 }
 
