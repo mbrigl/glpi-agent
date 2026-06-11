@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // TestBuildWinOS feeds a representative Win32_OperatingSystem CIM-JSON object
@@ -59,18 +60,32 @@ func TestDecodeCIMJSON(t *testing.T) {
 	}
 }
 
-// TestWMIDateTime covers the CIM_DATETIME formatting.
+// TestWMIDateTime covers the CIM_DATETIME formatting across the raw WMI format,
+// the canonical pass-through, and the PowerShell ConvertTo-Json serialisations
+// (ISO-8601 with "T" and the Microsoft "/Date(ms±HHMM)/" form).
 func TestWMIDateTime(t *testing.T) {
 	cases := map[string]string{
-		"20240115083000.500000+060": "2024-01-15 08:30:00",
-		"2024-01-15 08:30:00":       "2024-01-15 08:30:00", // already ISO
-		"":                          "",
-		"garbage":                   "",
+		"20240115083000.500000+060":    "2024-01-15 08:30:00",
+		"2024-01-15 08:30:00":          "2024-01-15 08:30:00", // already canonical
+		"2024-01-15T08:30:00":          "2024-01-15 08:30:00", // ISO-8601, no tz
+		"2024-01-15T08:30:00+01:00":    "2024-01-15 08:30:00", // ISO-8601 + offset
+		"2024-01-15T08:30:00.5000000Z": "2024-01-15 08:30:00", // ISO-8601 + fraction + Z
+		`/Date(1705305000000+0100)/`:   "2024-01-15 08:50:00", // MS JSON (07:50 UTC + 01:00)
+		"":                             "",
+		"garbage":                      "",
 	}
 	for in, want := range cases {
 		if got := wmiDateTime(in); got != want {
 			t.Errorf("wmiDateTime(%q) = %q, want %q", in, got, want)
 		}
+	}
+
+	// The offset-less "/Date(ms)/" form is rendered in the host's local zone;
+	// assert it round-trips for the local interpretation of the epoch ms.
+	const ms = int64(1705305000000)
+	if got, want := wmiDateTime(`/Date(1705305000000)/`),
+		time.UnixMilli(ms).Local().Format("2006-01-02 15:04:05"); got != want {
+		t.Errorf("local /Date()/ = %q, want %q", got, want)
 	}
 }
 

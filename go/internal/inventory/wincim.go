@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Windows inventory is collected by running PowerShell
@@ -61,22 +63,70 @@ func jsonScalar(v any) string {
 	return strings.Trim(string(b), `"`)
 }
 
-var wmiDateTimeRE = regexp.MustCompile(`^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\.\d{6}.\d{3}$`)
-var isoDateTimeRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
+var (
+	// Raw CIM_DATETIME: "YYYYMMDDHHMMSS.ffffff±UUU".
+	wmiDateTimeRE = regexp.MustCompile(`^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\.\d{6}.\d{3}$`)
+	// Canonical output (and pass-through): "YYYY-MM-DD HH:MM:SS".
+	isoDateTimeRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
+	// ISO-8601 with a "T" separator (PowerShell ConvertTo-Json of a [DateTime]),
+	// e.g. "2024-01-15T08:30:00.5000000+01:00" — fractional seconds and the
+	// timezone suffix are ignored, the local wall-clock components are kept.
+	isoTDateTimeRE = regexp.MustCompile(`^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})`)
+	// Microsoft JSON date ("\/Date(<ms-since-epoch>[±HHMM])\/") emitted by the
+	// JavaScriptSerializer path of Windows PowerShell 5.1.
+	msJSONDateRE = regexp.MustCompile(`^/Date\((-?\d+)(?:([+-]\d{2})(\d{2}))?\)/$`)
+)
 
-// wmiDateTime formats a WMI CIM_DATETIME ("YYYYMMDDHHMMSS.ffffff±UUU") as
-// "YYYY-MM-DD HH:MM:SS", mirroring Tools/Win32::getFormatedWMIDateTime. An
-// already-ISO value is returned unchanged; anything else yields "".
+// wmiDateTime normalises a CIM datetime to the canonical "YYYY-MM-DD HH:MM:SS"
+// (local wall-clock), mirroring Tools/Win32::getFormatedWMIDateTime. It accepts
+// the raw CIM_DATETIME format, the already-canonical form, and — because Windows
+// inventory flows through PowerShell `ConvertTo-Json`, which serialises a
+// [DateTime] rather than the raw string — the ISO-8601-with-"T" and the
+// Microsoft "/Date(ms)/" serialisations. The timezone is ignored for the string
+// forms (as upstream does); anything unrecognised yields "".
 func wmiDateTime(s string) string {
 	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
 	if isoDateTimeRE.MatchString(s) {
 		return s
 	}
-	m := wmiDateTimeRE.FindStringSubmatch(s)
-	if m == nil {
+	if m := wmiDateTimeRE.FindStringSubmatch(s); m != nil {
+		return m[1] + "-" + m[2] + "-" + m[3] + " " + m[4] + ":" + m[5] + ":" + m[6]
+	}
+	if m := isoTDateTimeRE.FindStringSubmatch(s); m != nil {
+		return m[1] + "-" + m[2] + "-" + m[3] + " " + m[4] + ":" + m[5] + ":" + m[6]
+	}
+	if m := msJSONDateRE.FindStringSubmatch(s); m != nil {
+		return msJSONDateToCanonical(m[1], m[2], m[3])
+	}
+	return ""
+}
+
+// msJSONDateToCanonical converts a Microsoft "/Date(ms±HHMM)/" capture to the
+// canonical local wall-clock string. With an explicit offset the wall clock is
+// recovered from it; without one the value is UTC and rendered in the host's
+// local zone (the agent runs on the inventoried machine, so this matches the
+// machine's local time).
+func msJSONDateToCanonical(msStr, offHour, offMin string) string {
+	ms, err := strconv.ParseInt(msStr, 10, 64)
+	if err != nil {
 		return ""
 	}
-	return m[1] + "-" + m[2] + "-" + m[3] + " " + m[4] + ":" + m[5] + ":" + m[6]
+	t := time.UnixMilli(ms)
+	if offHour != "" {
+		h, _ := strconv.Atoi(offHour)
+		m, _ := strconv.Atoi(offMin)
+		sign := 1
+		if h < 0 {
+			sign, h = -1, -h
+		}
+		t = t.In(time.FixedZone("", sign*(h*3600+m*60)))
+	} else {
+		t = t.Local()
+	}
+	return t.Format("2006-01-02 15:04:05")
 }
 
 // winOSProperties are the Win32_OperatingSystem properties the operatingsystem

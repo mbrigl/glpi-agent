@@ -271,7 +271,7 @@ func powershellProcessOwners() ([]map[string]any, error) {
     ProcessId      = $_.ProcessId
     Name           = $_.Name
     CommandLine    = $_.CommandLine
-    CreationDate   = $_.CreationDate
+    CreationDate   = if ($_.CreationDate) { $_.CreationDate.ToString('yyyy-MM-dd HH:mm:ss') } else { $null }
     ExecutablePath = $_.ExecutablePath
     User           = if ($o) { $o.User } else { $null }
     Domain         = if ($o) { $o.Domain } else { $null }
@@ -285,6 +285,14 @@ func powershellProcessOwners() ([]map[string]any, error) {
 	return decodeCIMJSON(out)
 }
 
+// winCIMDateNormalizer is a PowerShell pipeline stage that rewrites every
+// [datetime] property of the piped objects to the canonical
+// "yyyy-MM-dd HH:mm:ss" (local wall-clock) string before ConvertTo-Json.
+// Without it, ConvertTo-Json serialises a [DateTime] in an ambiguous form
+// (ISO-8601 or "/Date(ms)/" depending on the PowerShell edition); formatting at
+// the source keeps the JSON deterministic and matches getFormatedWMIDateTime.
+const winCIMDateNormalizer = `ForEach-Object { foreach ($p in $_.PSObject.Properties) { if ($p.Value -is [datetime]) { $p.Value = $p.Value.ToString('yyyy-MM-dd HH:mm:ss') } }; $_ }`
+
 // powershellCIMNamespace runs the CIM query in the given WMI namespace (empty
 // for the default root/CIMV2), e.g. "root/SecurityCenter2" for AntiVirusProduct.
 func powershellCIMNamespace(namespace, class string, props []string) ([]map[string]any, error) {
@@ -293,8 +301,8 @@ func powershellCIMNamespace(namespace, class string, props []string) ([]map[stri
 		ns = fmt.Sprintf("-Namespace %s ", namespace)
 	}
 	script := fmt.Sprintf(
-		"Get-CimInstance %s-ClassName %s | Select-Object %s | ConvertTo-Json -Compress -Depth 3",
-		ns, class, strings.Join(props, ","),
+		"Get-CimInstance %s-ClassName %s | Select-Object %s | %s | ConvertTo-Json -Compress -Depth 3",
+		ns, class, strings.Join(props, ","), winCIMDateNormalizer,
 	)
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 	out, err := cmd.Output()
