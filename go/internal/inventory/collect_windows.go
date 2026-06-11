@@ -6,6 +6,7 @@ package inventory
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -186,7 +187,33 @@ func Collect() Sections {
 		s.mergeHardware(map[string]any{"CHASSIS_TYPE": ct})
 	}
 
+	// batteries (powercfg /batteryreport /xml -> BATTERIES).
+	if b := collectWinBatteries(); len(b) > 0 {
+		s["BATTERIES"] = b
+	}
+
 	return s
+}
+
+// collectWinBatteries runs `powercfg /batteryreport /xml` into a temp file and
+// parses it, mirroring Win32/Batteries.pm _getBatteriesFromPowercfg.
+func collectWinBatteries() []map[string]any {
+	f, err := os.CreateTemp("", "batteries-*.xml")
+	if err != nil {
+		return nil
+	}
+	path := f.Name()
+	f.Close()
+	defer os.Remove(path)
+
+	// We only care about the side effect (the generated XML file).
+	_ = exec.Command("powercfg.exe", "/batteryreport", "/xml", "/output", path).Run()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	return parsePowercfgBatteries(data)
 }
 
 // firstCIM runs a CIM query and returns the first object, or nil on error/empty.
