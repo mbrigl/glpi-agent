@@ -44,3 +44,29 @@ func TestBuildWinSounds(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildWinSlots checks the Win32_SystemSlot mapping and the usage-less skip.
+func TestBuildWinSlots(t *testing.T) {
+	slots := buildWinSlots(loadCIMArray(t, "win32_systemslot.json"))
+	if len(slots) != 2 { // the CurrentUsage=null slot is skipped
+		t.Fatalf("got %d slots, want 2", len(slots))
+	}
+	if slots[0]["NAME"] != "PCIe Slot 1" || slots[0]["DESIGNATION"] != "PCIEX16_1" || slots[0]["STATUS"] != "used" {
+		t.Errorf("slot0 = %v", slots[0])
+	}
+	if slots[1]["STATUS"] != "free" { // CurrentUsage 3
+		t.Errorf("slot1 STATUS = %v, want free", slots[1]["STATUS"])
+	}
+}
+
+// TestBuildWinPorts checks the serial/parallel port TYPE tagging.
+func TestBuildWinPorts(t *testing.T) {
+	ports := buildWinPorts(loadCIMArray(t, "win32_serialport.json"), "Serial")
+	if len(ports) != 1 {
+		t.Fatalf("got %d ports, want 1", len(ports))
+	}
+	p := ports[0]
+	if p["NAME"] != "COM1" || p["CAPTION"] != "Communications Port (COM1)" || p["TYPE"] != "Serial" {
+		t.Errorf("port = %v", p)
+	}
+}

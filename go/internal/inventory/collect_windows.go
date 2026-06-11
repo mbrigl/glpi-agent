@@ -91,6 +91,25 @@ func Collect() Sections {
 		}
 	}
 
+	// slots (Win32_SystemSlot).
+	if objs, err := powershellCIM("Win32_SystemSlot", winSystemSlotProperties); err == nil {
+		if v := buildWinSlots(objs); len(v) > 0 {
+			s["SLOTS"] = v
+		}
+	}
+
+	// ports (Win32_SerialPort + Win32_ParallelPort).
+	var ports []map[string]any
+	if objs, err := powershellCIM("Win32_SerialPort", winPortProperties); err == nil {
+		ports = append(ports, buildWinPorts(objs, "Serial")...)
+	}
+	if objs, err := powershellCIM("Win32_ParallelPort", winPortProperties); err == nil {
+		ports = append(ports, buildWinPorts(objs, "Parallel")...)
+	}
+	if len(ports) > 0 {
+		s["PORTS"] = ports
+	}
+
 	return s
 }
 

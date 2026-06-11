@@ -50,3 +50,43 @@ func buildWinSounds(objects []map[string]any) []map[string]any {
 	}
 	return sounds
 }
+
+var (
+	winSystemSlotProperties = []string{"Name", "Description", "SlotDesignation", "CurrentUsage"}
+	winPortProperties       = []string{"Name", "Caption", "Description"}
+
+	// Win32_SystemSlot.CurrentUsage -> SLOTS STATUS (Win32/Slots.pm %status).
+	winSlotStatus = map[int]string{3: "free", 4: "used"}
+)
+
+// buildWinSlots maps Win32_SystemSlot to SLOTS, mirroring Win32/Slots.pm. Slots
+// with no CurrentUsage are skipped.
+func buildWinSlots(objects []map[string]any) []map[string]any {
+	var slots []map[string]any
+	for _, o := range objects {
+		if v, ok := o["CurrentUsage"]; !ok || v == nil {
+			continue
+		}
+		slot := map[string]any{}
+		setIf(slot, "NAME", cimString(o, "Name"))
+		setIf(slot, "DESCRIPTION", cimString(o, "Description"))
+		setIf(slot, "DESIGNATION", cimString(o, "SlotDesignation"))
+		setIf(slot, "STATUS", winSlotStatus[cimInt(o, "CurrentUsage")])
+		slots = append(slots, slot)
+	}
+	return slots
+}
+
+// buildWinPorts maps a serial/parallel port WMI class to PORTS entries with the
+// given TYPE, mirroring Win32/Ports.pm.
+func buildWinPorts(objects []map[string]any, portType string) []map[string]any {
+	var ports []map[string]any
+	for _, o := range objects {
+		p := map[string]any{"TYPE": portType}
+		setIf(p, "NAME", cimString(o, "Name"))
+		setIf(p, "CAPTION", cimString(o, "Caption"))
+		setIf(p, "DESCRIPTION", cimString(o, "Description"))
+		ports = append(ports, p)
+	}
+	return ports
+}
