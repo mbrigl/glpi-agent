@@ -77,6 +77,20 @@ func Collect() Sections {
 		}
 	}
 
+	// videos (Win32_VideoController).
+	if objs, err := powershellCIM("Win32_VideoController", winVideoProperties); err == nil {
+		if v := buildWinVideos(objs); len(v) > 0 {
+			s["VIDEOS"] = v
+		}
+	}
+
+	// sounds (Win32_SoundDevice).
+	if objs, err := powershellCIM("Win32_SoundDevice", winSoundProperties); err == nil {
+		if v := buildWinSounds(objs); len(v) > 0 {
+			s["SOUNDS"] = v
+		}
+	}
+
 	return s
 }
 
