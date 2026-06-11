@@ -1,0 +1,1 @@
+[{"Index":1,"InterfaceIndex":12,"PNPDeviceID":"PCI\\VEN_8086&DEV_15B8\\3&11583659&0&FE","Speed":"1000000000","PhysicalAdapter":true,"GUID":"{NIC-GUID-1}","Description":"Intel(R) Ethernet Connection","AdapterType":"Ethernet 802.3"},{"Index":7,"PNPDeviceID":"ROOT\\VMWARE\\0000","Speed":null,"PhysicalAdapter":false,"GUID":"{VNIC-GUID}","Description":"VMware Virtual Ethernet"}]

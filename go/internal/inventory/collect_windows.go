@@ -68,6 +68,15 @@ func Collect() Sections {
 		s["CONTROLLERS"] = c
 	}
 
+	// networks (Win32_NetworkAdapter joined with its configuration, per IP).
+	adapters, aErr := powershellCIM("Win32_NetworkAdapter", winNetAdapterProperties)
+	cfgs, cErr := powershellCIM("Win32_NetworkAdapterConfiguration", winNetConfigProperties)
+	if aErr == nil && cErr == nil {
+		if n := buildWinNetworks(adapters, cfgs); len(n) > 0 {
+			s["NETWORKS"] = n
+		}
+	}
+
 	return s
 }
 

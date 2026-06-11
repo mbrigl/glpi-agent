@@ -152,7 +152,7 @@ local inventory sections table above.
 | OS | Upstream | Rust | Go |
 | --- | --- | --- | --- |
 | Linux | `Inventory/Linux/**` | ✅ (`linux`) | 🟡 28 sections + 3 partial (`//go:build linux`) |
-| Windows | `Inventory/Win32/**` (28) | 🟡 implemented; some detail fields best-effort (`windows`) | 🟡 WMI/CIM via PowerShell `Get-CimInstance \| ConvertTo-Json` (`collect_windows.go`), pure mappers unit-tested on Linux against CIM-JSON fixtures. Done: operatingsystem, hardware, bios, cpus, memories, drives, storages, controllers. networks + the registry-based categories (softwares, monitors, …) in progress |
+| Windows | `Inventory/Win32/**` (28) | 🟡 implemented; some detail fields best-effort (`windows`) | 🟡 WMI/CIM via PowerShell `Get-CimInstance \| ConvertTo-Json` (`collect_windows.go`), pure mappers unit-tested on Linux against CIM-JSON fixtures. Done: operatingsystem, hardware, bios, cpus, memories, drives, storages, controllers, networks. The registry-based categories (softwares, monitors, …) and the remaining device categories are in progress |
 | macOS | `Inventory/MacOS/**` (25) | 🟡 implemented; some detail fields best-effort (`macos`) | ⬜ non-Linux stub: hostname only |
 | Solaris | `Inventory/Solaris/**` (11) | ⬜ fehlt | ⬜ fehlt |
 | AIX | `Inventory/AIX/**` (15) | ⬜ fehlt | ⬜ fehlt |
