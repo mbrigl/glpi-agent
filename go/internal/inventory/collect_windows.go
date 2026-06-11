@@ -129,6 +129,24 @@ func Collect() Sections {
 		}
 	}
 
+	// antivirus (AntiVirusProduct in root/SecurityCenter + root/SecurityCenter2).
+	var avObjs []map[string]any
+	for _, ns := range []string{"root/SecurityCenter", "root/SecurityCenter2"} {
+		if objs, err := powershellCIMNamespace(ns, "AntiVirusProduct", winAntivirusProperties); err == nil {
+			avObjs = append(avObjs, objs...)
+		}
+	}
+	if av := buildWinAntivirus(avObjs); len(av) > 0 {
+		s["ANTIVIRUS"] = av
+	}
+
+	// environment (Win32_Environment system variables -> ENVS).
+	if objs, err := powershellCIM("Win32_Environment", winEnvironmentProperties); err == nil {
+		if e := buildWinEnvironment(objs); len(e) > 0 {
+			s["ENVS"] = e
+		}
+	}
+
 	return s
 }
 
@@ -142,11 +160,21 @@ func firstCIM(class string, props []string) map[string]any {
 }
 
 // powershellCIM runs `Get-CimInstance <class> | Select <props> | ConvertTo-Json`
-// and returns the decoded CIM objects.
+// in the default root/CIMV2 namespace and returns the decoded CIM objects.
 func powershellCIM(class string, props []string) ([]map[string]any, error) {
+	return powershellCIMNamespace("", class, props)
+}
+
+// powershellCIMNamespace runs the CIM query in the given WMI namespace (empty
+// for the default root/CIMV2), e.g. "root/SecurityCenter2" for AntiVirusProduct.
+func powershellCIMNamespace(namespace, class string, props []string) ([]map[string]any, error) {
+	ns := ""
+	if namespace != "" {
+		ns = fmt.Sprintf("-Namespace %s ", namespace)
+	}
 	script := fmt.Sprintf(
-		"Get-CimInstance -ClassName %s | Select-Object %s | ConvertTo-Json -Compress -Depth 3",
-		class, strings.Join(props, ","),
+		"Get-CimInstance %s-ClassName %s | Select-Object %s | ConvertTo-Json -Compress -Depth 3",
+		ns, class, strings.Join(props, ","),
 	)
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 	out, err := cmd.Output()
