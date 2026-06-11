@@ -123,11 +123,12 @@ func Collect() Sections {
 		}
 	}
 
-	// processes (Win32_Process).
-	if objs, err := powershellCIM("Win32_Process", winProcessProperties); err == nil {
-		if p := buildWinProcesses(objs); len(p) > 0 {
-			s["PROCESSES"] = p
-		}
+	// processes (Win32_Process with GetOwner). Queried once and reused for the
+	// interactive logged-in USERS below.
+	computer := cimString(cs, "Name")
+	procObjs, _ := powershellProcessOwners()
+	if p := buildWinProcesses(procObjs, computer); len(p) > 0 {
+		s["PROCESSES"] = p
 	}
 
 	// antivirus (AntiVirusProduct in root/SecurityCenter + root/SecurityCenter2).
@@ -160,12 +161,17 @@ func Collect() Sections {
 		}
 	}
 
-	// last logged-in user (Win32_ComputerSystem.UserName -> USERS + hardware).
+	// users: the last logged-in user (Win32_ComputerSystem.UserName) plus the
+	// interactive logged-in users (Explorer.exe owners), merged + deduped.
+	var lastEntry map[string]any
 	if lu := firstCIM("Win32_ComputerSystem", winLastUserProperties); lu != nil {
 		if entry, login := buildWinLastUser(lu); entry != nil {
-			s["USERS"] = []map[string]any{entry}
+			lastEntry = entry
 			s.mergeHardware(map[string]any{"LASTLOGGEDUSER": login})
 		}
+	}
+	if users := mergeWinUsers(lastEntry, buildWinLoggedUsers(procObjs)); len(users) > 0 {
+		s["USERS"] = users
 	}
 
 	// inputs (Win32_Keyboard + Win32_PointingDevice).
@@ -244,6 +250,32 @@ func firstCIM(class string, props []string) map[string]any {
 // in the default root/CIMV2 namespace and returns the decoded CIM objects.
 func powershellCIM(class string, props []string) ([]map[string]any, error) {
 	return powershellCIMNamespace("", class, props)
+}
+
+// powershellProcessOwners returns the Win32_Process objects enriched with the
+// User/Domain of each process owner (the WMI GetOwner method, invoked via
+// Invoke-CimMethod), mirroring the GetOwner lookup in Win32/Processes.pm and
+// Win32/Users.pm.
+func powershellProcessOwners() ([]map[string]any, error) {
+	script := `Get-CimInstance Win32_Process | ForEach-Object {
+  $o = $null
+  try { $o = Invoke-CimMethod -InputObject $_ -MethodName GetOwner -ErrorAction Stop } catch {}
+  [PSCustomObject]@{
+    ProcessId      = $_.ProcessId
+    Name           = $_.Name
+    CommandLine    = $_.CommandLine
+    CreationDate   = $_.CreationDate
+    ExecutablePath = $_.ExecutablePath
+    User           = if ($o) { $o.User } else { $null }
+    Domain         = if ($o) { $o.Domain } else { $null }
+  }
+} | ConvertTo-Json -Compress -Depth 3`
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	return decodeCIMJSON(out)
 }
 
 // powershellCIMNamespace runs the CIM query in the given WMI namespace (empty

@@ -75,3 +75,55 @@ func buildWinLastUser(cs map[string]any) (entry map[string]any, lastLogin string
 	}
 	return map[string]any{"DOMAIN": domain, "LOGIN": login}, login
 }
+
+// winExplorerRE matches a process whose executable is Explorer.exe, identifying
+// an interactive logged-in user (Win32/Users.pm _getLoggedUsers).
+var winExplorerRE = regexp.MustCompile(`(?i)\\Explorer\.exe$`)
+
+// buildWinLoggedUsers extracts the interactive logged-in users from the
+// Win32_Process objects (those running Explorer.exe), mirroring Win32/Users.pm
+// _getLoggedUsers: one {LOGIN, DOMAIN} per distinct owner (User/Domain from
+// GetOwner, merged in by the collector), deduplicated by LOGIN.
+func buildWinLoggedUsers(processes []map[string]any) []map[string]any {
+	var users []map[string]any
+	seen := map[string]bool{}
+	for _, o := range processes {
+		if !winExplorerRE.MatchString(cimString(o, "ExecutablePath")) {
+			continue
+		}
+		login := cimString(o, "User")
+		if login == "" || seen[login] {
+			continue
+		}
+		seen[login] = true
+		users = append(users, map[string]any{"LOGIN": login, "DOMAIN": cimString(o, "Domain")})
+	}
+	return users
+}
+
+// mergeWinUsers combines the last logged-in user with the currently logged-in
+// users into the USERS section, mirroring Win32/Users.pm doInventory: the last
+// user is listed first, then the logged users, deduplicated by
+// lc(LOGIN)@lc(DOMAIN).
+func mergeWinUsers(last map[string]any, logged []map[string]any) []map[string]any {
+	var users []map[string]any
+	seen := map[string]bool{}
+	add := func(u map[string]any) {
+		if u == nil {
+			return
+		}
+		login, _ := u["LOGIN"].(string)
+		domain, _ := u["DOMAIN"].(string)
+		key := strings.ToLower(login) + "@" + strings.ToLower(domain)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		users = append(users, u)
+	}
+	add(last)
+	for _, u := range logged {
+		add(u)
+	}
+	return users
+}

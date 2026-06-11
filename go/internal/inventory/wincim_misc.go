@@ -13,7 +13,7 @@ var (
 		"Name", "Comment", "Description", "DriverName", "PortName", "Network",
 		"Shared", "PrinterStatus", "ServerName", "ShareName", "PrintProcessor",
 	}
-	winProcessProperties = []string{"CommandLine", "ProcessId", "CreationDate", "CSName", "Name"}
+	winProcessProperties = []string{"CommandLine", "ProcessId", "CreationDate", "CSName", "Name", "ExecutablePath"}
 
 	// Win32_Printer.PrinterStatus -> STATUS (Win32/Printers.pm @status).
 	winPrinterStatusVal = []string{
@@ -72,22 +72,44 @@ func buildWinPrinters(objects []map[string]any) []map[string]any {
 }
 
 // buildWinProcesses maps Win32_Process to PROCESSES, mirroring Win32/Processes.pm:
-// PID, CMD (CommandLine||Name), USER (the process name as a fallback — the WMI
-// GetOwner lookup is follow-on) and STARTED (CreationDate -> "YYYY-MM-DD HH:MM:SS").
-func buildWinProcesses(objects []map[string]any) []map[string]any {
+// PID, CMD (CommandLine||Name), USER and STARTED (CreationDate ->
+// "YYYY-MM-DD HH:MM:SS"). USER is built from the GetOwner User/Domain fields
+// (merged in by the collector): it is "<login>@<domain>" except when the domain
+// is empty, "NT AUTHORITY" or the local computer, in which case just "<login>";
+// it falls back to the process Name when no owner is known. Processes with an
+// empty CMD or USER are skipped. The CPU/MEM perf-counter fields are follow-on.
+func buildWinProcesses(objects []map[string]any, computer string) []map[string]any {
+	computer = strings.ToUpper(computer)
 	var processes []map[string]any
 	for _, o := range objects {
 		pid := cimInt(o, "ProcessId")
 		if pid == 0 {
 			continue
 		}
-		proc := map[string]any{
-			"PID":  pid,
-			"CMD":  winFirstNonEmpty(cimString(o, "CommandLine"), cimString(o, "Name")),
-			"USER": cimString(o, "Name"),
+		cmd := winFirstNonEmpty(cimString(o, "CommandLine"), cimString(o, "Name"))
+		user := winProcessUser(o, computer)
+		if cmd == "" || user == "" {
+			continue
 		}
+		proc := map[string]any{"PID": pid, "CMD": cmd, "USER": user}
 		setIf(proc, "STARTED", wmiDateTime(cimString(o, "CreationDate")))
 		processes = append(processes, proc)
 	}
 	return processes
+}
+
+// winProcessUser derives the PROCESSES USER field from the GetOwner User/Domain,
+// appending "@<domain>" unless the domain is empty, "NT AUTHORITY" or the local
+// computer, and falling back to the process Name when there is no owner.
+func winProcessUser(o map[string]any, computer string) string {
+	login := cimString(o, "User")
+	domain := cimString(o, "Domain")
+	user := login
+	if domain != "" && domain != "NT AUTHORITY" && strings.ToUpper(domain) != computer {
+		user += "@" + domain
+	}
+	if user == "" {
+		user = cimString(o, "Name")
+	}
+	return user
 }
