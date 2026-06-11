@@ -5,6 +5,7 @@
 package inventory
 
 import (
+	"os"
 	"regexp"
 	"strings"
 
@@ -12,6 +13,14 @@ import (
 )
 
 const winOfficePath = `SOFTWARE\Microsoft\Office`
+
+// winAdobeCachePaths are the Adobe PCD license cache locations (Win32/License.pm):
+// the 64-bit host keeps it under "Program Files (x86)", the 32-bit one under
+// "Program Files".
+var winAdobeCachePaths = []string{
+	`C:\Program Files (x86)\Common Files\Adobe\Adobe PCD\cache\cache.db`,
+	`C:\Program Files\Common Files\Adobe\Adobe PCD\cache\cache.db`,
+}
 
 // winRegWordHyphenRE extracts the "clean" identifier (word chars + hyphens) from
 // a braced registry UUID / product code, mirroring the Perl /([-\w]+)/ capture.
@@ -28,7 +37,19 @@ func collectWinLicenses() []map[string]any {
 	}
 
 	wmi, _ := powershellCIM("SoftwareLicensingProduct", winLicenseProperties)
-	return mergeWinLicenses(seen, wmi)
+	licenses := collectWinAdobeLicenses()
+	return append(licenses, mergeWinLicenses(seen, wmi)...)
+}
+
+// collectWinAdobeLicenses reads the first Adobe PCD cache.db that exists and
+// parses its licenses (Win32/License.pm getAdobeLicensesWithoutSqlite).
+func collectWinAdobeLicenses() []map[string]any {
+	for _, path := range winAdobeCachePaths {
+		if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
+			return parseAdobeLicenses(data)
+		}
+	}
+	return nil
 }
 
 // scanOfficeRegistry walks Office/<version>/Registration/<UUID> and records the
