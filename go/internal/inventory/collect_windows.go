@@ -110,6 +110,11 @@ func Collect() Sections {
 		s["PORTS"] = ports
 	}
 
+	// softwares (Uninstall registry keys, 64-bit + 32-bit views).
+	if sw := collectWinSoftwares(); len(sw) > 0 {
+		s["SOFTWARES"] = sw
+	}
+
 	return s
 }
 
