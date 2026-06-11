@@ -167,6 +167,25 @@ func Collect() Sections {
 		}
 	}
 
+	// inputs (Win32_Keyboard + Win32_PointingDevice).
+	kbd, _ := powershellCIM("Win32_Keyboard", winKeyboardProperties)
+	ptr, _ := powershellCIM("Win32_PointingDevice", winPointingProperties)
+	if in := buildWinInputs(kbd, ptr); len(in) > 0 {
+		s["INPUTS"] = in
+	}
+
+	// modems (Win32_POTSModem).
+	if objs, err := powershellCIM("Win32_POTSModem", winModemProperties); err == nil {
+		if m := buildWinModems(objs); len(m) > 0 {
+			s["MODEMS"] = m
+		}
+	}
+
+	// chassis type (Win32_SystemEnclosure.ChassisTypes -> hardware CHASSIS_TYPE).
+	if ct := winChassis(firstCIM("Win32_SystemEnclosure", winEnclosureChassis)); ct != "" {
+		s.mergeHardware(map[string]any{"CHASSIS_TYPE": ct})
+	}
+
 	return s
 }
 
