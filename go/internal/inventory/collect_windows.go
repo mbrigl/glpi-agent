@@ -115,6 +115,20 @@ func Collect() Sections {
 		s["SOFTWARES"] = sw
 	}
 
+	// printers (Win32_Printer).
+	if objs, err := powershellCIM("Win32_Printer", winPrinterProperties); err == nil {
+		if p := buildWinPrinters(objs); len(p) > 0 {
+			s["PRINTERS"] = p
+		}
+	}
+
+	// processes (Win32_Process).
+	if objs, err := powershellCIM("Win32_Process", winProcessProperties); err == nil {
+		if p := buildWinProcesses(objs); len(p) > 0 {
+			s["PROCESSES"] = p
+		}
+	}
+
 	return s
 }
 
