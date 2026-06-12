@@ -92,6 +92,24 @@ func Collect() Sections {
 		}
 	}
 
+	// usb devices (ioreg IOUSBDevice), deduplicated by serial.
+	usb := buildMacUSB(parseIORegDevices(commandOutput("ioreg", "-c", "IOUSBDevice", "-r", "-l", "-w0", "-d1"), "IOUSBDevice"))
+	seen := map[string]bool{}
+	var usbDevices []map[string]any
+	for _, u := range usb {
+		serial, _ := u["SERIAL"].(string)
+		if serial != "" {
+			if seen[serial] {
+				continue
+			}
+			seen[serial] = true
+		}
+		usbDevices = append(usbDevices, u)
+	}
+	if len(usbDevices) > 0 {
+		s["USBDEVICES"] = usbDevices
+	}
+
 	return s
 }
 
