@@ -13,7 +13,7 @@ import (
 // CHEMISTRY, SERIAL, MANUFACTURER, VOLTAGE (mV from voltage_min_design µV),
 // CAPACITY (mWh from energy_full_design µWh).
 func BuildBatteries(root string) []map[string]any {
-	matches, _ := filepath.Glob(filepath.Join(root, "sys/class/power_supply/*"))
+	matches, _ := invFS.Glob(filepath.Join(root, "sys/class/power_supply/*"))
 
 	var batteries []map[string]any
 	for _, psu := range matches {

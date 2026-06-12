@@ -89,6 +89,35 @@ PRETTY_NAME="Fedora Linux 38 (Workstation Edition)"
 	}
 }
 
+// TestBuildRemoteInventorySysfs checks a sysfs-based section (BATTERIES) is
+// collected over SSH through the filesystem abstraction (glob + cat).
+func TestBuildRemoteInventorySysfs(t *testing.T) {
+	sys := &fakeSystem{
+		host: "laptop",
+		commands: map[string]string{
+			"ls -d /sys/class/power_supply/* 2>/dev/null": "/sys/class/power_supply/BAT0\n",
+		},
+		files: map[string]string{
+			"/sys/class/power_supply/BAT0/type":               "Battery",
+			"/sys/class/power_supply/BAT0/present":            "1",
+			"/sys/class/power_supply/BAT0/capacity":           "95",
+			"/sys/class/power_supply/BAT0/model_name":         "DELL ABC123",
+			"/sys/class/power_supply/BAT0/technology":         "Li-ion",
+			"/sys/class/power_supply/BAT0/voltage_min_design": "11400000",
+			"/sys/class/power_supply/BAT0/energy_full_design": "50000000",
+		},
+	}
+	inv := buildRemoteInventory(sys, "", "", "laptop")
+	bats, _ := inv.Content["BATTERIES"].([]map[string]any)
+	if len(bats) != 1 {
+		t.Fatalf("got %d batteries, want 1", len(bats))
+	}
+	b := bats[0]
+	if b["NAME"] != "DELL ABC123" || b["CHEMISTRY"] != "Li-ion" || b["VOLTAGE"] != 11400 || b["CAPACITY"] != 50000 {
+		t.Errorf("remote battery = %v", b)
+	}
+}
+
 // TestBuildRemoteInventoryDpkgFallback checks the dpkg status fallback when rpm
 // is absent.
 func TestBuildRemoteInventoryDpkgFallback(t *testing.T) {

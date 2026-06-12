@@ -12,7 +12,7 @@ import (
 // CLASS, SUBCLASS, NAME, CAPTION, MANUFACTURER. (Perl reads `lsusb -v`; the same
 // values are exposed in sysfs.)
 func BuildUSB(root string) []map[string]any {
-	matches, _ := filepath.Glob(filepath.Join(root, "sys/bus/usb/devices/*"))
+	matches, _ := invFS.Glob(filepath.Join(root, "sys/bus/usb/devices/*"))
 
 	var devices []map[string]any
 	for _, dir := range matches {

@@ -111,7 +111,39 @@ func buildRemoteInventory(sys remoteSystem, itemtype, tag, fallbackHost string) 
 	collectRemoteSoftwares(sys, inv)
 	collectRemoteLVM(sys, inv)
 
+	// sysfs-based sections (BATTERIES, USBDEVICES, STORAGES) via the filesystem
+	// abstraction reading the remote host's /sys over SSH.
+	for section, entries := range inventory.CollectFileSectionsFS(remoteFS{sys: sys}) {
+		inv.Content[section] = entries
+	}
+
 	return inv
+}
+
+// remoteFS adapts a remoteSystem to inventory.FS: file reads via the remote
+// `cat`, globs expanded by the remote shell.
+type remoteFS struct{ sys remoteSystem }
+
+func (f remoteFS) ReadFile(path string) ([]byte, error) {
+	out, err := f.sys.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(out), nil
+}
+
+func (f remoteFS) Glob(pattern string) ([]string, error) {
+	out, err := f.sys.Run("ls -d " + pattern + " 2>/dev/null")
+	if err != nil {
+		return nil, nil
+	}
+	var matches []string
+	for _, line := range strings.Split(out, "\n") {
+		if l := strings.TrimSpace(line); l != "" {
+			matches = append(matches, l)
+		}
+	}
+	return matches, nil
 }
 
 // collectRemoteSoftwares fills SOFTWARES from rpm, falling back to the dpkg

@@ -3,7 +3,6 @@
 package inventory
 
 import (
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -16,7 +15,7 @@ import (
 // Fields: NAME, TYPE (disk), DISKSIZE (MiB, from the 512-byte sector count),
 // MODEL, MANUFACTURER (device/vendor, dropped when "ATA"), FIRMWARE (device/rev).
 func BuildStorages(root string) []map[string]any {
-	matches, _ := filepath.Glob(filepath.Join(root, "sys/block/*/device"))
+	matches, _ := invFS.Glob(filepath.Join(root, "sys/block/*/device"))
 
 	var storages []map[string]any
 	for _, deviceDir := range matches {
@@ -41,7 +40,7 @@ func BuildStorages(root string) []map[string]any {
 
 // readSysLine reads the first line of a sysfs attribute, trimmed.
 func readSysLine(path string) string {
-	data, err := os.ReadFile(path)
+	data, err := invFS.ReadFile(path)
 	if err != nil {
 		return ""
 	}
