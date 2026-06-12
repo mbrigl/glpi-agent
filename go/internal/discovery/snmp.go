@@ -229,6 +229,38 @@ func (c *gosnmpClient) Walk(base string) (map[string]string, error) {
 
 func (c *gosnmpClient) Close() error { return c.snmp.Conn.Close() }
 
+// VLANContext opens a new session scoped to a VLAN, mirroring
+// SNMP/Live.pm::switch_vlan_context: SNMPv3 sets the "vlan-<n>" context name,
+// v1/v2c re-dial with the "<community>@<vlan>" community.
+func (c *gosnmpClient) VLANContext(vlan string) (SNMPGetter, error) {
+	src := c.snmp
+	clone := &gosnmp.GoSNMP{
+		Target:             src.Target,
+		Port:               src.Port,
+		Version:            src.Version,
+		Timeout:            src.Timeout,
+		Retries:            src.Retries,
+		Community:          src.Community,
+		ContextName:        src.ContextName,
+		MsgFlags:           src.MsgFlags,
+		SecurityModel:      src.SecurityModel,
+		SecurityParameters: src.SecurityParameters,
+	}
+	if clone.Version == gosnmp.Version3 {
+		clone.ContextName = "vlan-" + vlan
+	} else {
+		community := clone.Community
+		if i := strings.IndexByte(community, '@'); i >= 0 {
+			community = community[:i]
+		}
+		clone.Community = community + "@" + vlan
+	}
+	if err := clone.Connect(); err != nil {
+		return nil, fmt.Errorf("snmp vlan-%s context: %w", vlan, err)
+	}
+	return &gosnmpClient{snmp: clone}, nil
+}
+
 // pduString renders an SNMP value as the Perl SNMP layer would present it: octet
 // strings as text, binary octet strings (e.g. ifPhysAddress) as colon-separated
 // hex, and other types as their printed form.

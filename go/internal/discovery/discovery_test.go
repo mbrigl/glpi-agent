@@ -12,6 +12,9 @@ import (
 type fakeGetter struct {
 	values map[string]string
 	walks  map[string]map[string]string
+	// vlanWalks maps a VLAN number to the walk tables seen in that SNMP context
+	// (used to test the per-VLAN FDB context switching).
+	vlanWalks map[string]map[string]map[string]string
 }
 
 func (f *fakeGetter) Get(oids []string) (map[string]string, error) {
@@ -31,6 +34,15 @@ func (f *fakeGetter) Walk(base string) (map[string]string, error) {
 	return map[string]string{}, nil
 }
 func (f *fakeGetter) Close() error { return nil }
+
+// VLANContext returns a getter scoped to the per-VLAN walk tables.
+func (f *fakeGetter) VLANContext(vlan string) (SNMPGetter, error) {
+	walks := f.vlanWalks[vlan]
+	if walks == nil {
+		walks = map[string]map[string]string{}
+	}
+	return &fakeGetter{values: f.values, walks: walks}, nil
+}
 
 // TestBuildDevice checks the generic DEVICE field mapping from SNMP/Device.pm.
 func TestBuildDevice(t *testing.T) {

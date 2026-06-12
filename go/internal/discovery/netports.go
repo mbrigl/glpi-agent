@@ -49,11 +49,13 @@ func setNetworkingProperties(g SNMPGetter, device Device) {
 		}
 	}
 
-	setConnectedDevices(g, byNum)
+	// Order mirrors SNMP/Hardware.pm::_setNetworkingProperties: VLANs and the
+	// CDP/LLDP/EDP connections are set before the FDB scan, which reads them.
+	setVlans(g, byNum)
 	setTrunkPorts(g, byNum)
+	setConnectedDevices(g, byNum)
 	setKnownMacAddresses(g, byNum)
 	setAggregatePorts(g, byNum)
-	setVlans(g, byNum)
 }
 
 // setTrunkPorts sets PORT.TRUNK (1/0) from the first supported trunk table.
@@ -160,11 +162,76 @@ func setKnownMacAddresses(g SNMPGetter, byNum map[string]map[string]any) {
 
 	if addrs := getKnownMacAddresses(g, oidDot1qTpFdbAddress, oidDot1qTpFdbPort, oidDot1qTpFdbStatus); len(addrs) > 0 {
 		addKnownMacAddresses(byNum, addrs)
-	} else if addrs := getKnownMacAddressesDeprecated(g); len(addrs) > 0 {
-		// The per-VLAN FDB context switching is not supported; fall back to the
-		// deprecated ipNetToMedia table as upstream does when no VLAN yielded any.
-		addKnownMacAddresses(byNum, addrs)
+		return
 	}
+
+	// No dot1q FDB: re-read the dot1d FDB once per VLAN by switching the SNMP
+	// context (community@vlan for v1/v2c, "vlan-<n>" context for v3), then fall
+	// back to the deprecated ipNetToMedia table.
+	found := false
+	if switcher, ok := g.(vlanContextGetter); ok {
+		for _, vlan := range vlansToScan(byNum) {
+			vg, err := switcher.VLANContext(vlan)
+			if err != nil {
+				continue
+			}
+			addrs := getKnownMacAddresses(vg, oidDot1dTpFdbAddress, oidDot1dTpFdbPort, oidDot1dTpFdbStatus)
+			vg.Close()
+			if len(addrs) > 0 {
+				addKnownMacAddresses(byNum, addrs)
+				found = true
+			}
+		}
+	}
+	if !found {
+		if addrs := getKnownMacAddressesDeprecated(g); len(addrs) > 0 {
+			addKnownMacAddresses(byNum, addrs)
+		}
+	}
+}
+
+// vlanContextGetter is an SNMPGetter that can re-open a session in a per-VLAN
+// SNMP context (SNMP/Live.pm::switch_vlan_context).
+type vlanContextGetter interface {
+	VLANContext(vlan string) (SNMPGetter, error)
+}
+
+// vlansToScan returns the VLAN numbers carried by ports without CDP/LLDP
+// information, excluding the default VLAN 1, deduplicated (the VLAN set the
+// upstream FDB context switching iterates).
+func vlansToScan(byNum map[string]map[string]any) []string {
+	seen := map[string]bool{"1": true}
+	var vlans []string
+	for _, ifID := range sortedNumericKeys(mapKeys(byNum)) {
+		port := byNum[ifID]
+		if conns, ok := port["CONNECTIONS"].(map[string]any); ok {
+			if cdp, _ := conns["CDP"].(int); cdp == 1 {
+				continue
+			}
+		}
+		v, ok := port["VLANS"].(map[string]any)
+		if !ok {
+			continue
+		}
+		list, _ := v["VLAN"].([]map[string]any)
+		for _, vl := range list {
+			num, _ := vl["NUMBER"].(string)
+			if num != "" && !seen[num] {
+				seen[num] = true
+				vlans = append(vlans, num)
+			}
+		}
+	}
+	return vlans
+}
+
+// mapKeys returns the keys of a port map as a value map (for sortedNumericKeys).
+func mapKeys(m map[string]map[string]any) map[string]string {
+	out := make(map[string]string, len(m))
+	for k := range m {
+		out[k] = ""
+	}
+	return out
 }
 
 // getKnownMacAddresses parses a bridge forwarding database into interface-id ->
