@@ -70,6 +70,18 @@ func Collect() Sections {
 		s["NETWORKS"] = n
 	}
 
+	// storages (SPSerialATADataType + SPNVMeDataType, plist XML).
+	var storages []map[string]any
+	if root, err := parsePlist([]byte(commandOutput("/usr/sbin/system_profiler", "-xml", "SPSerialATADataType"))); err == nil {
+		storages = append(storages, buildMacATAStorages(root, "SATA", true)...)
+	}
+	if root, err := parsePlist([]byte(commandOutput("/usr/sbin/system_profiler", "-xml", "SPNVMeDataType"))); err == nil {
+		storages = append(storages, buildMacATAStorages(root, "NVME", false)...)
+	}
+	if len(storages) > 0 {
+		s["STORAGES"] = storages
+	}
+
 	return s
 }
 
