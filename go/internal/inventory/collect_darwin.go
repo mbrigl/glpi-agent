@@ -34,7 +34,32 @@ func Collect() Sections {
 	}
 	s.mergeHardware(hw)
 
+	// cpus (SPHardwareDataType "Hardware Overview" + sysctl machdep.cpu).
+	overview := spNode(hardware, "Hardware", "Hardware Overview")
+	sysctl := parseSysctl(commandOutput("sysctl", "-a", "machdep.cpu"))
+	if cpus := buildMacCPUs(overview, sysctl); len(cpus) > 0 {
+		s["CPUS"] = cpus
+	}
+
+	// memories (SPMemoryDataType) + hardware MEMORY (from SPHardwareDataType).
+	memory := systemProfiler("SPMemoryDataType")
+	if mems := buildMacMemories(memory); len(mems) > 0 {
+		s["MEMORIES"] = mems
+	}
+	if total := macTotalMemoryMB(hardware); total > 0 {
+		s.mergeHardware(map[string]any{"MEMORY": total})
+	}
+
 	return s
+}
+
+// commandOutput runs a command and returns its stdout (empty on error).
+func commandOutput(name string, args ...string) string {
+	out, err := exec.Command(name, args...).Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
 }
 
 // systemProfiler runs `system_profiler <dataType>` and parses the text output.
