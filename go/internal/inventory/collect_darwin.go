@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Collect gathers the local macOS inventory via system_profiler, sysctl, ioreg
@@ -80,6 +81,15 @@ func Collect() Sections {
 	}
 	if len(storages) > 0 {
 		s["STORAGES"] = storages
+	}
+
+	// softwares (SPApplicationsDataType, plist XML). The lastModified dates are
+	// shifted by the local timezone offset (detectLocalTimeOffset).
+	_, offset := time.Now().Zone()
+	if root, err := parsePlist([]byte(commandOutput("/usr/sbin/system_profiler", "-xml", "SPApplicationsDataType"))); err == nil {
+		if sw := buildMacSoftwares(extractMacSoftwaresFromXML(root, offset)); len(sw) > 0 {
+			s["SOFTWARES"] = sw
+		}
 	}
 
 	return s

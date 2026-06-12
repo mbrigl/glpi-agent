@@ -54,6 +54,9 @@ func parseSystemProfiler(text string) map[string]any {
 					parents = parents[:len(parents)-1]
 				}
 			}
+			if key == "Last Modified" {
+				value = macFormatDate(value)
+			}
 			parents[len(parents)-1].node[key] = value
 			continue
 		}
