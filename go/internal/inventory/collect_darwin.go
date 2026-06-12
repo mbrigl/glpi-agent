@@ -64,6 +64,12 @@ func Collect() Sections {
 		s["POWERSUPPLIES"] = []map[string]any{psu}
 	}
 
+	// networks (ifconfig joined with networksetup hardware ports).
+	netsetup := parseMacNetworkSetup(commandOutput("networksetup", "-listallhardwareports"))
+	if n := buildMacNetworks(commandOutput("/sbin/ifconfig", "-a"), netsetup); len(n) > 0 {
+		s["NETWORKS"] = n
+	}
+
 	return s
 }
 
