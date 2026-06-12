@@ -6,6 +6,7 @@ package inventory
 
 import (
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -50,7 +51,36 @@ func Collect() Sections {
 		s.mergeHardware(map[string]any{"MEMORY": total})
 	}
 
+	// bios (SPHardwareDataType + ioreg IOPlatformExpertDevice).
+	s["BIOS"] = buildMacBios(overview, ioregDevice())
+
+	// videos (SPDisplaysDataType).
+	if v := buildMacVideos(systemProfiler("SPDisplaysDataType")); len(v) > 0 {
+		s["VIDEOS"] = v
+	}
+
+	// powersupplies (SPPowerDataType AC Charger Information).
+	if psu := buildMacCharger(systemProfiler("SPPowerDataType")); psu != nil {
+		s["POWERSUPPLIES"] = []map[string]any{psu}
+	}
+
 	return s
+}
+
+// ioregDevice returns the IOPlatformExpertDevice attributes as a flat map.
+func ioregDevice() map[string]any {
+	out, err := exec.Command("ioreg", "-rd1", "-c", "IOPlatformExpertDevice").Output()
+	if err != nil {
+		return nil
+	}
+	dev := map[string]any{}
+	re := regexp.MustCompile(`"([^"]+)"\s*=\s*(?:<?)"?([^"<>]*)"?`)
+	for _, line := range strings.Split(string(out), "\n") {
+		if m := re.FindStringSubmatch(line); m != nil {
+			dev[m[1]] = strings.TrimSpace(m[2])
+		}
+	}
+	return dev
 }
 
 // commandOutput runs a command and returns its stdout (empty on error).
