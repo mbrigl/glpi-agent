@@ -7,9 +7,29 @@ package inventory
 import (
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
+
+// macUptimeSeconds returns the seconds since boot from `sysctl -n kern.boottime`,
+// mirroring Tools/MacOS.pm getBootTime + Uptime.pm.
+func macUptimeSeconds() int {
+	out := commandOutput("sysctl", "-n", "kern.boottime")
+	m := regexp.MustCompile(`sec = (\d+)`).FindStringSubmatch(out)
+	if m == nil {
+		return 0
+	}
+	boot, err := strconv.ParseInt(m[1], 10, 64)
+	if err != nil {
+		return 0
+	}
+	up := time.Now().Unix() - boot
+	if up < 0 {
+		return 0
+	}
+	return int(up)
+}
 
 // Collect gathers the local macOS inventory via system_profiler, sysctl, ioreg
 // and uname, mirroring the upstream Task/Inventory/MacOS/* modules. The parsing
@@ -27,11 +47,21 @@ func Collect() Sections {
 	setIf(os, "ARCH", strings.TrimSpace(uname("-m")))
 	s["OPERATINGSYSTEM"] = os
 
-	// hardware (system_profiler; UUID from ioreg as a fallback).
+	// hardware (system_profiler; UUID from ioreg as a fallback). The Computer
+	// Name (Hostname.pm) overrides the kernel hostname; DESCRIPTION carries
+	// "<arch>/<uptime>" (Uptime.pm).
 	hw := buildMacHardware(software, hardware)
 	if _, ok := hw["UUID"]; !ok {
 		if uuid := ioregUUID(); uuid != "" {
 			hw["UUID"] = uuid
+		}
+	}
+	if name := macHostname(software); name != "" {
+		hw["NAME"] = name
+	}
+	if arch := strings.TrimSpace(uname("-m")); arch != "" {
+		if up := macUptimeSeconds(); up > 0 {
+			hw["DESCRIPTION"] = arch + "/" + strconv.Itoa(up)
 		}
 	}
 	s.mergeHardware(hw)
@@ -60,9 +90,18 @@ func Collect() Sections {
 		s["VIDEOS"] = v
 	}
 
-	// powersupplies (SPPowerDataType AC Charger Information).
-	if psu := buildMacCharger(systemProfiler("SPPowerDataType")); psu != nil {
+	// power: AC charger (POWERSUPPLIES) + battery (BATTERIES) from SPPowerDataType.
+	power := systemProfiler("SPPowerDataType")
+	if psu := buildMacCharger(power); psu != nil {
 		s["POWERSUPPLIES"] = []map[string]any{psu}
+	}
+	if battery := buildMacBattery(power); battery != nil {
+		s["BATTERIES"] = []map[string]any{battery}
+	}
+
+	// sounds (SPAudioDataType "Audio (Built In)").
+	if snd := buildMacSounds(systemProfiler("SPAudioDataType")); len(snd) > 0 {
+		s["SOUNDS"] = snd
 	}
 
 	// networks (ifconfig joined with networksetup hardware ports).
