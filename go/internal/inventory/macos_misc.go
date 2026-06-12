@@ -29,6 +29,16 @@ func buildMacSounds(audioInfos map[string]any) []map[string]any {
 	return sounds
 }
 
+// macFirewallStatus maps the application-firewall service state + globalstate to
+// the FIREWALL STATUS, mirroring MacOS/Firewall.pm: "on" only when the alf
+// service runs and globalstate is "1".
+func macFirewallStatus(serviceRunning bool, globalstate string) string {
+	if serviceRunning && globalstate == "1" {
+		return "on"
+	}
+	return "off"
+}
+
 // macHostname returns the SPSoftwareDataType "Computer Name" for the hardware
 // NAME, mirroring MacOS/Hostname.pm.
 func macHostname(softwareInfos map[string]any) string {

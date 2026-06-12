@@ -95,6 +95,146 @@ func buildMacATAStorages(root any, iface string, allowDetachable bool) []map[str
 	return out
 }
 
+// buildMacDiscBurningStorages maps SPDiscBurningDataType to STORAGES, mirroring
+// MacOS/Storages.pm _getDiscBurningStorages.
+func buildMacDiscBurningStorages(root any) []map[string]any {
+	storages := extractMacStorages(root, "_items")
+	var out []map[string]any
+	for _, name := range sortedStorageNames(storages) {
+		hash := storages[name]
+		nm := plistStr(hash, "_name")
+		iface := "ATAPI"
+		if plistStr(hash, "interconnect") == "SERIAL-ATA" {
+			iface = "SATA"
+		}
+		manufacturer := getCanonicalManufacturer(winFirstNonEmpty(plistStr(hash, "manufacturer"), nm))
+		model := nm
+		if manufacturer != "" && model != "" {
+			model = trimWhitespace(macStripManufacturer(model, manufacturer))
+		}
+		storage := map[string]any{"TYPE": "Disk burning", "INTERFACE": iface}
+		setIf(storage, "NAME", winFirstNonEmpty(plistStr(hash, "bsd_name"), nm))
+		setIf(storage, "MANUFACTURER", manufacturer)
+		setIf(storage, "MODEL", model)
+		setIf(storage, "FIRMWARE", trimWhitespace(plistStr(hash, "firmware")))
+		if size := macDiskSizeMB(hash); size > 0 {
+			storage["DISKSIZE"] = size
+		}
+		out = append(out, storage)
+	}
+	return out
+}
+
+// buildMacCardReaderStorages maps SPCardReaderDataType to STORAGES, mirroring
+// MacOS/Storages.pm _getCardReaderStorages: the reader itself plus any inserted
+// SD card.
+func buildMacCardReaderStorages(root any) []map[string]any {
+	storages := extractMacStorages(root, "_items")
+	var out []map[string]any
+	for _, name := range sortedStorageNames(storages) {
+		hash := storages[name]
+		if macStorageIsVolume(hash) {
+			continue
+		}
+		nm := plistStr(hash, "_name")
+		var storage map[string]any
+		if nm == "spcardreader" {
+			storage = map[string]any{"TYPE": "Card reader"}
+			setIf(storage, "NAME", winFirstNonEmpty(plistStr(hash, "bsd_name"), nm))
+			setIf(storage, "DESCRIPTION", nm)
+			setIf(storage, "SERIAL", trimWhitespace(plistStr(hash, "spcardreader_serialnumber")))
+			setIf(storage, "MODEL", nm)
+			setIf(storage, "FIRMWARE", trimWhitespace(plistStr(hash, "spcardreader_revision-id")))
+			setIf(storage, "MANUFACTURER", trimWhitespace(plistStr(hash, "spcardreader_vendor-id")))
+		} else {
+			storage = map[string]any{"TYPE": "SD Card"}
+			setIf(storage, "NAME", winFirstNonEmpty(plistStr(hash, "bsd_name"), nm))
+			setIf(storage, "DESCRIPTION", nm)
+			if size := macDiskSizeMB(hash); size > 0 {
+				storage["DISKSIZE"] = size
+			}
+		}
+		out = append(out, storage)
+	}
+	return out
+}
+
+var macUSBStorageSkipRE = regexp.MustCompile(`(?i)keyboard|controller|IR Receiver|built-in|hub|mouse|tablet|usb(?:\d+)?bus`)
+
+// buildMacUSBStorages maps the disk devices in SPUSBDataType (or FireWire) to
+// STORAGES, mirroring MacOS/Storages.pm _getUSBStorages: the many non-disk USB
+// device classes are filtered out. sublistkey is "_items" for USB, "units" for
+// FireWire; iface is "USB" or "1394".
+func buildMacUSBStorages(root any, sublistkey, iface string) []map[string]any {
+	storages := extractMacStorages(root, sublistkey)
+	var out []map[string]any
+	for _, name := range sortedStorageNames(storages) {
+		hash := storages[name]
+		nm := plistStr(hash, "_name")
+		// The upstream "bsn_name" guard is a typo that never matches, so the
+		// filters always apply.
+		if nm == "Mass Storage Device" || macUSBStorageSkipRE.MatchString(nm) {
+			continue
+		}
+		if plistStr(hash, "Built-in_Device") == "Yes" {
+			continue
+		}
+		if macStorageIsVolume(hash) {
+			continue
+		}
+
+		storage := map[string]any{"TYPE": "Disk drive", "INTERFACE": iface}
+		setIf(storage, "NAME", winFirstNonEmpty(plistStr(hash, "bsd_name"), nm))
+		setIf(storage, "DESCRIPTION", nm)
+		if size := macDiskSizeMB(hash); size > 0 {
+			storage["DISKSIZE"] = size
+		}
+		extract := macInfoExtract(hash)
+		setIf(storage, "MODEL", winFirstNonEmpty(extract["device_model"], nm))
+		setIf(storage, "SERIAL", extract["serial_num"])
+		setIf(storage, "FIRMWARE", extract["bcd_device"])
+		if extract["manufacturer"] != "" {
+			setIf(storage, "MANUFACTURER", getCanonicalManufacturer(extract["manufacturer"]))
+		}
+		out = append(out, storage)
+	}
+	return out
+}
+
+// macStorageIsVolume reports whether a storage node is a mounted volume rather
+// than a device (skipped unless it carries a partition map).
+func macStorageIsVolume(hash map[string]any) bool {
+	hasContent := plistStr(hash, "iocontent") != "" || plistStr(hash, "file_system") != "" ||
+		plistStr(hash, "mount_point") != ""
+	return hasContent && plistStr(hash, "partition_map_type") == ""
+}
+
+// macInfoExtract pulls the serial_num/device_model/bcd_device/manufacturer/
+// product_id fields (possibly prefixed) from a USB/FireWire device, mirroring
+// MacOS/Storages.pm _getInfoExtract.
+func macInfoExtract(hash map[string]any) map[string]string {
+	re := regexp.MustCompile(`^(?:\w_)?(serial_num|device_model|bcd_device|manufacturer|product_id)`)
+	out := map[string]string{}
+	for k, v := range hash {
+		if m := re.FindStringSubmatch(k); m != nil {
+			if s, ok := v.(string); ok {
+				out[m[1]] = strings.TrimSpace(s)
+			}
+		}
+	}
+	return out
+}
+
+// sortedStorageNames returns the storage map keys sorted.
+func sortedStorageNames(storages map[string]map[string]any) []string {
+	names := make([]string, 0, len(storages))
+	for name := range storages {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // macStripManufacturer removes the first "\s*<manufacturer>\s*" run (case-
 // insensitive) from a model string (MacOS/Storages.pm "Cleanup manufacturer from
 // model").

@@ -110,17 +110,31 @@ func Collect() Sections {
 		s["NETWORKS"] = n
 	}
 
-	// storages (SPSerialATADataType + SPNVMeDataType, plist XML).
+	// storages (every storage-bearing system_profiler datatype, plist XML).
 	var storages []map[string]any
-	if root, err := parsePlist([]byte(commandOutput("/usr/sbin/system_profiler", "-xml", "SPSerialATADataType"))); err == nil {
-		storages = append(storages, buildMacATAStorages(root, "SATA", true)...)
+	storageType := func(dt string, fn func(any) []map[string]any) {
+		if root, err := parsePlist([]byte(commandOutput("/usr/sbin/system_profiler", "-xml", dt))); err == nil {
+			storages = append(storages, fn(root)...)
+		}
 	}
-	if root, err := parsePlist([]byte(commandOutput("/usr/sbin/system_profiler", "-xml", "SPNVMeDataType"))); err == nil {
-		storages = append(storages, buildMacATAStorages(root, "NVME", false)...)
-	}
+	storageType("SPSerialATADataType", func(r any) []map[string]any { return buildMacATAStorages(r, "SATA", true) })
+	storageType("SPNVMeDataType", func(r any) []map[string]any { return buildMacATAStorages(r, "NVME", false) })
+	storageType("SPDiscBurningDataType", buildMacDiscBurningStorages)
+	storageType("SPCardReaderDataType", buildMacCardReaderStorages)
+	storageType("SPUSBDataType", func(r any) []map[string]any { return buildMacUSBStorages(r, "_items", "USB") })
+	storageType("SPFireWireDataType", func(r any) []map[string]any { return buildMacUSBStorages(r, "units", "1394") })
 	if len(storages) > 0 {
 		s["STORAGES"] = storages
 	}
+
+	// firewall (application-firewall service + globalstate).
+	fwRunning := regexp.MustCompile(`(?m)^\d+\s+\S+\s+com\.apple\.alf$`).MatchString(commandOutput("launchctl", "list"))
+	fwState := regexp.MustCompile(`(?m)^(\d)$`).FindStringSubmatch(commandOutput("defaults", "read", "/Library/Preferences/com.apple.alf", "globalstate"))
+	state := ""
+	if fwState != nil {
+		state = fwState[1]
+	}
+	s["FIREWALL"] = []map[string]any{{"STATUS": macFirewallStatus(fwRunning, state)}}
 
 	// softwares (SPApplicationsDataType, plist XML). The lastModified dates are
 	// shifted by the local timezone offset (detectLocalTimeOffset).
