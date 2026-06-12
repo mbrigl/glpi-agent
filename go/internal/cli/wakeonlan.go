@@ -29,7 +29,7 @@ func runWakeOnLan(ctx *Context, args []string) int {
 	fs.SetOutput(stderr)
 	var (
 		mac     = fs.String("mac", "", "target MAC address")
-		methods = fs.String("methods", "udp", "comma-separated methods to use (udp; ethernet deferred)")
+		methods = fs.String("methods", "udp", "comma-separated methods to use (udp, ethernet)")
 		showVer = fs.Bool("version", false, "print the task version and exit")
 	)
 	fs.Usage = func() {
@@ -67,8 +67,12 @@ func runWakeOnLan(ctx *Context, args []string) int {
 			fmt.Fprintf(stdout, "Sent magic packet to %s as UDP packet\n", *mac)
 			return 0
 		case "ethernet":
-			fmt.Fprintln(stderr, "ethernet method not implemented yet (needs raw layer-2 socket and root)")
-			return 1
+			if err := sendMagicPacketEthernet(*mac); err != nil {
+				fmt.Fprintf(stderr, "Impossible to use ethernet method: %v\n", err)
+				return 1
+			}
+			fmt.Fprintf(stdout, "Sent magic packet to %s as ethernet frame\n", *mac)
+			return 0
 		default:
 			fmt.Fprintf(stderr, "unknown method %q\n", method)
 			return 2
@@ -110,4 +114,15 @@ func magicPayload(mac string) ([]byte, error) {
 		payload = append(payload, hw...)
 	}
 	return payload, nil
+}
+
+// wolEthernetFrame builds the raw layer-2 magic-packet frame: dst MAC + src MAC
+// + ethertype 0x0842 + payload (WakeOnLan.pm::_send_magic_packet_ethernet).
+func wolEthernetFrame(dst, src, payload []byte) []byte {
+	frame := make([]byte, 0, 14+len(payload))
+	frame = append(frame, dst...)
+	frame = append(frame, src...)
+	frame = append(frame, 0x08, 0x42)
+	frame = append(frame, payload...)
+	return frame
 }

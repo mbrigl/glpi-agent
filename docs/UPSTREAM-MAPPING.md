@@ -51,7 +51,7 @@ This is the **module/feature** layer of upstream tracking. It pairs with:
 | `RemoteInventory.pm` | `glpi-inventory-remote` | ✅ | `internal/remote` | 🟡 SSH connect/exec + remote document (host/OS/arch); WinRM and full collectors pending |
 | `Collect.pm` | `glpi-collect` | ✅ | `internal/collect` + `internal/transport/fusion.go` | 🟡 **`collect` subcommand**: the Fusion plugin protocol (`HTTP/Client/Fusion.pm` — action-args GET/POST, cookie jar, JSON answers) + the full task dialogue (getConfig → per-remote getJobs → JSON validation → run → setAnswer per result with `_cpt`/CSRF token → jobsDone). **findFile** ported cross-platform (recursive walk; name/iname/regex/size/SHA256/SHA512 filters + limit); **getFromRegistry**/**getFromWMI** are build-tagged Windows (x/sys registry, PowerShell Get-CimInstance). runCommand is disabled upstream. Protocol + validation + findFile unit-tested (httptest + fake sender); the Windows collectors need a Windows host to validate |
 | `Deploy.pm` | `glpi-deploy` | ✅ | `internal/deploy` | ⬜ Phase 9 |
-| `WakeOnLan.pm` | `glpi-wakeonlan` | ✅ | `internal/cli` (wakeonlan) | 🟡 udp method; ethernet (raw L2) deferred |
+| `WakeOnLan.pm` | `glpi-wakeonlan` | ✅ | `internal/cli` (wakeonlan) | ✅ udp (broadcast :9) **and ethernet** (raw AF_PACKET L2 frame, ethertype 0x0842, per interface — Linux; needs CAP_NET_RAW) |
 | _(no upstream equivalent)_ | `glpi-iec61850` | ➕ Rust addition | `internal/iec61850` | ⬜ Phase 4 (build-tagged, cgo) |
 
 ## Remote inventory transport
