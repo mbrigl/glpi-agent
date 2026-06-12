@@ -35,8 +35,8 @@ const (
 // setNetworkingProperties enriches the device PORTS with the trunk flag,
 // aggregation members and known (forwarding-database) MAC addresses, mirroring
 // SNMP/Hardware.pm::_setNetworkingProperties. It runs only for NETWORKING
-// devices. The CDP/LLDP/EDP neighbour discovery and the per-VLAN FDB context
-// switching are follow-on.
+// devices, and also sets the CDP/LLDP/EDP neighbour CONNECTIONS and the per-port
+// VLANS. The per-VLAN FDB context switching is follow-on.
 func setNetworkingProperties(g SNMPGetter, device Device) {
 	ports, _ := device["PORTS"].([]map[string]any)
 	if len(ports) == 0 {
@@ -49,9 +49,11 @@ func setNetworkingProperties(g SNMPGetter, device Device) {
 		}
 	}
 
+	setConnectedDevices(g, byNum)
 	setTrunkPorts(g, byNum)
 	setKnownMacAddresses(g, byNum)
 	setAggregatePorts(g, byNum)
+	setVlans(g, byNum)
 }
 
 // setTrunkPorts sets PORT.TRUNK (1/0) from the first supported trunk table.
