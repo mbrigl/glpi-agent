@@ -5,6 +5,7 @@
 package inventory
 
 import (
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -182,7 +183,61 @@ func Collect() Sections {
 		s["USBDEVICES"] = usbDevices
 	}
 
+	// antivirus (vendor detectors; each gated on its CLI being installed).
+	if av := collectMacAntivirus(); len(av) > 0 {
+		s["ANTIVIRUS"] = av
+	}
+
 	return s
+}
+
+// collectMacAntivirus runs the supported AV vendor detectors, mirroring the
+// MacOS/AntiVirus/* modules (each enabled only when its CLI is present).
+func collectMacAntivirus() []map[string]any {
+	var entries []map[string]any
+
+	if canRunMac("/usr/local/bin/mdatp") {
+		if av := buildMacDefender([]byte(commandOutput("/usr/local/bin/mdatp", "health", "--output", "json"))); av != nil {
+			entries = append(entries, av)
+		}
+	}
+	if cytool := macFindCommand("/usr/local/bin/cytool"); cytool != "" {
+		entries = append(entries, buildMacCortex(
+			commandOutput(cytool, "info"),
+			commandOutput(cytool, "info", "query"),
+			commandOutput(cytool, "runtime", "query"),
+		))
+	}
+	if sentinel := macFindCommand("/usr/local/bin/sentinelctl"); sentinel != "" {
+		entries = append(entries, buildMacSentinelOne(
+			commandOutput(sentinel, "version"), commandOutput(sentinel, "status")))
+	}
+	if falconctl := macFindCommand("/Applications/Falcon.app/Contents/Resources/falconctl"); falconctl != "" {
+		entries = append(entries, buildMacCrowdStrike(commandOutput(falconctl, "stats", "agent_info")))
+	}
+	if canRunMac("/usr/local/bin/wsav") {
+		running := commandOutput("pgrep", "-x", "wsavd") != ""
+		if av := buildMacWithSecure(commandOutput("/usr/local/bin/wsav", "--version"), running); av != nil {
+			entries = append(entries, av)
+		}
+	}
+	return entries
+}
+
+// canRunMac reports whether path is an executable file.
+func canRunMac(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
+}
+
+// macFindCommand returns the first existing executable from the candidates.
+func macFindCommand(candidates ...string) string {
+	for _, c := range candidates {
+		if canRunMac(c) {
+			return c
+		}
+	}
+	return ""
 }
 
 // ioregDevice returns the IOPlatformExpertDevice attributes as a flat map.
