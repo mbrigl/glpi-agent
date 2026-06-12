@@ -136,6 +136,25 @@ func Collect() Sections {
 	}
 	s["FIREWALL"] = []map[string]any{{"STATUS": macFirewallStatus(fwRunning, state)}}
 
+	// drives (mount types -> df per type, joined with diskutil info + FileVault).
+	skipFS := map[string]bool{"fdesc": true, "devfs": true, "procfs": true, "linprocfs": true,
+		"linsysfs": true, "tmpfs": true, "fdescfs": true}
+	var filesystems []map[string]any
+	for _, fsType := range parseMacMountTypes(commandOutput("mount")) {
+		if skipFS[fsType] {
+			continue
+		}
+		filesystems = append(filesystems, parseMacDf(commandOutput("df", "-P", "-k", "-t", fsType), fsType)...)
+	}
+	partitionInfo := map[string]map[string]string{}
+	for _, p := range parseMacDiskutilPartitions(commandOutput("diskutil", "list")) {
+		partitionInfo[p] = parseMacDiskutilInfo(commandOutput("diskutil", "info", p))
+	}
+	fileVaultOn := regexp.MustCompile(`(?i)FileVault is On`).MatchString(commandOutput("fdesetup", "status"))
+	if drives := buildMacDrives(filesystems, partitionInfo, fileVaultOn); len(drives) > 0 {
+		s["DRIVES"] = drives
+	}
+
 	// softwares (SPApplicationsDataType, plist XML). The lastModified dates are
 	// shifted by the local timezone offset (detectLocalTimeOffset).
 	_, offset := time.Now().Zone()
