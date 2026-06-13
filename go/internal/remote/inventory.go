@@ -124,6 +124,11 @@ func buildRemoteInventory(sys remoteSystem, itemtype, tag, fallbackHost string) 
 		}
 	}
 
+	collectRemoteNetworks(sys, inv)
+	collectRemoteFirewall(sys, inv)
+	collectRemoteAntivirus(sys, inv)
+	collectRemoteMonitors(sys, inv)
+
 	// sysfs-based sections (BATTERIES, USBDEVICES, STORAGES) via the filesystem
 	// abstraction reading the remote host's /sys over SSH.
 	for section, entries := range inventory.CollectFileSectionsFS(remoteFS{sys: sys}) {
