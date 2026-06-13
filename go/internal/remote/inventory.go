@@ -3,6 +3,7 @@
 package remote
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -110,6 +111,18 @@ func buildRemoteInventory(sys remoteSystem, itemtype, tag, fallbackHost string) 
 
 	collectRemoteSoftwares(sys, inv)
 	collectRemoteLVM(sys, inv)
+	collectRemoteDMIBios(sys, inv)
+	collectRemoteUsers(sys, inv)
+	collectRemoteFileParsers(sys, inv)
+	collectRemoteLspci(sys, inv)
+	collectRemoteDrives(sys, inv)
+
+	// USERS: currently logged-in users (who).
+	if sys.CanRun("who") {
+		if out, err := sys.Run("who --users"); err == nil {
+			setIfAny(inv, "USERS", inventory.BuildLoggedUsers(out))
+		}
+	}
 
 	// sysfs-based sections (BATTERIES, USBDEVICES, STORAGES) via the filesystem
 	// abstraction reading the remote host's /sys over SSH.
@@ -118,6 +131,105 @@ func buildRemoteInventory(sys remoteSystem, itemtype, tag, fallbackHost string) 
 	}
 
 	return inv
+}
+
+// dmiFields are the /sys/class/dmi/id attributes the BIOS section is built from.
+var dmiFields = []string{
+	"bios_vendor", "bios_version", "bios_date", "sys_vendor", "product_name",
+	"product_sku", "product_serial", "board_vendor", "board_name",
+	"board_serial", "chassis_asset_tag", "chassis_serial",
+}
+
+// collectRemoteDMIBios builds BIOS from the remote /sys/class/dmi/id tree.
+func collectRemoteDMIBios(sys remoteSystem, inv *content.Inventory) {
+	dmi := map[string]string{}
+	for _, f := range dmiFields {
+		if v, err := sys.ReadFile("/sys/class/dmi/id/" + f); err == nil {
+			if line := firstLineOf(v); line != "" {
+				dmi[f] = line
+			}
+		}
+	}
+	if bios := inventory.ParseDMI(dmi); len(bios) > 0 {
+		inv.Content["BIOS"] = bios
+	}
+}
+
+// collectRemoteUsers builds LOCAL_USERS/LOCAL_GROUPS from /etc/passwd + /etc/group.
+func collectRemoteUsers(sys remoteSystem, inv *content.Inventory) {
+	passwd, perr := sys.ReadFile("/etc/passwd")
+	group, gerr := sys.ReadFile("/etc/group")
+	if perr != nil && gerr != nil {
+		return
+	}
+	users, groups := inventory.BuildUsers(strings.NewReader(passwd), strings.NewReader(group))
+	setIfAny(inv, "LOCAL_USERS", users)
+	setIfAny(inv, "LOCAL_GROUPS", groups)
+}
+
+// collectRemoteFileParsers builds INPUTS and PRINTERS from their config files.
+func collectRemoteFileParsers(sys remoteSystem, inv *content.Inventory) {
+	if in, err := sys.ReadFile("/proc/bus/input/devices"); err == nil && in != "" {
+		setIfAny(inv, "INPUTS", inventory.ParseInputDevices(strings.NewReader(in)))
+	}
+	if pr, err := sys.ReadFile("/etc/cups/printers.conf"); err == nil && pr != "" {
+		setIfAny(inv, "PRINTERS", inventory.ParsePrintersConf(strings.NewReader(pr)))
+	}
+}
+
+// collectRemoteLspci builds CONTROLLERS/VIDEOS/SOUNDS from one remote lspci scan.
+func collectRemoteLspci(sys remoteSystem, inv *content.Inventory) {
+	if !sys.CanRun("lspci") {
+		return
+	}
+	out, err := sys.Run("lspci -v -nn")
+	if err != nil || out == "" {
+		return
+	}
+	devs := inventory.ParseLspci(strings.NewReader(out))
+	setIfAny(inv, "CONTROLLERS", inventory.BuildControllers(devs))
+	setIfAny(inv, "VIDEOS", inventory.BuildVideos(devs))
+	setIfAny(inv, "SOUNDS", inventory.BuildSounds(devs))
+}
+
+// collectRemoteDrives builds DRIVES from /proc/mounts with per-mount usage from
+// the remote `df`.
+func collectRemoteDrives(sys remoteSystem, inv *content.Inventory) {
+	mounts, err := sys.ReadFile("/proc/mounts")
+	if err != nil || mounts == "" {
+		return
+	}
+	statfs := func(mountpoint string) (totalMB, freeMB int, ok bool) {
+		out, err := sys.Run("df -P -k " + shellQuote(mountpoint))
+		if err != nil {
+			return 0, 0, false
+		}
+		return parseDfStatfs(out)
+	}
+	setIfAny(inv, "DRIVES", inventory.BuildDrives(inventory.ParseMounts(strings.NewReader(mounts)), statfs))
+}
+
+// parseDfStatfs reads the total/available KiB from `df -P -k` output (MiB).
+func parseDfStatfs(out string) (totalMB, freeMB int, ok bool) {
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) < 2 {
+		return 0, 0, false
+	}
+	f := strings.Fields(lines[len(lines)-1])
+	if len(f) < 4 {
+		return 0, 0, false
+	}
+	total, e1 := strconv.Atoi(f[1])
+	avail, e2 := strconv.Atoi(f[3])
+	if e1 != nil || e2 != nil {
+		return 0, 0, false
+	}
+	return total / 1024, avail / 1024, true
+}
+
+// shellQuote single-quotes a path for safe use in a remote command.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // remoteFS adapts a remoteSystem to inventory.FS: file reads via the remote

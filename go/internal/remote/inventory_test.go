@@ -118,6 +118,47 @@ func TestBuildRemoteInventorySysfs(t *testing.T) {
 	}
 }
 
+// TestBuildRemoteInventoryCommandSections checks the BIOS (DMI), LOCAL_USERS and
+// DRIVES sections collected over SSH via the shared parsers.
+func TestBuildRemoteInventoryCommandSections(t *testing.T) {
+	sys := &fakeSystem{
+		host: "srv",
+		commands: map[string]string{
+			"df -P -k '/'": "Filesystem 1024-blocks    Used Available Capacity Mounted on\n/dev/sda1   10485760 1048576   9437184      10% /\n",
+		},
+		files: map[string]string{
+			"/sys/class/dmi/id/bios_vendor":  "American Megatrends Inc.",
+			"/sys/class/dmi/id/bios_version": "F4",
+			"/sys/class/dmi/id/sys_vendor":   "Gigabyte",
+			"/etc/passwd":                    "root:x:0:0:root:/root:/bin/bash\njdoe:x:1000:1000:J Doe:/home/jdoe:/bin/bash\n",
+			"/etc/group":                     "root:x:0:\nsudo:x:27:jdoe\n",
+			"/proc/mounts":                   "/dev/sda1 / ext4 rw,relatime 0 0\n",
+		},
+	}
+	inv := buildRemoteInventory(sys, "", "", "srv")
+
+	bios, _ := inv.Content["BIOS"].(map[string]any)
+	if bios["BMANUFACTURER"] != "American Megatrends Inc." || bios["BVERSION"] != "F4" {
+		t.Errorf("bios = %v", bios)
+	}
+	users, _ := inv.Content["LOCAL_USERS"].([]map[string]any)
+	if len(users) != 2 {
+		t.Errorf("local users = %v", users)
+	}
+	drives, _ := inv.Content["DRIVES"].([]map[string]any)
+	if len(drives) != 1 || drives[0]["VOLUMN"] != "/dev/sda1" || drives[0]["TOTAL"] != 10240 || drives[0]["FREE"] != 9216 {
+		t.Errorf("drives = %v", drives)
+	}
+}
+
+// TestParseDfStatfs covers the df usage parser.
+func TestParseDfStatfs(t *testing.T) {
+	total, free, ok := parseDfStatfs("Filesystem 1024-blocks Used Available Capacity Mounted\n/dev/x 2097152 1048576 1048576 50% /m\n")
+	if !ok || total != 2048 || free != 1024 {
+		t.Errorf("parseDfStatfs = %d/%d/%v", total, free, ok)
+	}
+}
+
 // TestBuildRemoteInventoryDpkgFallback checks the dpkg status fallback when rpm
 // is absent.
 func TestBuildRemoteInventoryDpkgFallback(t *testing.T) {
